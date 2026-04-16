@@ -584,10 +584,11 @@ async function loadThumbnailFrames(base) {
 
   // Detect pattern+ext with one request per candidate first frame (parallel, ~16 total)
   const patterns = [
-    { name: i => `video_${100+i}`,                        start: 0 },
-    { name: i => String(i+1).padStart(2,'0'),             start: 0 },
-    { name: i => `frame_${String(i+1).padStart(3,'0')}`,  start: 0 },
-    { name: i => `frame${String(i+1).padStart(3,'0')}`,   start: 0 },
+    { name: i => `video_${String(i).padStart(3,'0')}`,    start: 0 },  // video_000.png
+    { name: i => `video_${100+i}`,                        start: 0 },  // video_100.png
+    { name: i => String(i+1).padStart(2,'0'),             start: 0 },  // 01.png
+    { name: i => `frame_${String(i+1).padStart(3,'0')}`,  start: 0 },  // frame_001.png
+    { name: i => `frame${String(i+1).padStart(3,'0')}`,   start: 0 },  // frame001.png
   ];
 
   const firstProbes = patterns.flatMap(p =>
