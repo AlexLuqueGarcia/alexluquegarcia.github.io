@@ -1021,7 +1021,7 @@ function getWinSpecs(p, pd) {
   }));
   return [
     { type:'video', wf:0.40, hf:null,  ratio:16/9 },
-    { type:'text',  wf:0.30, hf:0.50,  ratio:null, p, pd },
+    { type:'text',  wf:0.35, hf:0.50,  ratio:null, p, pd },
     ...imgSpecs,
   ];
 }
@@ -1065,7 +1065,7 @@ function packWindows(specs) {
     w = Math.min(w, zone.zw);
 
     // Hard max-width for text so it never gets too wide or overflows
-    if (spec.type === 'text') w = Math.min(w, 420, Math.round(vw * 0.28));
+    if (spec.type === 'text') w = Math.min(w, Math.round(vw * 0.35));
 
     // Compute height
     let h = spec.ratio
