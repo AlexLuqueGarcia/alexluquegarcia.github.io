@@ -295,14 +295,14 @@ nav.hide {
 .win-resize .rc::after {
   content:'';
   position:absolute;
-  width:14px; height:14px;
+  width:21px; height:21px;
   border-color:#fff;
   border-style:solid;
 }
-.win-resize::before  { top:0;    left:0;  border-width:1.5px 0 0 1.5px; }
-.win-resize::after   { top:0;    right:0; border-width:1.5px 1.5px 0 0; }
-.win-resize .rc::before { bottom:0; left:0;  border-width:0 0 1.5px 1.5px; }
-.win-resize .rc::after  { bottom:0; right:0; border-width:0 1.5px 1.5px 0; }
+.win-resize::before  { top:0;    left:0;  border-width:2.25px 0 0 2.25px; }
+.win-resize::after   { top:0;    right:0; border-width:2.25px 2.25px 0 0; }
+.win-resize .rc::before { bottom:0; left:0;  border-width:0 0 2.25px 2.25px; }
+.win-resize .rc::after  { bottom:0; right:0; border-width:0 2.25px 2.25px 0; }
 
 /* invisible drag zones — one per corner, generous hit area */
 .win-resize-drag {
@@ -323,7 +323,7 @@ nav.hide {
   bottom:14px; left:50%;
   transform:translateX(-50%);
   display:flex; flex-direction:row;
-  align-items:center; gap:22px;
+  align-items:center; gap:33px;
   opacity:0; transition:opacity 0.2s;
   z-index:20;
   pointer-events:all;
@@ -954,19 +954,19 @@ function buildWindows(p, pd) {
         </video>
         <div class="win-vid-controls">
           <button class="vid-btn win-mute-btn" title="Mute">
-            <svg width="15" height="11" viewBox="0 0 15 11" fill="none">
+            <svg width="23" height="17" viewBox="0 0 15 11" fill="none">
               <path d="M1 3.5H3.2L6.5 1V10L3.2 7.5H1V3.5Z" stroke="currentColor" stroke-width="1.1" fill="none"/>
               <path class="win-waves" d="M9 2.5C10 3.3 10.5 4.4 10.5 5.5C10.5 6.6 10 7.7 9 8.5M11.5 1C13 2.3 14 3.8 14 5.5C14 7.2 13 8.7 11.5 10" stroke="currentColor" stroke-width="1.1"/>
             </svg>
           </button>
           <button class="vid-btn win-play-btn" title="Play/Pause">
-            <svg class="win-play-icon" width="13" height="13" viewBox="0 0 13 13" fill="none">
+            <svg class="win-play-icon" width="20" height="20" viewBox="0 0 13 13" fill="none">
               <rect x="1" y="1" width="3.5" height="11" fill="currentColor"/>
               <rect x="8.5" y="1" width="3.5" height="11" fill="currentColor"/>
             </svg>
           </button>
           <button class="vid-btn win-fs-btn" title="Fullscreen">
-            <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+            <svg width="20" height="20" viewBox="0 0 13 13" fill="none">
               <path d="M1 4.5V1H4.5M8.5 1H12V4.5M12 8.5V12H8.5M4.5 12H1V8.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
             </svg>
           </button>
