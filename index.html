@@ -582,62 +582,54 @@ async function loadThumbnailFrames(base) {
   const exts = ['png','jpg','jpeg','webp'];
   const MAX  = 20;
 
-  // Detect naming pattern and extension by probing the first frame
-  async function probe(url) {
-    try { const r = await fetch(url, {method:'HEAD'}); return r.ok; }
-    catch { return false; }
-  }
-
-  // Build candidate first-frame URLs for each pattern
+  // Detect pattern+ext with one request per candidate first frame (parallel, ~16 total)
   const patterns = [
-    { name: i => `video_${100+i}` },
-    { name: i => String(i+1).padStart(2,'0') },
-    { name: i => `frame_${String(i+1).padStart(3,'0')}` },
-    { name: i => `frame${String(i+1).padStart(3,'0')}` },
+    { name: i => `video_${100+i}`,                        start: 0 },
+    { name: i => String(i+1).padStart(2,'0'),             start: 0 },
+    { name: i => `frame_${String(i+1).padStart(3,'0')}`,  start: 0 },
+    { name: i => `frame${String(i+1).padStart(3,'0')}`,   start: 0 },
   ];
 
-  // Find which pattern+extension exists by checking only frame 0 of each
-  let nameFn = null, foundExt = null;
   const firstProbes = patterns.flatMap(p =>
-    exts.map(ext => ({ url: `${dir}/${p.name(0)}.${ext}`, p, ext }))
-  );
-  const firstResults = await Promise.all(firstProbes.map(async item => {
-    const ok = await probe(item.url);
-    return ok ? item : null;
-  }));
-  const match = firstResults.find(Boolean);
-  if (!match) return []; // no thumbnail folder or no frames
-  nameFn    = match.p.name;
-  foundExt  = match.ext;
-
-  // Binary search to count total frames (stop at first missing)
-  // Probe powers of 2: 1,2,4,8,16,32,64,128 to find upper bound fast
-  let lo = 0, hi = 1;
-  while (await probe(`${dir}/${nameFn(hi)}.${foundExt}`)) {
-    hi = hi * 2;
-    if (hi > 512) break; // safety cap
-  }
-  // Now binary search between lo and hi for exact count
-  while (lo + 1 < hi) {
-    const mid = Math.floor((lo + hi) / 2);
-    if (await probe(`${dir}/${nameFn(mid)}.${foundExt}`)) lo = mid;
-    else hi = mid;
-  }
-  const total = lo + 1; // lo is last valid 0-based index
-
-  // Pick exactly MAX indices evenly distributed 0..total-1
-  const count = Math.min(total, MAX);
-  const indices = Array.from({length: count}, (_, i) =>
-    count === 1 ? 0 : Math.round(i * (total - 1) / (count - 1))
+    exts.map(ext => ({ url:`${dir}/${p.name(0)}.${ext}`, p, ext }))
   );
 
-  // Fetch only the chosen frames (all in parallel — just MAX requests)
-  const frames = await Promise.all(indices.map(async idx => {
-    const url = `${dir}/${nameFn(idx)}.${foundExt}`;
-    return await probe(url) ? url : null;
+  // Fire all first-frame probes in parallel — just ~16 requests
+  const results = await Promise.all(firstProbes.map(async item => {
+    try { const r = await fetch(item.url,{method:'HEAD'}); return r.ok ? item : null; }
+    catch { return null; }
   }));
 
-  return frames.filter(Boolean);
+  const match = results.find(Boolean);
+  if (!match) return []; // no thumbnail folder
+
+  // We know the pattern and extension — now probe last frame to get count
+  // Do this with a parallel doubling probe (1,2,4,8,16,32...) then bisect
+  // But actually: just return MAX urls spread over a guessed range.
+  // CSS background-image silently ignores 404s — no blocking, no errors.
+  // Strategy: probe frame at index MAX-1 (19) and MAX*2-1 (39) to guess total.
+  const nameFn = match.p.name;
+  const ext    = match.ext;
+
+  // Check a few candidate "last frames" in parallel to estimate total
+  const checkIndices = [9, 19, 29, 39, 59, 99, 149, 199];
+  const checkResults = await Promise.all(
+    checkIndices.map(async idx => {
+      try { const r = await fetch(`${dir}/${nameFn(idx)}.${ext}`,{method:'HEAD'}); return r.ok ? idx : -1; }
+      catch { return -1; }
+    })
+  );
+
+  // Last index that exists gives us the approximate total
+  const lastFound = Math.max(...checkResults);
+  const total = lastFound + 1; // at least this many
+
+  // Generate MAX evenly-spaced URLs across 0..total-1
+  // CSS will silently skip any that 404 — zero blocking
+  return Array.from({length: MAX}, (_, i) => {
+    const idx = MAX === 1 ? 0 : Math.round(i * (total - 1) / (MAX - 1));
+    return `${dir}/${nameFn(idx)}.${ext}`;
+  });
 }
 
 // Load images for a project folder.
