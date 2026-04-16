@@ -513,6 +513,15 @@ nav.hide {
 //   team: Alex Luque Garcia — CG Artist
 //   credits: Studio: x
 
+// Convert Dropbox share URL to direct download URL
+function fixDropbox(url) {
+  if (!url) return null;
+  return url
+    .replace('www.dropbox.com', 'dl.dropboxusercontent.com')
+    .replace('?dl=0', '')
+    .replace('?dl=1', '');
+}
+
 function parseInfo(txt) {
   const data = {};
   let key = null;
@@ -545,7 +554,7 @@ async function loadProjects() {
           studio:   info.studio   || '',
           type:     info.type     || '',
           duration: parseInt(info.duration) || 60,
-          src:      `${base}/video.mp4`,
+          src: fixDropbox(info.video) || `${base}/video.mp4`,
         },
         detail: {
           about:   info.about   || '',
