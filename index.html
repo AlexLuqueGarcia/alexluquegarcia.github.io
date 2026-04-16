@@ -97,9 +97,10 @@ nav.hide {
   white-space:nowrap;
 }
 .nav-brand .tagline {
-  font-size:1.32rem; color:#fff; font-weight:500;
+  font-size:1.14rem; color:#fff;
   display:block; margin-top:1px; line-height:1.4;
   white-space:nowrap;
+  transform-origin: left top;
 }
 
 /* ── META — fixed above strip ── */
@@ -1557,6 +1558,19 @@ mobMuteBtn.addEventListener('click', (e) => {
 
 // ── NAV YEAR ──
 document.getElementById('nav-year').textContent = new Date().getFullYear();
+
+// Scale tagline horizontally to match name width
+function fitTagline() {
+  const name    = document.querySelector('.nav-brand .name');
+  const tagline = document.querySelector('.nav-brand .tagline');
+  if (!name || !tagline) return;
+  tagline.style.transform = '';
+  const nameW = name.offsetWidth;
+  const tagW  = tagline.offsetWidth;
+  if (tagW > 0) tagline.style.transform = `scaleX(${nameW / tagW})`;
+}
+window.addEventListener('load', fitTagline);
+window.addEventListener('resize', fitTagline);
 
 // ── CUSTOM CURSOR ──
 const curEl = document.getElementById('cur');
