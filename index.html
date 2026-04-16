@@ -338,11 +338,15 @@ nav.hide {
 .win-text {
   background:rgba(10,10,10,0.55);
   backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
-  padding:1.6rem 1.8rem 1.8rem;
   font-family:'NM',sans-serif;
   overflow:hidden;
-  min-width:220px;
+  min-width:120px;
   max-width:420px;
+}
+.win-text-inner {
+  padding:1.6rem 1.8rem 1.8rem;
+  transform-origin: top left;
+  white-space: nowrap; /* natural width before measuring */
 }
 .win-text .wlabel {
   font-size:0.62rem; text-transform:uppercase;
@@ -975,18 +979,20 @@ function buildWindows(p, pd) {
       const teamLines   = spec.pd.team.replace(/\n/g,'<br>');
       const creditLines = spec.pd.credits.replace(/\n/g,'<br>');
       win.innerHTML = `
-        <div class="wlabel">${spec.p.studio}</div>
-        <div class="wtitle">${spec.p.name}</div>
-        <div class="wsub">${spec.p.client} — ${spec.p.type}</div>
-        <div class="wbody">${spec.pd.about}</div>
-        <div class="wrow">
-          <div>
-            <div class="wcol-label">Team</div>
-            <div class="wcol-body">${teamLines}</div>
-          </div>
-          <div>
-            <div class="wcol-label">Credits</div>
-            <div class="wcol-body">${creditLines}</div>
+        <div class="win-text-inner">
+          <div class="wlabel">${spec.p.studio}</div>
+          <div class="wtitle">${spec.p.name}</div>
+          <div class="wsub">${spec.p.client} — ${spec.p.type}</div>
+          <div class="wbody">${spec.pd.about}</div>
+          <div class="wrow">
+            <div>
+              <div class="wcol-label">Team</div>
+              <div class="wcol-body">${teamLines}</div>
+            </div>
+            <div>
+              <div class="wcol-label">Credits</div>
+              <div class="wcol-body">${creditLines}</div>
+            </div>
           </div>
         </div>
         ${resizeHandle}`;
@@ -1006,15 +1012,20 @@ function buildWindows(p, pd) {
 
     canvasInner.appendChild(win);
 
-    // For text windows: measure natural rendered size and lock that as aspect ratio
+    // For text windows: measure natural content size, lock ratio, store for scaling
     if (spec.type === 'text') {
-      const rect = win.getBoundingClientRect();
-      if (rect.width > 0 && rect.height > 0) {
-        win._ratio = rect.width / rect.height;
-        // Now fix both dimensions so resize works
-        win.style.width  = rect.width  + 'px';
-        win.style.height = rect.height + 'px';
-      }
+      const inner = win.querySelector('.win-text-inner');
+      // Remove white-space:nowrap after measuring so text can wrap when scaled down
+      const naturalW = inner.scrollWidth;
+      const naturalH = inner.scrollHeight;
+      inner.style.whiteSpace = '';
+      // Set window to natural size
+      win.style.width  = naturalW + 'px';
+      win.style.height = naturalH + 'px';
+      win._ratio       = naturalW / naturalH;
+      win._naturalW    = naturalW;
+      // Scale inner to fill window (starts at 1:1)
+      inner.style.width = naturalW + 'px';
     }
 
     makeDraggable(win);
@@ -1113,6 +1124,12 @@ function makeResizable(el) {
       el.style.height = nh + 'px';
       el.style.left   = nx + 'px';
       el.style.top    = ny + 'px';
+      // scale text content if this is a text window
+      const inner = el.querySelector('.win-text-inner');
+      if (inner && el._naturalW) {
+        const scale = nw / el._naturalW;
+        inner.style.transform = `scale(${scale})`;
+      }
     });
 
     window.addEventListener('mouseup', () => { active = false; });
