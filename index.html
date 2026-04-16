@@ -554,9 +554,9 @@ nav.hide {
 <!-- Nav -->
 <nav>
   <div class="nav-links">
-    <a href="#">Feed</a><a href="#">Work</a><a href="#">Info</a>
+    <a href="#" onclick="goHome();return false;">Feed</a><a href="#">Work</a><a href="#">Info</a>
   </div>
-  <div class="nav-brand">
+  <div class="nav-brand" onclick="goHome()" style="cursor:pointer;">
     <span class="name">Alex Luque Garcia</span>
     <span class="tagline">Visual Artist & Generalist</span>
   </div>
@@ -1350,8 +1350,12 @@ function fillDetail(i) {
 
 // close on wheel up
 
+function goHome() {
+  if (detailOpen) closeDetail();
+  // future: also close info/work pages when they exist
+}
+
 function openDetail() {
-  if (detailOpen || transitioning) return;
   transitioning = true;
   detailOpen = true;
   fillDetail(cur);
