@@ -86,6 +86,10 @@ nav.hide {
   color:#fff; text-decoration:none; transition:color 0.2s;
 }
 .nav-links a:hover { color:#fff; opacity:0.6; }
+#nav-year {
+  font-size:1.23rem;
+  color:#fff;
+}
 .nav-brand { text-align:center; }
 .nav-brand .name {
   font-size:1.32rem; color:#fff;
@@ -557,7 +561,7 @@ nav.hide {
     <span class="tagline">Visual Artist & Generalist</span>
   </div>
   <div class="nav-links">
-    <a href="#" onclick="closeDetail();return false;">Contact</a><a href="#" onclick="closeDetail();return false;" title="Back to top">©2026</a>
+    <a href="#" onclick="closeDetail();return false;">Contact</a><span id="nav-year"></span>
   </div>
 </nav>
 
@@ -1479,6 +1483,9 @@ mobMuteBtn.addEventListener('click', (e) => {
   lndWaves.style.opacity = lndVideo.muted ? '0.15' : '1';
   if (mobWaves) mobWaves.style.opacity = lndVideo.muted ? '0.15' : '1';
 });
+
+// ── NAV YEAR ──
+document.getElementById('nav-year').textContent = '©' + new Date().getFullYear();
 
 // ── CUSTOM CURSOR ──
 const curEl = document.getElementById('cur');
