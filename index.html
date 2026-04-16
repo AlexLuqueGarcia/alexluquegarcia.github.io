@@ -454,6 +454,24 @@ nav.hide {
 .tc-6{background:linear-gradient(160deg,#401018,#280810);}
 .tc-7{background:linear-gradient(160deg,#282828,#141414);}
 
+/* Mobile-only play/mute controls — hidden on desktop */
+#mobile-controls {
+  display: none;
+  position: fixed;
+  right: 1.2rem;
+  top: 50%;
+  transform: translateY(-50%);
+  flex-direction: column;
+  gap: 20px;
+  z-index: 101;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.4s;
+}
+#mobile-controls.visible { opacity: 1; pointer-events: all; }
+#mobile-controls.hide { opacity: 0; pointer-events: none; }
+#mobile-controls .vid-btn { color: #fff; }
+
 /* ── MOBILE ── */
 @media (max-width: 768px) {
   /* Restore normal cursor on touch devices */
@@ -474,21 +492,27 @@ nav.hide {
   #meta .m-title  { font-size: 1.2rem; }
   #meta .m-role   { font-size: 0.75rem; }
 
-  /* On mobile: stack vertically — buttons top, scroll text bottom */
+  /* Scroll hint — restore to bottom right, hide play/mute buttons from it */
   #scroll-hint {
-    right: 1.2rem;
-    bottom: auto;
-    top: 0;
-    height: 100vh;
-    flex-direction: column;
-    justify-content: space-between;
-    align-items: flex-end;
-    padding: calc(50% - 40px) 0 calc(var(--strip-h) + var(--pad-b) + 14px);
-    gap: 14px;
+    right: 1rem;
+    bottom: calc(var(--strip-h) + var(--pad-b) + 14px);
+    top: auto;
+    height: auto;
+    flex-direction: row;
+    justify-content: flex-end;
+    align-items: center;
+    padding: 0;
+    gap: 12px;
   }
-  #scroll-hint.hide { transform: translateX(60px); opacity: 0; }
-  #scroll-hint .vid-btn svg { width: 28px; height: 28px; }
+  #scroll-hint.hide { transform: translateY(calc(var(--strip-h) + var(--pad-b) + 60px)); opacity: 0; }
   #scroll-hint span { font-size: 1.1rem; }
+  #lnd-play, #lnd-mute { display: none; }
+  /* Mobile controls — TikTok right center */
+  #mobile-controls {
+    display: flex;
+    opacity: 1;
+    pointer-events: all;
+  }
 
   /* Strip labels */
   .thumb-label { font-size: 0.7rem; }
@@ -555,6 +579,22 @@ nav.hide {
   <svg class="scroll-arrow" width="18" height="12" viewBox="0 0 12 8" fill="none" onclick="openDetail()">
     <path d="M1 1L6 7L11 1" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/>
   </svg>
+</div>
+
+<!-- Mobile-only play/mute — TikTok style right center -->
+<div id="mobile-controls">
+  <button class="vid-btn" id="mob-play" onclick="event.stopPropagation()">
+    <svg id="mob-play-icon" width="28" height="28" viewBox="0 0 13 13" fill="none">
+      <rect x="1" y="1" width="3.5" height="11" fill="currentColor"/>
+      <rect x="8.5" y="1" width="3.5" height="11" fill="currentColor"/>
+    </svg>
+  </button>
+  <button class="vid-btn" id="mob-mute" onclick="event.stopPropagation()">
+    <svg width="28" height="28" viewBox="0 0 15 11" fill="none">
+      <path d="M1 3.5H3.2L6.5 1V10L3.2 7.5H1V3.5Z" stroke="currentColor" stroke-width="1.1" fill="none"/>
+      <path id="mob-waves" d="M9 2.5C10 3.3 10.5 4.4 10.5 5.5C10.5 6.6 10 7.7 9 8.5M11.5 1C13 2.3 14 3.8 14 5.5C14 7.2 13 8.7 11.5 10" stroke="currentColor" stroke-width="1.1"/>
+    </svg>
+  </button>
 </div>
 
 <!-- Strip -->
@@ -898,7 +938,7 @@ function updateMeta(i) {
   document.getElementById('m-title').textContent  = title;
   document.getElementById('m-role').textContent   = role;
   metaEl.classList.add('visible');
-  hintEl.classList.add('visible');
+  hintEl.classList.add('visible'); if(mobControls) mobControls.classList.add('visible');
 }
 
 function setActiveThumb(i) {
@@ -1300,7 +1340,7 @@ function openDetail() {
 
   stripEl.classList.add('hide');
   metaEl.classList.add('hide');
-  hintEl.classList.add('hide');
+  hintEl.classList.add('hide'); if(mobControls) mobControls.classList.add('hide');
 
   // pause ticker and landing video
   cancelAnimationFrame(raf);
@@ -1337,13 +1377,13 @@ function closeDetail() {
   setTimeout(() => {
     stripEl.classList.remove('hide');
     metaEl.classList.remove('hide');
-    hintEl.classList.remove('hide');
+    hintEl.classList.remove('hide'); if(mobControls) mobControls.classList.remove('hide');
     
     metaEl.classList.remove('visible');
-    hintEl.classList.remove('visible');
+    hintEl.classList.remove('visible'); if(mobControls) mobControls.classList.remove('visible');
     setTimeout(() => {
       metaEl.classList.add('visible');
-      hintEl.classList.add('visible');
+      hintEl.classList.add('visible'); if(mobControls) mobControls.classList.add('visible');
       transitioning = false;
     }, 50);
   }, 500);
@@ -1386,11 +1426,33 @@ const lndMuteBtn  = document.getElementById('lnd-mute');
 const lndWaves    = document.getElementById('lnd-waves');
 const isLndVideo  = lndVideo && lndVideo.tagName === 'VIDEO';
 
+// Mobile controls
+const mobControls  = document.getElementById('mobile-controls');
+const mobPlayBtn   = document.getElementById('mob-play');
+const mobPlayIcon  = document.getElementById('mob-play-icon');
+const mobMuteBtn   = document.getElementById('mob-mute');
+const mobWaves     = document.getElementById('mob-waves');
+
 lndPlayBtn.addEventListener('click', (e) => {
   e.stopPropagation();
   if (!isLndVideo) return;
   setPlaying(!playing);
 });
+
+mobPlayBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  if (!isLndVideo) return;
+  setPlaying(!playing);
+});
+
+// Sync mobile play icon with state
+const origSetPlaying = setPlaying;
+function setPlaying(val) {
+  origSetPlaying(val);
+  const pauseIcon = '<rect x="1" y="1" width="3.5" height="11" fill="currentColor"/><rect x="8.5" y="1" width="3.5" height="11" fill="currentColor"/>';
+  const playIcon  = '<path d="M1.5 1L11.5 6.5L1.5 12V1Z" fill="currentColor"/>';
+  if (mobPlayIcon) mobPlayIcon.innerHTML = val ? pauseIcon : playIcon;
+}
 
 // Click landing video → next project
 videoBg.addEventListener('click', () => {
@@ -1402,6 +1464,15 @@ lndMuteBtn.addEventListener('click', (e) => {
   if (!isLndVideo) return;
   lndVideo.muted = !lndVideo.muted;
   lndWaves.style.opacity = lndVideo.muted ? '0.15' : '1';
+  if (mobWaves) mobWaves.style.opacity = lndVideo.muted ? '0.15' : '1';
+});
+
+mobMuteBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  if (!isLndVideo) return;
+  lndVideo.muted = !lndVideo.muted;
+  lndWaves.style.opacity = lndVideo.muted ? '0.15' : '1';
+  if (mobWaves) mobWaves.style.opacity = lndVideo.muted ? '0.15' : '1';
 });
 
 // ── CUSTOM CURSOR ──
