@@ -582,41 +582,62 @@ async function loadThumbnailFrames(base) {
   const exts = ['png','jpg','jpeg','webp'];
   const MAX  = 20;
 
-  // Probe up to 200 frames in parallel across all naming patterns
-  const names = [
-    ...Array.from({length:200}, (_,i) => `video_${100+i}`),
-    ...Array.from({length:100}, (_,i) => String(i+1).padStart(2,'0')),
-    ...Array.from({length:100}, (_,i) => `frame_${String(i+1).padStart(3,'0')}`),
-    ...Array.from({length:100}, (_,i) => `frame${String(i+1).padStart(3,'0')}`),
+  // Detect naming pattern and extension by probing the first frame
+  async function probe(url) {
+    try { const r = await fetch(url, {method:'HEAD'}); return r.ok; }
+    catch { return false; }
+  }
+
+  // Build candidate first-frame URLs for each pattern
+  const patterns = [
+    { name: i => `video_${100+i}` },
+    { name: i => String(i+1).padStart(2,'0') },
+    { name: i => `frame_${String(i+1).padStart(3,'0')}` },
+    { name: i => `frame${String(i+1).padStart(3,'0')}` },
   ];
 
-  const candidates = names.flatMap(name => exts.map(ext => `${dir}/${name}.${ext}`));
+  // Find which pattern+extension exists by checking only frame 0 of each
+  let nameFn = null, foundExt = null;
+  const firstProbes = patterns.flatMap(p =>
+    exts.map(ext => ({ url: `${dir}/${p.name(0)}.${ext}`, p, ext }))
+  );
+  const firstResults = await Promise.all(firstProbes.map(async item => {
+    const ok = await probe(item.url);
+    return ok ? item : null;
+  }));
+  const match = firstResults.find(Boolean);
+  if (!match) return []; // no thumbnail folder or no frames
+  nameFn    = match.p.name;
+  foundExt  = match.ext;
 
-  const found = await Promise.all(candidates.map(async url => {
-    try { const r = await fetch(url, {method:'HEAD'}); return r.ok ? url : null; }
-    catch { return null; }
+  // Binary search to count total frames (stop at first missing)
+  // Probe powers of 2: 1,2,4,8,16,32,64,128 to find upper bound fast
+  let lo = 0, hi = 1;
+  while (await probe(`${dir}/${nameFn(hi)}.${foundExt}`)) {
+    hi = hi * 2;
+    if (hi > 512) break; // safety cap
+  }
+  // Now binary search between lo and hi for exact count
+  while (lo + 1 < hi) {
+    const mid = Math.floor((lo + hi) / 2);
+    if (await probe(`${dir}/${nameFn(mid)}.${foundExt}`)) lo = mid;
+    else hi = mid;
+  }
+  const total = lo + 1; // lo is last valid 0-based index
+
+  // Pick exactly MAX indices evenly distributed 0..total-1
+  const count = Math.min(total, MAX);
+  const indices = Array.from({length: count}, (_, i) =>
+    count === 1 ? 0 : Math.round(i * (total - 1) / (count - 1))
+  );
+
+  // Fetch only the chosen frames (all in parallel — just MAX requests)
+  const frames = await Promise.all(indices.map(async idx => {
+    const url = `${dir}/${nameFn(idx)}.${foundExt}`;
+    return await probe(url) ? url : null;
   }));
 
-  // Deduplicate by stem, natural sort — gives us all frames in order
-  const seen = new Set();
-  const all = found
-    .filter(url => {
-      if (!url) return false;
-      const stem = url.replace(/\.[^.]+$/, '');
-      if (seen.has(stem)) return false;
-      seen.add(stem);
-      return true;
-    })
-    .sort((a, b) => a.localeCompare(b, undefined, {numeric: true}));
-
-  // If we have MAX or fewer, use all. Otherwise subsample evenly.
-  if (all.length <= MAX) return all;
-
-  // Pick MAX frames evenly distributed from first to last
-  return Array.from({length: MAX}, (_, i) => {
-    const idx = Math.round(i * (all.length - 1) / (MAX - 1));
-    return all[idx];
-  });
+  return frames.filter(Boolean);
 }
 
 // Load images for a project folder.
