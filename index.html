@@ -177,7 +177,8 @@ nav.hide {
   border-right:1px solid rgba(0,0,0,0.5);
 }
 .thumb:last-child { border-right:none; }
-.thumb:hover .thumb-bg { filter:brightness(0.6); }
+#strip-area:hover .thumb .thumb-bg { filter:brightness(0.4); }
+#strip-area:hover .thumb:hover .thumb-bg { filter:brightness(1); }
 .thumb-bg {
   width:100%; height:100%;
   display:flex; /* slices sit side by side */
@@ -211,6 +212,8 @@ nav.hide {
 .thumb-corners .tc-rc::before { bottom:0; left:0;  border-width:0 0 2.25px 2.25px; }
 .thumb-corners .tc-rc::after  { bottom:0; right:0; border-width:0 2.25px 2.25px 0; }
 .thumb-black {
+  position:absolute; inset:0;
+  backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
   background: rgba(0,0,0,0.45);
   z-index:6;
