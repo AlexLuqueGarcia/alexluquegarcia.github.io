@@ -474,23 +474,21 @@ nav.hide {
   #meta .m-title  { font-size: 1.2rem; }
   #meta .m-role   { font-size: 0.75rem; }
 
-  /* Scroll hint — TikTok style: right side, vertically centered */
+  /* On mobile: stack vertically — buttons top, scroll text bottom */
   #scroll-hint {
     right: 1.2rem;
     bottom: auto;
-    top: 50%;
-    transform: translateY(-50%);
+    top: 0;
+    height: 100vh;
     flex-direction: column;
-    gap: 20px;
-    align-items: center;
+    justify-content: space-between;
+    align-items: flex-end;
+    padding: calc(50% - 40px) 0 calc(var(--strip-h) + var(--pad-b) + 14px);
+    gap: 14px;
   }
-  #scroll-hint.hide {
-    transform: translateY(-50%);
-    opacity: 0;
-  }
-  #scroll-hint span { font-size: 1.1rem; }
+  #scroll-hint.hide { transform: translateX(60px); opacity: 0; }
   #scroll-hint .vid-btn svg { width: 28px; height: 28px; }
-  #scroll-hint .scroll-arrow { display: none; }
+  #scroll-hint span { font-size: 1.1rem; }
 
   /* Strip labels */
   .thumb-label { font-size: 0.7rem; }
