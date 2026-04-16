@@ -356,6 +356,10 @@ nav.hide {
   pointer-events:all;
 }
 .win-video:hover .win-vid-controls { opacity:1; }
+:fullscreen .win-vid-controls,
+:-webkit-full-screen .win-vid-controls { opacity:1 !important; }
+:fullscreen .win-video video,
+:-webkit-full-screen .win-video video { object-fit:contain; }
 .win-video video {
   width:100%; height:100%;
   object-fit:cover; display:block;
@@ -1158,8 +1162,23 @@ function buildWindows(p, pd) {
       // fullscreen
       win.querySelector('.win-fs-btn').addEventListener('click', e => {
         e.stopPropagation();
-        if (vid.requestFullscreen) vid.requestFullscreen();
-        else if (vid.webkitRequestFullscreen) vid.webkitRequestFullscreen();
+        if (!document.fullscreenElement) {
+          if (win.requestFullscreen) win.requestFullscreen();
+          else if (win.webkitRequestFullscreen) win.webkitRequestFullscreen();
+        } else {
+          if (document.exitFullscreen) document.exitFullscreen();
+          else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+        }
+      });
+      // Update FS button icon and keep controls visible in fullscreen
+      document.addEventListener('fullscreenchange', () => {
+        const isFs = !!document.fullscreenElement;
+        const fsBtn = win.querySelector('.win-fs-btn svg');
+        if (fsBtn) fsBtn.innerHTML = isFs
+          ? '<path d="M4 1H1V4M8 1H11V4M1 8V11H4M11 8V11H8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>'
+          : '<path d="M1 4V1H4M7 1H10V4M10 7V10H7M4 10H1V7" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>';
+        const ctrls = win.querySelector('.win-vid-controls');
+        if (ctrls) ctrls.style.opacity = isFs ? '1' : '';
       });
       // play/pause
       win.querySelector('.win-play-btn').addEventListener('click', e => {
