@@ -175,11 +175,23 @@ nav.hide {
   border-right:1px solid rgba(0,0,0,0.5);
 }
 .thumb:last-child { border-right:none; }
-.thumb-bg { width:100%; height:100%; display:block; }
+.thumb-bg {
+  width:100%; height:100%;
+  display:flex; /* slices sit side by side */
+}
+/* each slice is a vertical strip of the thumbnail image */
+.thumb-slice {
+  flex:1;
+  height:100%;
+  background-size: auto 100%; /* keep natural aspect, fill height */
+  background-repeat: no-repeat;
+  /* background-position set per-slice in JS */
+}
 .thumb-black {
   position:absolute; inset:0;
   background:#000; z-index:6;
   pointer-events:none; opacity:0;
+  transition: left 0s;
 }
 .thumb.active .thumb-black { opacity:1; }
 .thumb-marker {
@@ -627,12 +639,13 @@ async function loadProjects() {
           team:    info.team    || '',
           credits: info.credits || '',
           images:  await loadImages(base, info.images),
+          get thumb() { return this.images[0] || null; }
         }
       };
     } catch(e) {
       return {
         proj:   { folder, tc: colors[idx % colors.length], name: folder, client:'', studio:'', type:'', duration:60, src:`${base}/video.mp4` },
-        detail: { about:'', team:'', credits:'', images: await loadImages(base, null) }
+        detail: { about:'', team:'', credits:'', images: await loadImages(base, null), get thumb() { return this.images[0] || null; } }
       };
     }
   }));
@@ -648,20 +661,44 @@ let totalDur = 0;
 function buildStrip() {
   totalDur = projectData.reduce((s,p) => s + p.duration, 0);
   stripEl.innerHTML = '';
-  projectData.forEach((p,i) => {
+  projectData.forEach((p, i) => {
     const pct = (p.duration / totalDur * 100).toFixed(4) + '%';
     const t   = document.createElement('div');
     t.className   = 'thumb';
     t.dataset.i   = i;
     t.style.width = pct;
-    t.innerHTML   = `
-      <div class="thumb-bg ${p.tc}"></div>
+
+    // Build sliced thumbnail strips
+    const SLICES     = 12;
+    const thumb      = projectDetails[i] && projectDetails[i].thumb;
+    const slicesHTML = buildThumbSlices(thumb, SLICES, p.tc);
+
+    t.innerHTML = `
+      <div class="thumb-bg">${slicesHTML}</div>
       <div class="thumb-black"></div>
       <div class="thumb-marker"></div>
       <div class="thumb-label">${p.name}</div>`;
     t.addEventListener('click', () => { if (!detailOpen) goTo(i); });
     stripEl.appendChild(t);
   });
+}
+
+function buildThumbSlices(imgUrl, slices, fallbackTc) {
+  if (!imgUrl) {
+    // No thumbnail — use solid color slices with slight brightness variation
+    return Array.from({length: slices}, (_, i) => {
+      const brightness = 0.8 + (i % 3) * 0.1;
+      return `<div class="thumb-slice ${fallbackTc}" style="filter:brightness(${brightness})"></div>`;
+    }).join('');
+  }
+  // Sliced image — each slice shows a different horizontal portion
+  // with a random vertical offset for the displaced look
+  const offsets = Array.from({length: slices}, () => Math.random() * 30 - 15);
+  return Array.from({length: slices}, (_, i) => {
+    const xPct    = (i / (slices - 1) * 100).toFixed(1);
+    const yOffset = offsets[i].toFixed(1);
+    return `<div class="thumb-slice" style="background-image:url('${imgUrl}');background-position:${xPct}% calc(50% + ${yOffset}px);"></div>`;
+  }).join('');
 }
 
 // Refs
