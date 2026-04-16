@@ -568,25 +568,38 @@ const FALLBACK_DETAILS = [
   { about:'VFX Supervisor and CG Lead for the BOLD Campaign 2026 with Gentle Monster.', team:'Alex Luque Garcia — VFX Supervisor · CG Lead', credits:'Studio: Olimpic TV\nClient: Gentle Monster', images:[] },
 ];
 
-// Load thumbnail frames from projects/{folder}/thumbnail/
-// Probes 01, 02, ... until no more files found
 async function loadThumbnailFrames(base) {
-  const exts = ['jpg','png','jpeg','webp'];
-  const frames = [];
-  for (let n = 1; n <= 20; n++) {
-    const pad = String(n).padStart(2,'0');
-    let found = null;
-    for (const ext of exts) {
-      const url = `${base}/thumbnail/${pad}.${ext}`;
-      try {
-        const r = await fetch(url, { method:'HEAD' });
-        if (r.ok) { found = url; break; }
-      } catch {}
-    }
-    if (found) frames.push(found);
-    else break; // stop at first gap
-  }
-  return frames;
+  const dir  = `${base}/thumbnail`;
+  const exts = ['png','jpg','jpeg','webp'];
+
+  // Probe all likely names in parallel — max 20 frames
+  // Supports: video_100.png, 01.png, frame_001.png, frame001.png
+  const names = [
+    ...Array.from({length:20}, (_,i) => `video_${100+i}`),
+    ...Array.from({length:20}, (_,i) => String(i+1).padStart(2,'0')),
+    ...Array.from({length:20}, (_,i) => `frame_${String(i+1).padStart(3,'0')}`),
+    ...Array.from({length:20}, (_,i) => `frame${String(i+1).padStart(3,'0')}`),
+  ];
+
+  const candidates = names.flatMap(name => exts.map(ext => `${dir}/${name}.${ext}`));
+
+  const found = await Promise.all(candidates.map(async url => {
+    try { const r = await fetch(url, {method:'HEAD'}); return r.ok ? url : null; }
+    catch { return null; }
+  }));
+
+  // Keep first extension match per name, deduplicate, natural sort
+  const seen = new Set();
+  return found
+    .filter(url => {
+      if (!url) return false;
+      const stem = url.replace(/\.[^.]+$/, '');
+      if (seen.has(stem)) return false;
+      seen.add(stem);
+      return true;
+    })
+    .sort((a, b) => a.localeCompare(b, undefined, {numeric: true}))
+    .slice(0, 20);
 }
 
 // Load images for a project folder.
@@ -650,7 +663,9 @@ async function loadProjects() {
           team:        info.team    || '',
           credits:     info.credits || '',
           images:      await loadImages(base, info.images),
-          thumbFrames: await loadThumbnailFrames(base),
+          thumbFrames: info.frames
+            ? info.frames.split(',').map(f => `${base}/thumbnail/${f.trim()}`)
+            : await loadThumbnailFrames(base),
           get thumb()  { return this.images[0] || null; }
         }
       };
