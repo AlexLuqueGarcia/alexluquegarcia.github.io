@@ -580,146 +580,95 @@ const FALLBACK_DETAILS = [
 async function loadThumbnailFrames(base) {
   const dir  = `${base}/thumbnail`;
   const exts = ['png','jpg','jpeg','webp'];
-  const MAX  = 20;
 
-  // Detect pattern+ext with one request per candidate first frame (parallel, ~16 total)
+  // Step 1: detect pattern + ext by probing first frame of each — all parallel
   const patterns = [
-    { name: i => `video_${String(i).padStart(3,'0')}`,    start: 0 },  // video_000.png
-    { name: i => `video_${100+i}`,                        start: 0 },  // video_100.png
-    { name: i => String(i+1).padStart(2,'0'),             start: 0 },  // 01.png
-    { name: i => `frame_${String(i+1).padStart(3,'0')}`,  start: 0 },  // frame_001.png
-    { name: i => `frame${String(i+1).padStart(3,'0')}`,   start: 0 },  // frame001.png
+    i => `video_${String(i).padStart(3,'0')}`,   // video_000
+    i => `video_${100+i}`,                        // video_100
+    i => String(i+1).padStart(2,'0'),             // 01
+    i => `frame_${String(i+1).padStart(3,'0')}`,  // frame_001
+    i => `frame${String(i+1).padStart(3,'0')}`,   // frame001
   ];
 
-  const firstProbes = patterns.flatMap(p =>
-    exts.map(ext => ({ url:`${dir}/${p.name(0)}.${ext}`, p, ext }))
+  const firstProbes = patterns.flatMap(fn =>
+    exts.map(ext => ({ url:`${dir}/${fn(0)}.${ext}`, fn, ext }))
   );
-
-  // Fire all first-frame probes in parallel — just ~16 requests
-  const results = await Promise.all(firstProbes.map(async item => {
+  const firstResults = await Promise.all(firstProbes.map(async item => {
     try { const r = await fetch(item.url,{method:'HEAD'}); return r.ok ? item : null; }
     catch { return null; }
   }));
+  const match = firstResults.find(Boolean);
+  if (!match) return { frames:[], total:0 };
 
-  const match = results.find(Boolean);
-  if (!match) return []; // no thumbnail folder
+  const { fn:nameFn, ext } = match;
 
-  // We know the pattern and extension — now probe last frame to get count
-  // Do this with a parallel doubling probe (1,2,4,8,16,32...) then bisect
-  // But actually: just return MAX urls spread over a guessed range.
-  // CSS background-image silently ignores 404s — no blocking, no errors.
-  // Strategy: probe frame at index MAX-1 (19) and MAX*2-1 (39) to guess total.
-  const nameFn = match.p.name;
-  const ext    = match.ext;
+  // Step 2: count total frames — probe 8 checkpoints in parallel, find last hit
+  const checks = [4,9,14,19,29,39,59,99];
+  const hits = await Promise.all(checks.map(async idx => {
+    try { const r = await fetch(`${dir}/${nameFn(idx)}.${ext}`,{method:'HEAD'}); return r.ok ? idx : -1; }
+    catch { return -1; }
+  }));
+  const lastHit = Math.max(...hits);
 
-  // Check a few candidate "last frames" in parallel to estimate total
-  const checkIndices = [9, 19, 29, 39, 59, 99, 149, 199];
-  const checkResults = await Promise.all(
-    checkIndices.map(async idx => {
-      try { const r = await fetch(`${dir}/${nameFn(idx)}.${ext}`,{method:'HEAD'}); return r.ok ? idx : -1; }
-      catch { return -1; }
-    })
-  );
+  // If none of the upper probes hit, do a small sequential scan from 0
+  let total;
+  if (lastHit === -1) {
+    total = 1; // we know index 0 exists
+  } else {
+    // Binary search between lastHit and next checkpoint
+    const upper = checks[checks.indexOf(lastHit)+1] ?? lastHit+1;
+    let lo = lastHit, hi = upper;
+    while (lo + 1 < hi) {
+      const mid = Math.floor((lo+hi)/2);
+      try {
+        const r = await fetch(`${dir}/${nameFn(mid)}.${ext}`,{method:'HEAD'});
+        if (r.ok) lo = mid; else hi = mid;
+      } catch { hi = mid; }
+    }
+    total = lo + 1;
+  }
 
-  // Last index that exists gives us the approximate total
-  const lastFound = Math.max(...checkResults);
-  const total = lastFound + 1; // at least this many
+  // Step 3: sliceCount = total / 2, clamped 4–20
+  const sliceCount = Math.max(4, Math.min(20, Math.round(total / 2)));
 
-  // Generate MAX evenly-spaced URLs across 0..total-1
-  // CSS will silently skip any that 404 — zero blocking
-  return Array.from({length: MAX}, (_, i) => {
-    const idx = MAX === 1 ? 0 : Math.round(i * (total - 1) / (MAX - 1));
+  // Step 4: generate sliceCount evenly-spaced URLs — no more fetching
+  const frames = Array.from({length: sliceCount}, (_, i) => {
+    const idx = sliceCount === 1 ? 0 : Math.round(i * (total-1) / (sliceCount-1));
     return `${dir}/${nameFn(idx)}.${ext}`;
   });
+
+  return { frames, total, sliceCount };
 }
 
-// Load images for a project folder.
-// If info.txt has an "images:" line listing filenames, use those.
-// Otherwise probe 01–09 with multiple extensions.
+// Load images for a project folder
 async function loadImages(base, infoImages) {
   if (infoImages && infoImages.trim()) {
     return infoImages.split(',').map(f => `${base}/${f.trim()}`);
   }
+  // Probe 01-09 all extensions in parallel
   const exts = ['jpg','png','jpeg','webp'];
-  const frames = [];
+  const candidates = [];
   for (let n = 1; n <= 9; n++) {
     const pad = String(n).padStart(2,'0');
-    for (const ext of exts) {
-      try {
-        const r = await fetch(`${base}/${pad}.${ext}`, { method:'HEAD' });
-        if (r.ok) { frames.push(`${base}/${pad}.${ext}`); break; }
-      } catch {}
-    }
+    exts.forEach(ext => candidates.push(`${base}/${pad}.${ext}`));
   }
-  return frames;
-}
-
-async function loadProjects() {
-  const colors = ['tc-0','tc-1','tc-2','tc-3','tc-4','tc-5','tc-6','tc-7'];
-
-  // Try to load projects.json manifest
-  let manifest;
-  try {
-    const res = await fetch('projects/projects.json');
-    if (!res.ok) throw new Error('projects.json not found');
-    manifest = await res.json();
-  } catch(e) {
-    console.warn('projects.json not found — using fallback projects');
-    projectData    = FALLBACK_PROJECTS;
-    projectDetails = FALLBACK_DETAILS;
-    return;
-  }
-
-  // Load each project's info.txt
-  const results = await Promise.all(manifest.map(async (folder, idx) => {
-    const base = `projects/${folder}`;
-    try {
-      const res = await fetch(`${base}/info.txt`);
-      if (!res.ok) throw new Error('info.txt missing');
-      const txt  = await res.text();
-      const info = parseInfo(txt);
-      return {
-        proj: {
-          folder,
-          tc:       info.color    || colors[idx % colors.length],
-          name:     info.name     || folder,
-          client:   info.client   || '',
-          studio:   info.studio   || '',
-          type:     info.type     || '',
-          duration: parseInt(info.duration) || 60,
-          src:      fixDropbox(info.video) || `${base}/video.mp4`,
-        },
-        detail: {
-          about:       info.about   || '',
-          team:        info.team    || '',
-          credits:     info.credits || '',
-          imagesHint:  info.images  || '', // used later by background loader
-          images:      [],
-          thumbFrames: info.frames
-            ? info.frames.split(',').map(f => `${base}/thumbnail/${f.trim()}`)
-            : [],
-          get thumb()  { return this.images[0] || null; }
-        }
-      };
-    } catch(e) {
-      return {
-        proj:   { folder, tc: colors[idx % colors.length], name: folder, client:'', studio:'', type:'', duration:60, src:`${base}/video.mp4` },
-        detail: { about:'', team:'', credits:'', images:[], thumbFrames:[], thumb:null }
-      };
-    }
+  const results = await Promise.all(candidates.map(async url => {
+    try { const r = await fetch(url,{method:'HEAD'}); return r.ok ? url : null; }
+    catch { return null; }
   }));
-
-  projectData    = results.map(r => r.proj);
-  projectDetails = results.map(r => r.detail);
-  console.log('Projects loaded:', projectData.map(p => `${p.name} → ${p.src}`));
+  // Deduplicate by number
+  const seen = new Set();
+  return results.filter(url => {
+    if (!url) return false;
+    const num = url.match(/\/(\d+)\.\w+$/)?.[1];
+    if (seen.has(num)) return false;
+    seen.add(num); return true;
+  });
 }
-const SPEED = 6;
-let totalDur = 0;
 
-// Build strip thumbs from loaded data
+// ── STRIP BUILD ──
 function buildStrip() {
   totalDur = projectData.reduce((s,p) => s + p.duration, 0);
-  const minDur = Math.min(...projectData.map(p => p.duration));
   stripEl.innerHTML = '';
   projectData.forEach((p, i) => {
     const pct = (p.duration / totalDur * 100).toFixed(4) + '%';
@@ -727,20 +676,10 @@ function buildStrip() {
     t.className   = 'thumb';
     t.dataset.i   = i;
     t.style.width = pct;
-
-    // Slice count proportional to duration — shortest project gets MIN_SLICES,
-    // longer ones get proportionally more so each slice = same time unit
-    const MIN_SLICES = 6;
-    const MAX_SLICES = 20;
-    const sliceCount = Math.round(
-      Math.min(MAX_SLICES, Math.max(MIN_SLICES, (p.duration / minDur) * MIN_SLICES))
-    );
-
-    const frames     = projectDetails[i] && projectDetails[i].thumbFrames || [];
-    const slicesHTML = buildThumbSlices(frames, p.tc, sliceCount);
-
+    const frames     = projectDetails[i]?.thumbFrames || [];
+    const sliceCount = projectDetails[i]?.sliceCount  || 8;
     t.innerHTML = `
-      <div class="thumb-bg">${slicesHTML}</div>
+      <div class="thumb-bg">${buildThumbSlices(frames, p.tc, sliceCount)}</div>
       <div class="thumb-black"></div>
       <div class="thumb-marker"></div>
       <div class="thumb-label">${p.name}</div>`;
@@ -750,627 +689,56 @@ function buildStrip() {
 }
 
 function buildThumbSlices(frames, fallbackTc, sliceCount) {
-  const N = sliceCount || 12;
+  const N = sliceCount || 8;
   if (!frames || frames.length === 0) {
     return Array.from({length: N}, (_, i) => {
       const b = 0.7 + (i % 4) * 0.1;
       return `<div class="thumb-slice ${fallbackTc}" style="filter:brightness(${b})"></div>`;
     }).join('');
   }
-  // Pick N evenly-spaced frames from the available set
-  const picked = Array.from({length: N}, (_, i) => {
-    const idx = N === 1 ? 0 : Math.round(i * (frames.length - 1) / (N - 1));
-    return frames[Math.min(idx, frames.length - 1)];
-  });
-  return picked.map(src =>
-    `<div class="thumb-slice" style="background-image:url('${src}');background-size:cover;background-position:center center;"></div>`
-  ).join('');
+  return Array.from({length: N}, (_, i) => {
+    const idx = N === 1 ? 0 : Math.round(i * (frames.length-1) / (N-1));
+    return `<div class="thumb-slice" style="background-image:url('${frames[Math.min(idx,frames.length-1)]}');background-size:cover;background-position:center center;"></div>`;
+  }).join('');
 }
-
-// Refs
-const videoBgInner = document.getElementById('video-bg-inner');
-const videoBg      = document.getElementById('video-bg');
-const metaEl       = document.getElementById('meta');
-const hintEl       = document.getElementById('scroll-hint');
-const navEl        = document.querySelector('nav');
-const detailEl     = document.getElementById('detail');
-const stripEl      = document.getElementById('strip-area');
-
-let cur = 0, localProgress = 0, playing = true;
-let lastTs = null, raf = null;
-let detailOpen = false;
-let transitioning = false;
-
-function allThumbs() { return Array.from(document.getElementById('strip-area').querySelectorAll('.thumb')); }
-
-function setBg(i) {
-  const vid = document.getElementById('video-bg-inner');
-  if (vid && vid.tagName === 'VIDEO') {
-    const srcEl  = vid.querySelector('source');
-    const newSrc = projectData[i].src;
-    if (srcEl && srcEl.src !== newSrc) {
-      srcEl.src = newSrc;
-      vid.load();
-      vid.play();
-    }
-  }
-}
-
-function updateMeta(i) {
-  const p = projectData[i];
-  const studio = (p.studio && p.studio !== 'x') ? p.studio : '';
-  const client = (p.client && p.client !== 'x') ? p.client : '';
-  const role   = p.type || '';
-  const title  = client ? `${p.name} — ${client}` : p.name;
-  document.getElementById('m-studio').textContent = studio;
-  document.getElementById('m-title').textContent  = title;
-  document.getElementById('m-role').textContent   = role;
-  metaEl.classList.add('visible');
-  hintEl.classList.add('visible');
-}
-
-function setActiveThumb(i) {
-  allThumbs().forEach((t,j) => t.classList.toggle('active', j===i));
-}
-
-function setProgress(lp) {
-  localProgress = Math.max(0, Math.min(1, lp));
-  const pct = (localProgress * 100).toFixed(3) + '%';
-  const at  = allThumbs()[cur];
-  if (!at) return;
-  at.querySelector('.thumb-marker').style.left = pct;
-  const b = at.querySelector('.thumb-black');
-  b.style.left = pct; b.style.right = '0'; b.style.width = 'auto';
-}
-
-function resetThumb(i) {
-  const t = allThumbs()[i];
-  if (!t) return;
-  t.querySelector('.thumb-marker').style.left = '0%';
-  const b = t.querySelector('.thumb-black');
-  b.style.left = '0'; b.style.right = '0'; b.style.width = 'auto';
-}
-
-// Single source of truth for play/pause state
-function setPlaying(val) {
-  playing = val;
-  if (playing) {
-    lastTs = null;
-    schedTick();
-    if (isLndVideo && lndVideo.paused) lndVideo.play();
-    if (lndPlayIcon) lndPlayIcon.innerHTML = '<rect x="1" y="1" width="4" height="12" fill="currentColor"/><rect x="9" y="1" width="4" height="12" fill="currentColor"/>';
-  } else {
-    cancelAnimationFrame(raf);
-    if (isLndVideo && !lndVideo.paused) lndVideo.pause();
-    if (lndPlayIcon) lndPlayIcon.innerHTML = '<path d="M1 1L13 7L1 13V1Z" fill="currentColor"/>';
-  }
-}
-
-function goTo(i) {
-  cancelAnimationFrame(raf);
-  lastTs = null;
-  resetThumb(cur);
-  cur = i; localProgress = 0;
-  setBg(i);
-  setActiveThumb(i);
-  updateMeta(i);
-  // always resume when switching project — keeps video + marker in sync
-  setPlaying(true);
-}
-
-function schedTick() { raf = requestAnimationFrame(tick); }
-function tick(ts) {
-  if (!playing) return;
-  if (lastTs === null) lastTs = ts;
-  const dt = ts - lastTs; lastTs = ts;
-  localProgress += (dt * SPEED) / (projectData[cur].duration * 1000);
-  if (localProgress >= 1) { setProgress(1); goTo((cur+1) % projectData.length); return; }
-  setProgress(localProgress);
-  schedTick();
-}
-
-// ── DETAIL — freeform canvas ──
-const canvasInner = document.getElementById('canvas-inner');
-const canvasEl    = document.getElementById('canvas');
-
-// Fixed aspect ratios per window type
-const RATIOS = { video: 16/9, img: 16/9, text: null };
-
-// Window specs — wf = fraction of vw, hf = fraction of vh
-function getWinSpecs(p, pd) {
-  pd = pd || { about:'', team:'', credits:'', images:[] };
-  const imgs = pd.images || [];
-  const widths  = [0.26, 0.32, 0.20, 0.30, 0.28, 0.34];
-  const imgSpecs = imgs.map((src, i) => ({
-    type:'img', wf: widths[i % widths.length], hf:null, ratio:16/9, src
-  }));
-  return [
-    { type:'video', wf:0.40, hf:null, ratio:16/9 },
-    { type:'text',  wf:null, hf:null, ratio:null, p, pd },
-    ...imgSpecs,
-  ];
-}
-
-// Grid-based placement — every window guaranteed fully inside viewport
-function packWindows(specs) {
-  const vw  = window.innerWidth;
-  const vh  = window.innerHeight;
-  const PAD = 16;
-  const TOP = 60;
-  const BOT = 20;
-  const usableH = vh - TOP - BOT;
-
-  const cols = 3;
-  const rows = Math.max(2, Math.ceil(specs.length / cols));
-  const zw   = (vw - PAD * (cols + 1)) / cols;
-  const zh   = (usableH - PAD * (rows + 1)) / rows;
-
-  // Build and shuffle zones
-  const zones = [];
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      zones.push({
-        zx: PAD + c * (zw + PAD),
-        zy: TOP + PAD + r * (zh + PAD),
-        zw, zh
-      });
-    }
-  }
-  for (let i = zones.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [zones[i], zones[j]] = [zones[j], zones[i]];
-  }
-
-  const placed = [];
-  specs.forEach((spec, i) => {
-    const zone = zones[i % zones.length];
-
-    // Desired width — cap to zone width
-    let w = spec.wf ? Math.round(spec.wf * vw) : Math.round(zw * 0.9);
-    w = Math.min(w, zone.zw);
-
-    // Desired height
-    let h = spec.ratio
-      ? Math.round(w / spec.ratio)
-      : spec.hf
-        ? Math.round(spec.hf * vh)
-        : Math.round(zh * 0.85);
-
-    // If height overflows zone, shrink to fit (maintain ratio)
-    if (h > zone.zh) {
-      h = Math.round(zone.zh);
-      if (spec.ratio) w = Math.round(h * spec.ratio);
-      w = Math.min(w, zone.zw);
-    }
-
-    // Random position within zone, fully clamped
-    const maxX = zone.zx + zone.zw - w;
-    const maxY = zone.zy + zone.zh - h;
-    const x = Math.round(Math.max(zone.zx, Math.min(maxX, zone.zx + Math.random() * Math.max(0, maxX - zone.zx))));
-    const y = Math.round(Math.max(zone.zy, Math.min(maxY, zone.zy + Math.random() * Math.max(0, maxY - zone.zy))));
-
-    placed.push({ x, y, w, h, spec });
-  });
-  return placed;
-}
-
-function buildWindows(p, pd) {
-  canvasInner.innerHTML = '';
-  topZ = 100;
-  const specs  = getWinSpecs(p, pd);
-  const layout = packWindows(specs);
-
-  layout.forEach((item, idx) => {
-    const { x, y, w, h, spec } = item;
-    const win = document.createElement('div');
-    win.className = 'win';
-    // text window: set width only, let height be natural
-    if (spec.type === 'text') {
-      // width and height both auto — sized purely by content
-      win.style.cssText = `left:${x}px;top:${y}px;z-index:${10+idx};`;
-    } else {
-      win.style.cssText = `left:${x}px;top:${y}px;width:${w}px;height:${h}px;z-index:${10+idx};`;
-    }
-    win._ratio = spec.ratio || null;
-
-    const resizeHandle = `
-      <div class="win-resize"><span class="rc"></span></div>
-      <div class="win-resize-drag tl"></div>
-      <div class="win-resize-drag tr"></div>
-      <div class="win-resize-drag bl"></div>
-      <div class="win-resize-drag br"></div>`;
-
-    if (spec.type === 'video') {
-      win.classList.add('win-video');
-      win.innerHTML = `
-        <video autoplay muted loop playsinline crossorigin="anonymous" style="width:100%;height:100%;object-fit:cover;display:block;">
-          <source src="${p.src}" type="video/mp4">
-        </video>
-        <div class="win-vid-controls">
-          <button class="vid-btn win-mute-btn" title="Mute">
-            <svg width="23" height="17" viewBox="0 0 15 11" fill="none">
-              <path d="M1 3.5H3.2L6.5 1V10L3.2 7.5H1V3.5Z" stroke="currentColor" stroke-width="1.1" fill="none"/>
-              <path class="win-waves" d="M9 2.5C10 3.3 10.5 4.4 10.5 5.5C10.5 6.6 10 7.7 9 8.5M11.5 1C13 2.3 14 3.8 14 5.5C14 7.2 13 8.7 11.5 10" stroke="currentColor" stroke-width="1.1"/>
-            </svg>
-          </button>
-          <button class="vid-btn win-play-btn" title="Play/Pause">
-            <svg class="win-play-icon" width="20" height="20" viewBox="0 0 13 13" fill="none">
-              <rect x="1" y="1" width="3.5" height="11" fill="currentColor"/>
-              <rect x="8.5" y="1" width="3.5" height="11" fill="currentColor"/>
-            </svg>
-          </button>
-          <button class="vid-btn win-fs-btn" title="Fullscreen">
-            <svg width="20" height="20" viewBox="0 0 13 13" fill="none">
-              <path d="M1 4.5V1H4.5M8.5 1H12V4.5M12 8.5V12H8.5M4.5 12H1V8.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
-            </svg>
-          </button>
-        </div>
-        ${resizeHandle}`;
-      const vid = win.querySelector('video');
-      // fullscreen
-      win.querySelector('.win-fs-btn').addEventListener('click', e => {
-        e.stopPropagation();
-        if (vid.requestFullscreen) vid.requestFullscreen();
-        else if (vid.webkitRequestFullscreen) vid.webkitRequestFullscreen();
-      });
-      // play/pause
-      win.querySelector('.win-play-btn').addEventListener('click', e => {
-        e.stopPropagation();
-        const icon = win.querySelector('.win-play-icon');
-        if (vid.paused) { vid.play(); icon.innerHTML = '<rect x="1" y="1" width="3" height="10" fill="currentColor"/><rect x="8" y="1" width="3" height="10" fill="currentColor"/>'; }
-        else { vid.pause(); icon.innerHTML = '<path d="M1 1L11 5.5L1 10V1Z" fill="currentColor"/>'; }
-      });
-      // mute
-      win.querySelector('.win-mute-btn').addEventListener('click', e => {
-        e.stopPropagation();
-        vid.muted = !vid.muted;
-        win.querySelector('.win-waves').style.opacity = vid.muted ? '0.2' : '1';
-      });
-
-    } else if (spec.type === 'text') {
-      win.classList.add('win-text');
-      const teamLines   = spec.pd.team.replace(/\n/g,'<br>');
-      const creditLines = spec.pd.credits.replace(/\n/g,'<br>');
-      win.innerHTML = `
-        <div class="win-text-inner">
-          <div class="wlabel">${spec.p.studio}</div>
-          <div class="wtitle">${spec.p.name}</div>
-          <div class="wsub">${spec.p.client} — ${spec.p.type}</div>
-          <div class="wbody">${spec.pd.about}</div>
-          <div class="wrow">
-            <div>
-              <div class="wcol-label">Team</div>
-              <div class="wcol-body">${teamLines}</div>
-            </div>
-            <div>
-              <div class="wcol-label">Credits</div>
-              <div class="wcol-body">${creditLines}</div>
-            </div>
-          </div>
-        </div>
-        ${resizeHandle}`;
-
-    } else {
-      win.classList.add('win-img');
-      if (spec.src) {
-        win.style.backgroundImage = `url('${spec.src}')`;
-        win.style.backgroundSize = 'cover';
-        win.style.backgroundPosition = 'center';
-      } else {
-        const ci = projectData.indexOf(p);
-        win.classList.add(['tc-0','tc-1','tc-2','tc-3','tc-4','tc-5','tc-6','tc-7'][ci % 8]);
-      }
-      win.innerHTML = resizeHandle;
-    }
-
-    canvasInner.appendChild(win);
-
-    // For text windows: measure natural content size, lock ratio, store for scaling
-    if (spec.type === 'text') {
-      const inner = win.querySelector('.win-text-inner');
-      // Measure natural size with nowrap still active
-      const naturalW = inner.scrollWidth;
-      const naturalH = inner.scrollHeight;
-      // Now allow wrapping for when content is scaled down
-      inner.style.whiteSpace = 'normal';
-      // Fix inner to its natural width so content never wraps unexpectedly
-      inner.style.width  = naturalW + 'px';
-      inner.style.height = naturalH + 'px';
-      // Set window to natural size
-      win.style.width  = naturalW + 'px';
-      win.style.height = naturalH + 'px';
-      win._ratio    = naturalW / naturalH;
-      win._naturalW = naturalW;
-      win._naturalH = naturalH;
-      inner.style.transform = 'scale(1)';
-    }
-
-    makeDraggable(win);
-    makeResizable(win);
-  });
-}
-
-// ── DRAG ──
-let topZ = 100;
-function makeDraggable(el) {
-  let sx, sy, ox, oy, active = false;
-  function down(e) {
-    if (e.target.closest('.win-resize-drag')) return;
-    if (e.target.closest('.vid-btn')) return;
-    if (e.target.tagName === 'VIDEO') return;
-    active = true;
-    el.classList.add('dragging');
-    const t = e.touches ? e.touches[0] : e;
-    sx = t.clientX; sy = t.clientY;
-    ox = parseInt(el.style.left)||0;
-    oy = parseInt(el.style.top)||0;
-    el.style.zIndex = ++topZ;
-    e.preventDefault();
-  }
-  function move(e) {
-    if (!active) return;
-    const t = e.touches ? e.touches[0] : e;
-    el.style.left = (ox + t.clientX - sx) + 'px';
-    el.style.top  = (oy + t.clientY - sy) + 'px';
-    e.preventDefault();
-  }
-  function up() { active = false; el.classList.remove('dragging'); }
-  el.addEventListener('mousedown',  down, {passive:false});
-  el.addEventListener('touchstart', down, {passive:false});
-  window.addEventListener('mousemove', move, {passive:false});
-  window.addEventListener('touchmove', move, {passive:false});
-  window.addEventListener('mouseup',  up);
-  window.addEventListener('touchend', up);
-}
-
-// ── RESIZE — four corners, locked aspect ratio for video/img ──
-function makeResizable(el) {
-  const ratio = el._ratio; // null = free, number = locked
-
-  ['tl','tr','bl','br'].forEach(corner => {
-    const handle = el.querySelector('.win-resize-drag.' + corner);
-    if (!handle) return;
-    let sx, sy, ox, oy, ow, oh, active = false;
-
-    handle.addEventListener('mousedown', e => {
-      active = true;
-      sx = e.clientX; sy = e.clientY;
-      ox = parseInt(el.style.left) || 0;
-      oy = parseInt(el.style.top)  || 0;
-      ow = el.offsetWidth;
-      oh = el.offsetHeight;
-      el.style.zIndex = ++topZ;
-      e.stopPropagation(); e.preventDefault();
-    });
-
-    window.addEventListener('mousemove', e => {
-      if (!active) return;
-      const dx = e.clientX - sx;
-      const dy = e.clientY - sy;
-      let nw = ow, nh = oh, nx = ox, ny = oy;
-
-      if (ratio) {
-        // pick dominant axis
-        const d = (corner === 'tl' || corner === 'br')
-          ? (Math.abs(dx) > Math.abs(dy) ? dx : dy)
-          : (Math.abs(dx) > Math.abs(dy) ? dx : -dy);
-        const sign = (corner === 'tl' || corner === 'tr') ? -1 : 1;
-        const signX = (corner === 'tl' || corner === 'bl') ? -1 : 1;
-        nw = Math.max(160, ow + signX * d);
-        nh = Math.round(nw / ratio);
-        if (corner === 'tl') { nx = ox + (ow - nw); ny = oy + (oh - nh); }
-        else if (corner === 'tr') { ny = oy + (oh - nh); }
-        else if (corner === 'bl') { nx = ox + (ow - nw); }
-      } else {
-        // free resize per corner
-        if (corner === 'br') {
-          nw = Math.max(180, ow + dx); nh = Math.max(100, oh + dy);
-        } else if (corner === 'bl') {
-          nw = Math.max(180, ow - dx); nh = Math.max(100, oh + dy);
-          nx = ox + (ow - nw);
-        } else if (corner === 'tr') {
-          nw = Math.max(180, ow + dx); nh = Math.max(100, oh - dy);
-          ny = oy + (oh - nh);
-        } else { // tl
-          nw = Math.max(180, ow - dx); nh = Math.max(100, oh - dy);
-          nx = ox + (ow - nw); ny = oy + (oh - nh);
-        }
-      }
-
-      el.style.width  = nw + 'px';
-      el.style.height = nh + 'px';
-      el.style.left   = nx + 'px';
-      el.style.top    = ny + 'px';
-      // scale text content proportionally
-      const inner = el.querySelector('.win-text-inner');
-      if (inner && el._naturalW) {
-        const scale = nw / el._naturalW;
-        inner.style.transform = `scale(${scale})`;
-        inner.style.transformOrigin = 'top left';
-      }
-    });
-
-    window.addEventListener('mouseup', () => { active = false; });
-  });
-}
-
-function fillDetail(i) {
-  buildWindows(projectData[i], projectDetails[i]);
-}
-
-// close on wheel up
-
-function openDetail() {
-  if (detailOpen || transitioning) return;
-  transitioning = true;
-  detailOpen = true;
-  fillDetail(cur);
-
-  stripEl.classList.add('hide');
-  metaEl.classList.add('hide');
-  hintEl.classList.add('hide');
-
-  // pause ticker and landing video
-  cancelAnimationFrame(raf);
-  if (isLndVideo) {
-    lndVideo._savedTime = lndVideo.currentTime;
-    lndVideo.pause();
-  }
-
-  setTimeout(() => {
-    videoBg.classList.add('blurred');
-    detailEl.classList.add('open');
-    detailEl.scrollTop = 0;
-  }, 180);
-
-  setTimeout(() => { transitioning = false; }, 900);
-}
-
-function closeDetail() {
-  if (!detailOpen || transitioning) return;
-  transitioning = true;
-  detailOpen = false;
-
-  detailEl.classList.remove('open');
-  videoBg.classList.remove('blurred');
-
-  // resume landing video and ticker from saved position
-  if (isLndVideo && playing) {
-    if (lndVideo._savedTime) lndVideo.currentTime = lndVideo._savedTime;
-    lndVideo.play();
-  }
-  if (playing) { lastTs = null; schedTick(); }
-
-  // 2. strip comes back up after detail is gone
-  setTimeout(() => {
-    stripEl.classList.remove('hide');
-    metaEl.classList.remove('hide');
-    hintEl.classList.remove('hide');
-    
-    metaEl.classList.remove('visible');
-    hintEl.classList.remove('visible');
-    setTimeout(() => {
-      metaEl.classList.add('visible');
-      hintEl.classList.add('visible');
-      transitioning = false;
-    }, 50);
-  }, 500);
-}
-
-// Wheel
-let wCool = false;
-window.addEventListener('wheel', e => {
-  if (wCool) return;
-  wCool = true; setTimeout(() => wCool = false, 900);
-  if (!detailOpen && e.deltaY > 15) openDetail();
-  else if (detailOpen && e.deltaY < -15) closeDetail();
-}, { passive:true });
-
-// Touch
-let ty0 = 0;
-window.addEventListener('touchstart', e => { ty0 = e.touches[0].clientY; }, { passive:true });
-window.addEventListener('touchend', e => {
-  const dy = ty0 - e.changedTouches[0].clientY;
-  if (!detailOpen && dy > 40) openDetail();
-  else if (detailOpen && dy < -40) closeDetail();
-}, { passive:true });
-
-// Keys
-document.addEventListener('keydown', e => {
-  if (e.key==='ArrowRight' && !detailOpen) goTo((cur+1) % projectData.length);
-  if (e.key==='ArrowLeft'  && !detailOpen) goTo((cur-1+projectData.length) % projectData.length);
-  if (e.key==='Escape' && detailOpen) closeDetail();
-  if (e.key===' ' && !detailOpen) {
-    e.preventDefault();
-    setPlaying(!playing);
-  }
-});
-
-// ── LANDING VIDEO CONTROLS ──
-const lndVideo    = document.getElementById('video-bg-inner');
-const lndPlayBtn  = document.getElementById('lnd-play');
-const lndPlayIcon = document.getElementById('lnd-play-icon');
-const lndMuteBtn  = document.getElementById('lnd-mute');
-const lndWaves    = document.getElementById('lnd-waves');
-const isLndVideo  = lndVideo && lndVideo.tagName === 'VIDEO';
-
-lndPlayBtn.addEventListener('click', (e) => {
-  e.stopPropagation();
-  if (!isLndVideo) return;
-  setPlaying(!playing);
-});
-
-// Click landing video → next project
-videoBg.addEventListener('click', () => {
-  if (!detailOpen) goTo((cur + 1) % projectData.length);
-});
-
-lndMuteBtn.addEventListener('click', (e) => {
-  e.stopPropagation();
-  if (!isLndVideo) return;
-  lndVideo.muted = !lndVideo.muted;
-  lndWaves.style.opacity = lndVideo.muted ? '0.15' : '1';
-});
-
-// ── CUSTOM CURSOR ──
-const curEl = document.getElementById('cur');
-const hoverTargets = 'a, button, [onclick], .thumb, .win, .win-resize-drag, #scroll-hint span, #scroll-hint .scroll-arrow, .df-values a';
-
-document.addEventListener('mousemove', e => {
-  curEl.style.left = e.clientX + 'px';
-  curEl.style.top  = e.clientY + 'px';
-});
-
-document.addEventListener('mouseover', e => {
-  if (e.target.closest(hoverTargets)) {
-    document.body.classList.add('cur-hover');
-  }
-});
-
-document.addEventListener('mouseout', e => {
-  if (e.target.closest(hoverTargets)) {
-    document.body.classList.remove('cur-hover');
-  }
-});
 
 // ── INIT ──
 window.addEventListener('load', async () => {
-  // 1. Load project metadata (info.txt) — fast, no image probing yet
+  // 1. Load project metadata (info.txt only — fast text files)
   await loadProjects();
 
-  // 2. Build strip and start immediately with color fallbacks
+  // 2. Build strip with color fallbacks immediately — page is interactive
   buildStrip();
   setBg(0); setActiveThumb(0); updateMeta(0); setPlaying(true);
 
-  // 3. Load thumbnails in the background — doesn't block anything
-  loadThumbnailsInBackground();
-});
-
-async function loadThumbnailsInBackground() {
-  for (let i = 0; i < projectDetails.length; i++) {
-    const base = `projects/${projectData[i].folder}`;
-    const pd   = projectDetails[i];
-
-    // Load thumbnail frames for strip
-    if (!pd.thumbFrames || pd.thumbFrames.length === 0) {
-      const frames = await loadThumbnailFrames(base);
-      if (frames.length > 0) {
-        pd.thumbFrames = frames;
-        const thumbBg = document.querySelector(`.thumb[data-i="${i}"] .thumb-bg`);
-        if (thumbBg) {
-          const minDur = Math.min(...projectData.map(p => p.duration));
-          const sliceCount = Math.round(Math.min(20, Math.max(6, (projectData[i].duration / minDur) * 6)));
-          thumbBg.innerHTML = buildThumbSlices(frames, projectData[i].tc, sliceCount);
-        }
-      }
-    }
-
-    // Load detail images
-    if (!pd.images || pd.images.length === 0) {
-      pd.images = await loadImages(base, pd.imagesHint);
-    }
+  // 3. Preload first project video
+  if (projectData[0]?.src) {
+    const link = document.createElement('link');
+    link.rel = 'preload'; link.as = 'video'; link.href = projectData[0].src;
+    document.head.appendChild(link);
   }
-}
+
+  // 4. Load ALL thumbnails in parallel (not sequential)
+  const thumbPromises = projectData.map(async (p, i) => {
+    const base = `projects/${p.folder}`;
+    const result = await loadThumbnailFrames(base);
+    if (result.frames.length > 0) {
+      projectDetails[i].thumbFrames  = result.frames;
+      projectDetails[i].sliceCount   = result.sliceCount;
+      const thumbBg = document.querySelector(`.thumb[data-i="${i}"] .thumb-bg`);
+      if (thumbBg) thumbBg.innerHTML = buildThumbSlices(result.frames, p.tc, result.sliceCount);
+    }
+  });
+  await Promise.all(thumbPromises);
+
+  // 5. Load detail images for all projects in parallel (lower priority)
+  projectData.forEach(async (p, i) => {
+    const base = `projects/${p.folder}`;
+    if (!projectDetails[i].images?.length) {
+      projectDetails[i].images = await loadImages(base, projectDetails[i].imagesHint);
+    }
+  });
+});
 </script>
 </body>
 </html>
