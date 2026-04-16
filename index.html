@@ -666,7 +666,455 @@ async function loadImages(base, infoImages) {
   });
 }
 
-// ── STRIP BUILD ──
+// ── CORE FUNCTIONS ──
+
+function allThumbs() { return Array.from(stripEl.querySelectorAll('.thumb')); }
+
+function setBg(i) {
+  const p = projectData[i];
+  if (!p) return;
+  const src = p.src ? fixDropbox(p.src) : null;
+  if (src && videoBgInner.src !== src) {
+    videoBgInner.src = src;
+    videoBgInner.load();
+    videoBgInner.play().catch(() => {});
+  }
+}
+
+function updateMeta(i) {
+  const p = projectData[i];
+  if (!p) return;
+  mClient.textContent = p.studio  || '';
+  mName.textContent   = p.name    || '';
+  mRole.textContent   = p.type    || '';
+  metaEl.classList.add('visible');
+  hintEl.classList.add('visible');
+}
+
+function setActiveThumb(i) {
+  allThumbs().forEach((t, j) => t.classList.toggle('active', j === i));
+}
+
+function setProgress(lp) {
+  localProgress = Math.max(0, Math.min(1, lp));
+  const pct = (localProgress * 100).toFixed(3) + '%';
+  const at = allThumbs()[cur];
+  if (!at) return;
+  at.querySelector('.thumb-marker').style.left = pct;
+  const b = at.querySelector('.thumb-black');
+  if (b) { b.style.left = pct; b.style.right = '0'; b.style.width = 'auto'; }
+}
+
+function resetThumb(i) {
+  const t = allThumbs()[i];
+  if (!t) return;
+  t.querySelector('.thumb-marker').style.left = '0%';
+  const b = t.querySelector('.thumb-black');
+  if (b) { b.style.left = '0'; b.style.right = '0'; b.style.width = 'auto'; }
+}
+
+function goTo(i) {
+  cancelAnimationFrame(raf);
+  lastTs = null;
+  resetThumb(cur);
+  cur = i; localProgress = 0;
+  setBg(i);
+  setActiveThumb(i);
+  updateMeta(i);
+  setPlaying(true);
+}
+
+function schedTick() { raf = requestAnimationFrame(tick); }
+
+function tick(ts) {
+  if (!playing) return;
+  if (lastTs === null) lastTs = ts;
+  const dt = ts - lastTs; lastTs = ts;
+  const SPEED = 6;
+  localProgress += (dt * SPEED) / ((projectData[cur]?.duration || 60) * 1000);
+  if (localProgress >= 1) {
+    setProgress(1);
+    goTo((cur + 1) % projectData.length);
+    return;
+  }
+  setProgress(localProgress);
+  schedTick();
+}
+
+let lndPlayIcon = null;
+
+function setPlaying(val) {
+  playing = val;
+  cancelAnimationFrame(raf);
+  if (playing) {
+    videoBgInner.play().catch(() => {});
+    schedTick();
+  } else {
+    videoBgInner.pause();
+  }
+  // update play icon if it exists
+  if (lndPlayIcon) {
+    lndPlayIcon.innerHTML = playing
+      ? `<rect x="1" y="1" width="3.5" height="12" fill="currentColor"/><rect x="8.5" y="1" width="3.5" height="12" fill="currentColor"/>`
+      : `<path d="M1.5 1L11.5 7L1.5 13V1Z" fill="currentColor"/>`;
+  }
+}
+
+// ── DETAIL PAGE ──
+let topZ = 100;
+let savedTime = 0;
+let detailOpen = false;
+let transitioning = false;
+
+function openDetail() {
+  if (detailOpen || transitioning) return;
+  transitioning = true; detailOpen = true;
+  savedTime = videoBgInner.currentTime;
+  videoBgInner.pause();
+  cancelAnimationFrame(raf);
+  stripEl.classList.add('hide');
+  metaEl.classList.add('hide');
+  hintEl.classList.add('hide');
+  setTimeout(() => {
+    videoBg.classList.add('blurred');
+    detailEl.classList.add('open');
+    detailEl.scrollTop = 0;
+    fillDetail(cur);
+  }, 180);
+  setTimeout(() => { transitioning = false; }, 900);
+}
+
+function closeDetail() {
+  if (!detailOpen || transitioning) return;
+  transitioning = true; detailOpen = false;
+  detailEl.classList.remove('open');
+  videoBg.classList.remove('blurred');
+  setTimeout(() => {
+    stripEl.classList.remove('hide');
+    metaEl.classList.remove('hide');
+    hintEl.classList.remove('hide');
+    metaEl.classList.remove('visible');
+    hintEl.classList.remove('visible');
+    videoBgInner.currentTime = savedTime;
+    if (playing) { videoBgInner.play().catch(() => {}); schedTick(); }
+    setTimeout(() => {
+      metaEl.classList.add('visible');
+      hintEl.classList.add('visible');
+      transitioning = false;
+    }, 50);
+  }, 500);
+}
+
+function fillDetail(i) {
+  buildWindows(projectData[i], projectDetails[i]);
+}
+
+// ── DETAIL WINDOWS ──
+function getWinSpecs(p, pd) {
+  const colors = ['tc-0','tc-1','tc-2','tc-3','tc-4','tc-5','tc-6','tc-7'];
+  const ci = projectData.indexOf(p);
+  const c  = n => colors[(ci + n) % colors.length];
+  const imgs = pd?.images || [];
+  const specs = [
+    { type:'video', wf:0.40, ratio:16/9, p, pd },
+    { type:'text',  wf:0.28, hf:0.46, ratio:null, p, pd },
+  ];
+  imgs.slice(0, 5).forEach((src, k) => {
+    specs.push({ type:'img', wf:0.26 + (k%2)*0.06, ratio:16/9, color:c(k+1), src });
+  });
+  if (imgs.length === 0) {
+    ['tc-1','tc-2','tc-3'].forEach((col, k) => {
+      specs.push({ type:'img', wf:0.28, ratio:16/9, color:col });
+    });
+  }
+  return specs;
+}
+
+function packWindows(specs) {
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const PAD = 16, TOP = 60, BOT = 20;
+  const cols = 3, rows = Math.ceil(specs.length / cols);
+  const zw = vw / cols;
+  const zh = (vh - TOP - BOT) / rows;
+  const zones = [];
+  for (let r = 0; r < rows; r++)
+    for (let cc = 0; cc < cols; cc++)
+      zones.push({ zx: cc*zw, zy: TOP + r*zh, zw, zh });
+  // shuffle
+  for (let i = zones.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i+1));
+    [zones[i], zones[j]] = [zones[j], zones[i]];
+  }
+  return specs.map((spec, i) => {
+    const zone = zones[i % zones.length];
+    const w = Math.round(spec.wf * vw);
+    const h = spec.ratio ? Math.round(w / spec.ratio) : Math.round((spec.hf || 0.4) * vh);
+    const maxX = zone.zx + zone.zw - w - PAD;
+    const maxY = zone.zy + zone.zh - h - PAD;
+    const x = Math.round(Math.max(zone.zx + PAD, Math.min(zone.zx + PAD + Math.random() * Math.max(0, maxX - zone.zx - PAD), maxX)));
+    const y = Math.round(Math.max(zone.zy + PAD, Math.min(zone.zy + PAD + Math.random() * Math.max(0, maxY - zone.zy - PAD), maxY)));
+    return { x, y, w, h, spec };
+  });
+}
+
+function buildWindows(p, pd) {
+  canvasInner.innerHTML = '';
+  topZ = 100;
+  const specs  = getWinSpecs(p, pd);
+  const layout = packWindows(specs);
+
+  layout.forEach((item, idx) => {
+    const { x, y, w, h, spec } = item;
+    const win = document.createElement('div');
+    win.className = 'win';
+    win.style.cssText = `left:${x}px;top:${y}px;width:${w}px;height:${h}px;z-index:${10+idx};`;
+    win._ratio = spec.ratio || null;
+
+    const resizeHTML = `
+      <div class="win-resize"><span class="rc"></span></div>
+      <div class="win-resize-drag tl"></div>
+      <div class="win-resize-drag tr"></div>
+      <div class="win-resize-drag bl"></div>
+      <div class="win-resize-drag br"></div>`;
+
+    if (spec.type === 'video') {
+      win.classList.add('win-video');
+      const vsrc = fixDropbox(p?.src) || '';
+      win.innerHTML = `
+        <video playsinline muted loop style="width:100%;height:100%;object-fit:cover;display:block;">
+          ${vsrc ? `<source src="${vsrc}" type="video/mp4">` : ''}
+        </video>
+        <div class="win-vid-controls">
+          <button class="vid-btn win-mute-btn" title="Mute">
+            <svg width="23" height="17" viewBox="0 0 15 11" fill="none">
+              <path d="M1 3.5H3L6 1V10L3 7.5H1V3.5Z" stroke="currentColor" stroke-width="1" fill="none"/>
+              <g class="win-waves"><path d="M8 2.5C9 3.2 9.5 4.3 9.5 5.5C9.5 6.7 9 7.8 8 8.5" stroke="currentColor" stroke-width="1" fill="none"/>
+              <path d="M10.5 1C12 2 13 3.7 13 5.5C13 7.3 12 9 10.5 10" stroke="currentColor" stroke-width="1" fill="none"/></g>
+            </svg>
+          </button>
+          <button class="vid-btn win-play-btn" title="Play/Pause">
+            <svg class="win-play-icon" width="20" height="20" viewBox="0 0 13 13" fill="none">
+              <path d="M2 1L11 6.5L2 12V1Z" fill="currentColor"/>
+            </svg>
+          </button>
+          <button class="vid-btn win-fs-btn" title="Fullscreen">
+            <svg width="20" height="20" viewBox="0 0 13 13" fill="none">
+              <path d="M1 4V1H4M9 1H12V4M12 9V12H9M4 12H1V9" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+            </svg>
+          </button>
+        </div>
+        ${resizeHTML}`;
+      const vid = win.querySelector('video');
+      const playBtn = win.querySelector('.win-play-btn');
+      const playIcon = win.querySelector('.win-play-icon');
+      const muteBtn = win.querySelector('.win-mute-btn');
+      const fsBtn   = win.querySelector('.win-fs-btn');
+      if (vsrc) { vid.play().catch(() => {}); }
+      fsBtn.addEventListener('click', e => { e.stopPropagation(); vid.requestFullscreen?.(); });
+      playBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        if (vid.paused) { vid.play(); playIcon.innerHTML = '<rect x="1" y="1" width="3.5" height="10" fill="currentColor"/><rect x="7.5" y="1" width="3.5" height="10" fill="currentColor"/>'; }
+        else { vid.pause(); playIcon.innerHTML = '<path d="M2 1L11 6.5L2 12V1Z" fill="currentColor"/>'; }
+      });
+      muteBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        vid.muted = !vid.muted;
+        win.querySelector('.win-waves').style.opacity = vid.muted ? '0.2' : '1';
+      });
+    } else if (spec.type === 'text') {
+      win.classList.add('win-text');
+      const team = (pd?.team || '').replace(/\n/g,'<br>');
+      const creds = (pd?.credits || '').replace(/\n/g,'<br>');
+      win.innerHTML = `
+        <div class="win-text-inner">
+          <div class="wlabel">${p?.studio || ''}</div>
+          <div class="wtitle">${p?.name || ''}</div>
+          <div class="wsub">${p?.type || ''}</div>
+          <div class="wbody">${pd?.about || ''}</div>
+          <div class="wrow">
+            <div><div class="wcol-label">Team</div><div class="wcol-body">${team}</div></div>
+            <div><div class="wcol-label">Credits</div><div class="wcol-body">${creds}</div></div>
+          </div>
+        </div>
+        ${resizeHTML}`;
+    } else {
+      win.classList.add('win-img');
+      win.classList.add(spec.color || 'tc-0');
+      if (spec.src) win.style.backgroundImage = `url('${spec.src}')`;
+      win.style.backgroundSize = 'cover';
+      win.style.backgroundPosition = 'center';
+      win.innerHTML = resizeHTML;
+    }
+
+    canvasInner.appendChild(win);
+    makeDraggable(win);
+    makeResizable(win);
+  });
+}
+
+// ── DRAG ──
+function makeDraggable(el) {
+  let sx, sy, ox, oy, active = false;
+  function down(e) {
+    if (e.target.closest('.win-resize-drag')) return;
+    if (e.target.closest('.vid-btn')) return;
+    if (e.target.tagName === 'VIDEO') return;
+    active = true;
+    const t = e.touches ? e.touches[0] : e;
+    sx = t.clientX; sy = t.clientY;
+    ox = parseInt(el.style.left)||0; oy = parseInt(el.style.top)||0;
+    el.style.zIndex = ++topZ;
+    e.preventDefault();
+  }
+  function move(e) {
+    if (!active) return;
+    const t = e.touches ? e.touches[0] : e;
+    el.style.left = (ox + t.clientX - sx) + 'px';
+    el.style.top  = (oy + t.clientY - sy) + 'px';
+    e.preventDefault();
+  }
+  function up() { active = false; }
+  el.addEventListener('mousedown',  down, {passive:false});
+  el.addEventListener('touchstart', down, {passive:false});
+  window.addEventListener('mousemove', move, {passive:false});
+  window.addEventListener('touchmove', move, {passive:false});
+  window.addEventListener('mouseup',  up);
+  window.addEventListener('touchend', up);
+}
+
+// ── RESIZE ──
+function makeResizable(el) {
+  const ratio = el._ratio;
+  ['tl','tr','bl','br'].forEach(corner => {
+    const handle = el.querySelector('.win-resize-drag.' + corner);
+    if (!handle) return;
+    let sx, sy, ox, oy, ow, oh, active = false;
+    handle.addEventListener('mousedown', e => {
+      active = true;
+      sx = e.clientX; sy = e.clientY;
+      ox = parseInt(el.style.left)||0; oy = parseInt(el.style.top)||0;
+      ow = el.offsetWidth; oh = el.offsetHeight;
+      el.style.zIndex = ++topZ;
+      e.stopPropagation(); e.preventDefault();
+    });
+    window.addEventListener('mousemove', e => {
+      if (!active) return;
+      const dx = e.clientX - sx, dy = e.clientY - sy;
+      let nw = ow, nh = oh, nx = ox, ny = oy;
+      if (ratio) {
+        const signX = (corner === 'tl' || corner === 'bl') ? -1 : 1;
+        nw = Math.max(160, ow + signX * dx);
+        nh = Math.round(nw / ratio);
+        if (corner === 'tl') { nx = ox + (ow - nw); ny = oy + (oh - nh); }
+        else if (corner === 'tr') { ny = oy + (oh - nh); }
+        else if (corner === 'bl') { nx = ox + (ow - nw); }
+      } else {
+        if (corner === 'br')      { nw = Math.max(180, ow+dx); nh = Math.max(100, oh+dy); }
+        else if (corner === 'bl') { nw = Math.max(180, ow-dx); nh = Math.max(100, oh+dy); nx = ox+(ow-nw); }
+        else if (corner === 'tr') { nw = Math.max(180, ow+dx); nh = Math.max(100, oh-dy); ny = oy+(oh-nh); }
+        else                      { nw = Math.max(180, ow-dx); nh = Math.max(100, oh-dy); nx = ox+(ow-nw); ny = oy+(oh-nh); }
+        // scale text inner
+        const inner = el.querySelector('.win-text-inner');
+        if (inner) {
+          const scaleX = nw / ow, scaleY = nh / oh;
+          const s = Math.min(scaleX, scaleY);
+          inner.style.transform = `scale(${s})`;
+          inner.style.transformOrigin = 'top left';
+          inner.style.width = (100/s) + '%';
+        }
+      }
+      el.style.width = nw+'px'; el.style.height = nh+'px';
+      el.style.left = nx+'px'; el.style.top = ny+'px';
+    });
+    window.addEventListener('mouseup', () => { active = false; });
+  });
+}
+
+// ── CUSTOM CURSOR ──
+const curEl = document.getElementById('cur');
+if (curEl) {
+  document.addEventListener('mousemove', e => {
+    curEl.style.left = e.clientX + 'px';
+    curEl.style.top  = e.clientY + 'px';
+  });
+  const hoverTargets = 'a, button, .thumb, .win, .vid-btn, .win-resize-drag, #scroll-hint';
+  document.addEventListener('mouseover', e => {
+    if (e.target.closest(hoverTargets)) document.body.classList.add('cur-hover');
+  });
+  document.addEventListener('mouseout', e => {
+    if (e.target.closest(hoverTargets)) document.body.classList.remove('cur-hover');
+  });
+}
+
+// ── WHEEL / TOUCH / KEYS ──
+let wCool = false;
+window.addEventListener('wheel', e => {
+  if (wCool) return;
+  wCool = true; setTimeout(() => wCool = false, 900);
+  if (!detailOpen && e.deltaY > 15) openDetail();
+  else if (detailOpen && e.deltaY < -15 && detailEl.scrollTop <= 0) closeDetail();
+}, {passive:true});
+
+let ty0 = 0;
+window.addEventListener('touchstart', e => { ty0 = e.touches[0].clientY; }, {passive:true});
+window.addEventListener('touchend', e => {
+  const dy = ty0 - e.changedTouches[0].clientY;
+  if (!detailOpen && dy > 40) openDetail();
+  else if (detailOpen && dy < -40 && detailEl.scrollTop <= 0) closeDetail();
+}, {passive:true});
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowRight' && !detailOpen) goTo((cur+1) % projectData.length);
+  if (e.key === 'ArrowLeft'  && !detailOpen) goTo((cur-1+projectData.length) % projectData.length);
+  if (e.key === 'Escape' && detailOpen) closeDetail();
+  if (e.key === ' ') { e.preventDefault(); setPlaying(!playing); }
+});
+
+// ── SCROLL HINT / LANDING CONTROLS ──
+hintEl.addEventListener('click', openDetail);
+
+const lndMuteBtn = document.getElementById('lnd-mute');
+const lndPlayBtn = document.getElementById('lnd-play');
+lndPlayIcon = lndPlayBtn?.querySelector('svg');
+
+if (lndMuteBtn) {
+  lndMuteBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    videoBgInner.muted = !videoBgInner.muted;
+    const waves = lndMuteBtn.querySelector('#lnd-waves');
+    if (waves) waves.style.opacity = videoBgInner.muted ? '0.2' : '1';
+  });
+}
+if (lndPlayBtn) {
+  lndPlayBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    setPlaying(!playing);
+  });
+}
+
+videoBg?.addEventListener('click', () => {
+  if (!detailOpen) goTo((cur + 1) % Math.max(1, projectData.length));
+});
+
+// ── REFS ──
+const videoBgInner = document.getElementById('video-bg-inner');
+const videoBg      = document.getElementById('video-bg');
+const metaEl       = document.getElementById('meta');
+const hintEl       = document.getElementById('scroll-hint');
+const navEl        = document.querySelector('nav');
+const detailEl     = document.getElementById('detail');
+const stripEl      = document.getElementById('strip-area');
+const canvasInner  = document.getElementById('canvas-inner');
+const canvasEl     = document.getElementById('canvas');
+const mClient      = document.getElementById('m-studio');
+const mName        = document.getElementById('m-title');
+const mRole        = document.getElementById('m-role');
+
+let cur = 0, localProgress = 0, playing = true;
+let lastTs = null, raf = null;
+
+
 function buildStrip() {
   totalDur = projectData.reduce((s,p) => s + p.duration, 0);
   stripEl.innerHTML = '';
@@ -700,6 +1148,57 @@ function buildThumbSlices(frames, fallbackTc, sliceCount) {
     const idx = N === 1 ? 0 : Math.round(i * (frames.length-1) / (N-1));
     return `<div class="thumb-slice" style="background-image:url('${frames[Math.min(idx,frames.length-1)]}');background-size:cover;background-position:center center;"></div>`;
   }).join('');
+}
+
+async function loadProjects() {
+  const colors = ['tc-0','tc-1','tc-2','tc-3','tc-4','tc-5','tc-6','tc-7'];
+  let folders = [];
+
+  try {
+    const r = await fetch('projects/projects.json');
+    if (r.ok) folders = await r.json();
+  } catch {}
+
+  if (!folders.length) {
+    projectData    = FALLBACK_PROJECTS.map(p => ({...p}));
+    projectDetails = FALLBACK_DETAILS.map(d => ({...d, thumbFrames:[], sliceCount:8, images:[]}));
+    return;
+  }
+
+  const results = await Promise.all(folders.map(async (folder, i) => {
+    try {
+      const r = await fetch(`projects/${folder}/info.txt`);
+      const txt = r.ok ? await r.text() : '';
+      const info = parseInfo(txt);
+      return {
+        folder,
+        name:     info.name     || folder,
+        client:   info.client   || '',
+        studio:   info.studio   || '',
+        type:     info.type     || '',
+        duration: parseInt(info.duration) || 60,
+        tc:       info.color    || colors[i % colors.length],
+        src:      info.video    ? fixDropbox(info.video) : `projects/${folder}/video.mp4`,
+        imagesHint: info.images || '',
+        about:    info.about    || '',
+        team:     info.team     || '',
+        credits:  info.credits  || '',
+      };
+    } catch {
+      return { folder, name:folder, duration:60, tc:colors[i%colors.length], src:'', imagesHint:'' };
+    }
+  }));
+
+  projectData    = results;
+  projectDetails = results.map(p => ({
+    about:      p.about,
+    team:       p.team,
+    credits:    p.credits,
+    imagesHint: p.imagesHint,
+    images:     [],
+    thumbFrames:[],
+    sliceCount: 8,
+  }));
 }
 
 // ── INIT ──
