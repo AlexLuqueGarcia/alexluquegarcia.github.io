@@ -192,7 +192,10 @@ nav.hide {
 }
 .thumb-black {
   position:absolute; inset:0;
-  background:#000; z-index:6;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  background: rgba(0,0,0,0.45);
+  z-index:6;
   pointer-events:none; opacity:0;
   transition: left 0s;
 }
