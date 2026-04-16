@@ -1020,7 +1020,7 @@ function getWinSpecs(p, pd) {
   }));
   return [
     { type:'video', wf:0.40, hf:null, ratio:16/9 },
-    { type:'text',  wf:null, hf:null, ratio:null, p, pd },
+    { type:'text',  wf:0.30, hf:0.52, ratio:null, p, pd },
     ...imgSpecs,
   ];
 }
@@ -1032,14 +1032,15 @@ function packWindows(specs) {
   const PAD = 16;
   const TOP = 60;
   const BOT = 20;
+  const usableW = vw - PAD * 2;
   const usableH = vh - TOP - BOT;
 
   const cols = 3;
   const rows = Math.max(2, Math.ceil(specs.length / cols));
-  const zw   = (vw - PAD * (cols + 1)) / cols;
-  const zh   = (usableH - PAD * (rows + 1)) / rows;
+  const zw   = (usableW - PAD * (cols - 1)) / cols;
+  const zh   = (usableH - PAD * (rows - 1)) / rows;
 
-  // Build and shuffle zones
+  // Build zones (not shuffled — text always gets a predictable slot)
   const zones = [];
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
@@ -1050,41 +1051,75 @@ function packWindows(specs) {
       });
     }
   }
-  for (let i = zones.length - 1; i > 0; i--) {
+
+  // Shuffle only the non-text specs, keep text (index 1) fixed to right zone
+  const textSpec  = specs[1];
+  const otherSpecs = specs.filter((_, i) => i !== 1);
+
+  // Shuffle zones for other windows
+  const shuffledZones = [...zones];
+  for (let i = shuffledZones.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
-    [zones[i], zones[j]] = [zones[j], zones[i]];
+    [shuffledZones[i], shuffledZones[j]] = [shuffledZones[j], shuffledZones[i]];
   }
 
   const placed = [];
-  specs.forEach((spec, i) => {
-    const zone = zones[i % zones.length];
 
-    // Desired width — cap to zone width
-    let w = spec.wf ? Math.round(spec.wf * vw) : Math.round(zw * 0.9);
+  function placeSpec(spec, zone) {
+    // Width — capped to zone
+    let w = spec.wf ? Math.round(spec.wf * vw) : Math.round(zone.zw * 0.92);
     w = Math.min(w, zone.zw);
 
-    // Desired height
+    // Height
     let h = spec.ratio
       ? Math.round(w / spec.ratio)
       : spec.hf
         ? Math.round(spec.hf * vh)
-        : Math.round(zh * 0.85);
+        : Math.round(zone.zh * 0.85);
 
-    // If height overflows zone, shrink to fit (maintain ratio)
+    // Clamp height to zone
     if (h > zone.zh) {
       h = Math.round(zone.zh);
       if (spec.ratio) w = Math.round(h * spec.ratio);
       w = Math.min(w, zone.zw);
     }
 
-    // Random position within zone, fully clamped
-    const maxX = zone.zx + zone.zw - w;
-    const maxY = zone.zy + zone.zh - h;
-    const x = Math.round(Math.max(zone.zx, Math.min(maxX, zone.zx + Math.random() * Math.max(0, maxX - zone.zx))));
-    const y = Math.round(Math.max(zone.zy, Math.min(maxY, zone.zy + Math.random() * Math.max(0, maxY - zone.zy))));
+    // Random position within zone, fully clamped inside viewport
+    const maxX = Math.max(zone.zx, zone.zx + zone.zw - w);
+    const maxY = Math.max(zone.zy, zone.zy + zone.zh - h);
+    const x = Math.round(zone.zx + Math.random() * Math.max(0, maxX - zone.zx));
+    const y = Math.round(zone.zy + Math.random() * Math.max(0, maxY - zone.zy));
 
-    placed.push({ x, y, w, h, spec });
+    // Hard clamp to viewport
+    return {
+      x: Math.max(0, Math.min(vw - w, x)),
+      y: Math.max(TOP, Math.min(vh - h - BOT, y)),
+      w, h, spec
+    };
+  }
+
+  // Place other specs first, each in its own zone
+  otherSpecs.forEach((spec, i) => {
+    placed.push(placeSpec(spec, shuffledZones[i % shuffledZones.length]));
   });
+
+  // Place text in the rightmost available zone, guaranteed on screen
+  const textZone = {
+    zx: PAD,
+    zy: TOP + PAD,
+    zw: Math.round(vw * 0.32),
+    zh: Math.round(usableH * 0.9)
+  };
+  const tw = Math.round(Math.min(textZone.zw, vw * 0.30));
+  const th = Math.round(Math.min(textZone.zh, vh * 0.52));
+  const tx = PAD + Math.round(Math.random() * Math.max(0, textZone.zw - tw));
+  const ty = TOP + PAD + Math.round(Math.random() * Math.max(0, textZone.zh - th));
+  placed.push({
+    x: Math.max(0, Math.min(vw - tw, tx)),
+    y: Math.max(TOP, Math.min(vh - th - BOT, ty)),
+    w: tw, h: th, spec: textSpec
+  });
+
   return placed;
 }
 
