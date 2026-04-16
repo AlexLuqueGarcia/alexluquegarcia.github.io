@@ -340,7 +340,8 @@ nav.hide {
   backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
   padding:1.6rem 1.8rem 1.8rem;
   font-family:'NM',sans-serif;
-  overflow:hidden;
+  overflow:visible;
+  height:auto !important;
 }
 .win-text .wlabel {
   font-size:0.62rem; text-transform:uppercase;
@@ -838,7 +839,7 @@ function getWinSpecs(p, pd) {
   }));
   return [
     { type:'video', wf:0.40, hf:null, ratio:16/9 },
-    { type:'text',  wf:0.28, hf:0.46, ratio:null, p, pd },
+    { type:'text',  wf:0.28, hf:null, ratio:null, p, pd },
     ...imgSpecs,
   ];
 }
@@ -875,7 +876,12 @@ function packWindows(specs) {
   specs.forEach((spec, i) => {
     const zone = zones[i % zones.length];
     const w = Math.round(spec.wf * vw);
-    const h = spec.ratio ? Math.round(w / spec.ratio) : Math.round(spec.hf * vh);
+    // text window: estimate height for placement, actual height set by CSS
+    const h = spec.ratio
+      ? Math.round(w / spec.ratio)
+      : spec.hf
+        ? Math.round(spec.hf * vh)
+        : Math.round(vh * 0.35); // estimate for text
     const maxX = zone.zx + zone.zw - w - PAD;
     const maxY = zone.zy + zone.zh - h - PAD;
     const x = Math.round(Math.max(zone.zx + PAD, Math.min(maxX, zone.zx + PAD + Math.random() * Math.max(0, maxX - zone.zx - PAD))));
@@ -895,8 +901,12 @@ function buildWindows(p, pd) {
     const { x, y, w, h, spec } = item;
     const win = document.createElement('div');
     win.className = 'win';
-    win.style.cssText = `left:${x}px;top:${y}px;width:${w}px;height:${h}px;z-index:${10+idx};`;
-    // store aspect ratio for locked resize
+    // text window: set width only, let height be natural
+    if (spec.type === 'text') {
+      win.style.cssText = `left:${x}px;top:${y}px;width:${w}px;z-index:${10+idx};`;
+    } else {
+      win.style.cssText = `left:${x}px;top:${y}px;width:${w}px;height:${h}px;z-index:${10+idx};`;
+    }
     win._ratio = spec.ratio || null;
 
     const resizeHandle = `
@@ -1102,13 +1112,13 @@ function openDetail() {
   detailOpen = true;
   fillDetail(cur);
 
-  // 1. strip slides DOWN first
   stripEl.classList.add('hide');
   metaEl.classList.add('hide');
   hintEl.classList.add('hide');
-  
 
-  // 2. shortly after: blur bg + slide detail up
+  // pause landing video while in detail
+  if (isLndVideo) lndVideo.pause();
+
   setTimeout(() => {
     videoBg.classList.add('blurred');
     detailEl.classList.add('open');
@@ -1123,9 +1133,11 @@ function closeDetail() {
   transitioning = true;
   detailOpen = false;
 
-  // 1. slide detail back down + unblur
   detailEl.classList.remove('open');
   videoBg.classList.remove('blurred');
+
+  // resume landing video on close (only if playing)
+  if (isLndVideo && playing) lndVideo.play();
 
   // 2. strip comes back up after detail is gone
   setTimeout(() => {
