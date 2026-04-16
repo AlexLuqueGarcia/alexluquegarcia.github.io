@@ -568,35 +568,46 @@ const FALLBACK_DETAILS = [
   { about:'VFX Supervisor and CG Lead for the BOLD Campaign 2026 with Gentle Monster.', team:'Alex Luque Garcia — VFX Supervisor · CG Lead', credits:'Studio: Olimpic TV\nClient: Gentle Monster', images:[] },
 ];
 
+// Load thumbnail frames from projects/{folder}/thumbnail/
+// Probes 01, 02, ... until no more files found
+async function loadThumbnailFrames(base) {
+  const exts = ['jpg','png','jpeg','webp'];
+  const frames = [];
+  for (let n = 1; n <= 20; n++) {
+    const pad = String(n).padStart(2,'0');
+    let found = null;
+    for (const ext of exts) {
+      const url = `${base}/thumbnail/${pad}.${ext}`;
+      try {
+        const r = await fetch(url, { method:'HEAD' });
+        if (r.ok) { found = url; break; }
+      } catch {}
+    }
+    if (found) frames.push(found);
+    else break; // stop at first gap
+  }
+  return frames;
+}
+
 // Load images for a project folder.
 // If info.txt has an "images:" line listing filenames, use those.
-// Otherwise probe 01–09 with jpg/png/jpeg/webp and keep whichever exist.
+// Otherwise probe 01–09 with multiple extensions.
 async function loadImages(base, infoImages) {
   if (infoImages && infoImages.trim()) {
     return infoImages.split(',').map(f => `${base}/${f.trim()}`);
   }
   const exts = ['jpg','png','jpeg','webp'];
-  const nums = [1,2,3,4,5,6,7,8,9];
-  const candidates = [];
-  nums.forEach(n => {
+  const frames = [];
+  for (let n = 1; n <= 9; n++) {
     const pad = String(n).padStart(2,'0');
-    exts.forEach(ext => candidates.push(`${base}/${pad}.${ext}`));
-  });
-  const checks = await Promise.all(candidates.map(async url => {
-    try {
-      const r = await fetch(url, { method:'HEAD' });
-      return r.ok ? url : null;
-    } catch { return null; }
-  }));
-  // Deduplicate by number — keep first match per number
-  const seen = new Set();
-  return checks.filter(url => {
-    if (!url) return false;
-    const num = url.match(/\/(\d+)\.\w+$/)?.[1];
-    if (seen.has(num)) return false;
-    seen.add(num);
-    return true;
-  });
+    for (const ext of exts) {
+      try {
+        const r = await fetch(`${base}/${pad}.${ext}`, { method:'HEAD' });
+        if (r.ok) { frames.push(`${base}/${pad}.${ext}`); break; }
+      } catch {}
+    }
+  }
+  return frames;
 }
 
 async function loadProjects() {
@@ -635,17 +646,18 @@ async function loadProjects() {
           src:      fixDropbox(info.video) || `${base}/video.mp4`,
         },
         detail: {
-          about:   info.about   || '',
-          team:    info.team    || '',
-          credits: info.credits || '',
-          images:  await loadImages(base, info.images),
-          get thumb() { return this.images[0] || null; }
+          about:       info.about   || '',
+          team:        info.team    || '',
+          credits:     info.credits || '',
+          images:      await loadImages(base, info.images),
+          thumbFrames: await loadThumbnailFrames(base),
+          get thumb()  { return this.images[0] || null; }
         }
       };
     } catch(e) {
       return {
         proj:   { folder, tc: colors[idx % colors.length], name: folder, client:'', studio:'', type:'', duration:60, src:`${base}/video.mp4` },
-        detail: { about:'', team:'', credits:'', images: await loadImages(base, null), get thumb() { return this.images[0] || null; } }
+        detail: { about:'', team:'', credits:'', images:[], thumbFrames:[], thumb:null }
       };
     }
   }));
@@ -668,10 +680,8 @@ function buildStrip() {
     t.dataset.i   = i;
     t.style.width = pct;
 
-    // Build sliced thumbnail strips
-    const SLICES     = 12;
-    const thumb      = projectDetails[i] && projectDetails[i].thumb;
-    const slicesHTML = buildThumbSlices(thumb, SLICES, p.tc);
+    const frames     = projectDetails[i] && projectDetails[i].thumbFrames || [];
+    const slicesHTML = buildThumbSlices(frames, p.tc);
 
     t.innerHTML = `
       <div class="thumb-bg">${slicesHTML}</div>
@@ -683,22 +693,19 @@ function buildStrip() {
   });
 }
 
-function buildThumbSlices(imgUrl, slices, fallbackTc) {
-  if (!imgUrl) {
-    // No thumbnail — use solid color slices with slight brightness variation
-    return Array.from({length: slices}, (_, i) => {
-      const brightness = 0.8 + (i % 3) * 0.1;
-      return `<div class="thumb-slice ${fallbackTc}" style="filter:brightness(${brightness})"></div>`;
+function buildThumbSlices(frames, fallbackTc) {
+  if (!frames || frames.length === 0) {
+    // No frames — solid color with slight brightness variation per slice
+    const N = 12;
+    return Array.from({length: N}, (_, i) => {
+      const b = 0.7 + (i % 4) * 0.1;
+      return `<div class="thumb-slice ${fallbackTc}" style="filter:brightness(${b})"></div>`;
     }).join('');
   }
-  // Sliced image — each slice shows a different horizontal portion
-  // with a random vertical offset for the displaced look
-  const offsets = Array.from({length: slices}, () => Math.random() * 30 - 15);
-  return Array.from({length: slices}, (_, i) => {
-    const xPct    = (i / (slices - 1) * 100).toFixed(1);
-    const yOffset = offsets[i].toFixed(1);
-    return `<div class="thumb-slice" style="background-image:url('${imgUrl}');background-position:${xPct}% calc(50% + ${yOffset}px);"></div>`;
-  }).join('');
+  // One slice per frame, each fills the full height, cover the slice width
+  return frames.map(src =>
+    `<div class="thumb-slice" style="background-image:url('${src}');background-size:cover;background-position:center center;"></div>`
+  ).join('');
 }
 
 // Refs
