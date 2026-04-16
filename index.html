@@ -556,6 +556,37 @@ const FALLBACK_DETAILS = [
   { about:'VFX Supervisor and CG Lead for the BOLD Campaign 2026 with Gentle Monster.', team:'Alex Luque Garcia — VFX Supervisor · CG Lead', credits:'Studio: Olimpic TV\nClient: Gentle Monster', images:[] },
 ];
 
+// Load images for a project folder.
+// If info.txt has an "images:" line listing filenames, use those.
+// Otherwise probe 01–09 with jpg/png/jpeg/webp and keep whichever exist.
+async function loadImages(base, infoImages) {
+  if (infoImages && infoImages.trim()) {
+    return infoImages.split(',').map(f => `${base}/${f.trim()}`);
+  }
+  const exts = ['jpg','png','jpeg','webp'];
+  const nums = [1,2,3,4,5,6,7,8,9];
+  const candidates = [];
+  nums.forEach(n => {
+    const pad = String(n).padStart(2,'0');
+    exts.forEach(ext => candidates.push(`${base}/${pad}.${ext}`));
+  });
+  const checks = await Promise.all(candidates.map(async url => {
+    try {
+      const r = await fetch(url, { method:'HEAD' });
+      return r.ok ? url : null;
+    } catch { return null; }
+  }));
+  // Deduplicate by number — keep first match per number
+  const seen = new Set();
+  return checks.filter(url => {
+    if (!url) return false;
+    const num = url.match(/\/(\d+)\.\w+$/)?.[1];
+    if (seen.has(num)) return false;
+    seen.add(num);
+    return true;
+  });
+}
+
 async function loadProjects() {
   const colors = ['tc-0','tc-1','tc-2','tc-3','tc-4','tc-5','tc-6','tc-7'];
 
@@ -595,13 +626,13 @@ async function loadProjects() {
           about:   info.about   || '',
           team:    info.team    || '',
           credits: info.credits || '',
-          images:  [1,2,3,4,5,6].map(n => `${base}/${String(n).padStart(2,'0')}.jpg`),
+          images:  await loadImages(base, info.images),
         }
       };
     } catch(e) {
       return {
         proj:   { folder, tc: colors[idx % colors.length], name: folder, client:'', studio:'', type:'', duration:60, src:`${base}/video.mp4` },
-        detail: { about:'', team:'', credits:'', images:[] }
+        detail: { about:'', team:'', credits:'', images: await loadImages(base, null) }
       };
     }
   }));
@@ -725,41 +756,40 @@ const RATIOS = { video: 16/9, img: 16/9, text: null };
 function getWinSpecs(p, pd) {
   pd = pd || { about:'', team:'', credits:'', images:[] };
   const imgs = pd.images || [];
-  const ci   = projectData.indexOf(p);
-  // cycle images across all project folders for variety
-  const allImgs = projectDetails.flatMap(d => d.images || []);
-  const img = n => allImgs[(ci * 4 + n) % Math.max(allImgs.length, 1)] || '';
+  const widths  = [0.26, 0.32, 0.20, 0.30, 0.28, 0.34];
+  const imgSpecs = imgs.map((src, i) => ({
+    type:'img', wf: widths[i % widths.length], hf:null, ratio:16/9, src
+  }));
   return [
     { type:'video', wf:0.40, hf:null, ratio:16/9 },
     { type:'text',  wf:0.28, hf:0.46, ratio:null, p, pd },
-    { type:'img',   wf:0.26, hf:null, ratio:16/9, src:imgs[0] || img(1) },
-    { type:'img',   wf:0.32, hf:null, ratio:16/9, src:imgs[1] || img(2) },
-    { type:'img',   wf:0.20, hf:null, ratio:16/9, src:imgs[2] || img(3) },
-    { type:'img',   wf:0.30, hf:null, ratio:16/9, src:imgs[3] || img(0) },
+    ...imgSpecs,
   ];
 }
 
 // Grid-based non-overlapping placement
 // Divide screen into zones, shuffle, assign one window per zone
 function packWindows(specs) {
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
+  const vw  = window.innerWidth;
+  const vh  = window.innerHeight;
   const PAD = 14;
-  const TOP = 52; // nav clearance
+  const TOP = 52;
+  const n   = specs.length;
 
-  // Create a 3×2 grid of zones
-  const cols = 3, rows = 2;
-  const zw = vw / cols;
-  const zh = (vh - TOP) / rows;
+  // Build enough grid zones to cover all specs
+  // Use 3 columns, as many rows as needed
+  const cols = 3;
+  const rows = Math.max(2, Math.ceil(n / cols));
+  const zw   = vw / cols;
+  const zh   = (vh - TOP) / rows;
 
-  // Build zone list and shuffle
   const zones = [];
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       zones.push({ zx: c * zw, zy: TOP + r * zh, zw, zh });
     }
   }
-  // Fisher-Yates shuffle
+  // Shuffle
   for (let i = zones.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [zones[i], zones[j]] = [zones[j], zones[i]];
@@ -769,16 +799,11 @@ function packWindows(specs) {
   specs.forEach((spec, i) => {
     const zone = zones[i % zones.length];
     const w = Math.round(spec.wf * vw);
-    const h = spec.ratio
-      ? Math.round(w / spec.ratio)
-      : Math.round(spec.hf * vh);
-
-    // Place within zone with padding, clamped to zone bounds
+    const h = spec.ratio ? Math.round(w / spec.ratio) : Math.round(spec.hf * vh);
     const maxX = zone.zx + zone.zw - w - PAD;
     const maxY = zone.zy + zone.zh - h - PAD;
     const x = Math.round(Math.max(zone.zx + PAD, Math.min(maxX, zone.zx + PAD + Math.random() * Math.max(0, maxX - zone.zx - PAD))));
     const y = Math.round(Math.max(zone.zy + PAD, Math.min(maxY, zone.zy + PAD + Math.random() * Math.max(0, maxY - zone.zy - PAD))));
-
     placed.push({ x, y, w, h, spec });
   });
   return placed;
