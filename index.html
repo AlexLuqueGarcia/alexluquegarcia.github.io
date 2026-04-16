@@ -971,10 +971,12 @@ function setPlaying(val) {
     schedTick();
     if (isLndVideo && lndVideo.paused) lndVideo.play();
     if (lndPlayIcon) lndPlayIcon.innerHTML = '<rect x="1" y="1" width="4" height="12" fill="currentColor"/><rect x="9" y="1" width="4" height="12" fill="currentColor"/>';
+    if (mobPlayIcon) mobPlayIcon.innerHTML = '<rect x="1" y="1" width="3.5" height="11" fill="currentColor"/><rect x="8.5" y="1" width="3.5" height="11" fill="currentColor"/>';
   } else {
     cancelAnimationFrame(raf);
     if (isLndVideo && !lndVideo.paused) lndVideo.pause();
     if (lndPlayIcon) lndPlayIcon.innerHTML = '<path d="M1 1L13 7L1 13V1Z" fill="currentColor"/>';
+    if (mobPlayIcon) mobPlayIcon.innerHTML = '<path d="M1.5 1L11.5 6.5L1.5 12V1Z" fill="currentColor"/>';
   }
 }
 
@@ -1444,15 +1446,6 @@ mobPlayBtn.addEventListener('click', (e) => {
   if (!isLndVideo) return;
   setPlaying(!playing);
 });
-
-// Sync mobile play icon with state
-const origSetPlaying = setPlaying;
-function setPlaying(val) {
-  origSetPlaying(val);
-  const pauseIcon = '<rect x="1" y="1" width="3.5" height="11" fill="currentColor"/><rect x="8.5" y="1" width="3.5" height="11" fill="currentColor"/>';
-  const playIcon  = '<path d="M1.5 1L11.5 6.5L1.5 12V1Z" fill="currentColor"/>';
-  if (mobPlayIcon) mobPlayIcon.innerHTML = val ? pauseIcon : playIcon;
-}
 
 // Click landing video → next project
 videoBg.addEventListener('click', () => {
