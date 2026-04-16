@@ -63,24 +63,6 @@ body.cur-hover #cur svg {
   filter: blur(20px);
   transform: scale(1.06);
 }
-
-/* Corner brackets on the landing video */
-#video-bg::before,
-#video-bg::after,
-#video-bg .vc::before,
-#video-bg .vc::after {
-  content:'';
-  position:fixed;
-  width:21px; height:21px;
-  border-color:#fff;
-  border-style:solid;
-  z-index:2;
-  pointer-events:none;
-}
-#video-bg::before  { top:0;    left:0;  border-width:2.25px 0 0 2.25px; }
-#video-bg::after   { top:0;    right:0; border-width:2.25px 2.25px 0 0; }
-#video-bg .vc::before { bottom:0; left:0;  border-width:0 0 2.25px 2.25px; }
-#video-bg .vc::after  { bottom:0; right:0; border-width:0 2.25px 2.25px 0; }
 #video-bg-inner {
   width:100%; height:100%;
 }
@@ -454,7 +436,7 @@ nav.hide {
 
 <!-- Always-fixed video background -->
 <!-- Always-fixed video background -->
-<div id="video-bg"><span class="vc"></span><video id="video-bg-inner" autoplay muted loop playsinline crossorigin="anonymous" style="width:100%;height:100%;object-fit:cover;display:block;"><source src="EDIT_black_midi_-WelcomeToHell.mp4" type="video/mp4"></video></div>
+<div id="video-bg"><video id="video-bg-inner" autoplay muted loop playsinline crossorigin="anonymous" style="width:100%;height:100%;object-fit:cover;display:block;"><source src="EDIT_black_midi_-WelcomeToHell.mp4" type="video/mp4"></video></div>
 
 <!-- Custom cursor -->
 <div id="cur">
