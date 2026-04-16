@@ -637,7 +637,7 @@ async function loadThumbnailFrames(base) {
     total = lo + 1;
   }
 
-  const sliceCount = Math.max(4, Math.min(20, Math.round(total / 2)));
+  const sliceCount = Math.max(4, total);
   const frames = Array.from({length: sliceCount}, (_, i) => {
     const idx = sliceCount === 1 ? 0 : Math.round(i * (total - 1) / (sliceCount - 1));
     return `${dir}/${nameFn(idx)}.${ext}`;
