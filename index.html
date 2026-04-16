@@ -368,11 +368,13 @@ nav.hide {
   backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
   font-family:'NM',sans-serif;
   overflow:hidden;
+  max-width: min(420px, 28vw);
 }
 .win-text-inner {
   padding:1.6rem 1.8rem 1.8rem;
   transform-origin: top left;
-  white-space: nowrap;
+  white-space: normal;
+  word-wrap: break-word;
 }
 .win-text .wlabel {
   font-size:0.93rem; text-transform:uppercase;
@@ -1064,7 +1066,7 @@ function packWindows(specs) {
     w = Math.min(w, zone.zw);
 
     // Hard max-width for text so it never gets too wide or overflows
-    if (spec.type === 'text') w = Math.min(w, Math.round(vw * 0.30), zone.zw);
+    if (spec.type === 'text') w = Math.min(w, 420, Math.round(vw * 0.28));
 
     // Compute height
     let h = spec.ratio
