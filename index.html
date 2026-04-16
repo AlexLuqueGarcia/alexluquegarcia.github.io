@@ -474,9 +474,23 @@ nav.hide {
   #meta .m-title  { font-size: 1.2rem; }
   #meta .m-role   { font-size: 0.75rem; }
 
-  /* Scroll hint */
-  #scroll-hint { right: 1rem; }
-  #scroll-hint span { font-size: 1.3rem; }
+  /* Scroll hint — TikTok style: right side, vertically centered */
+  #scroll-hint {
+    right: 1.2rem;
+    bottom: auto;
+    top: 50%;
+    transform: translateY(-50%);
+    flex-direction: column;
+    gap: 20px;
+    align-items: center;
+  }
+  #scroll-hint.hide {
+    transform: translateY(-50%);
+    opacity: 0;
+  }
+  #scroll-hint span { font-size: 1.1rem; }
+  #scroll-hint .vid-btn svg { width: 28px; height: 28px; }
+  #scroll-hint .scroll-arrow { display: none; }
 
   /* Strip labels */
   .thumb-label { font-size: 0.7rem; }
