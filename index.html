@@ -182,7 +182,7 @@ nav.hide {
   width:100%; height:100%;
   display:flex; /* slices sit side by side */
 }
-/* each slice has a fixed width set by JS so totalSlices × --sw = 100vw */
+/* each slice is a vertical strip of the thumbnail image */
 .thumb-slice {
   flex-shrink: 0;
   width: var(--sw, 40px);
@@ -618,35 +618,26 @@ async function loadThumbnailFrames(base) {
   );
 
   const lastFound = Math.max(...checkResults);
-
-  // Binary search for exact count between lastFound and next checkpoint
   let total;
   if (lastFound === -1) {
-    // Fewer than 10 frames — scan sequentially
     total = 1;
     for (let k = 1; k <= 9; k++) {
-      try {
-        const r = await fetch(`${dir}/${nameFn(k)}.${ext}`,{method:'HEAD'});
-        if (r.ok) total = k + 1; else break;
-      } catch { break; }
+      try { const r = await fetch(`${dir}/${nameFn(k)}.${ext}`,{method:'HEAD'}); if (r.ok) total = k+1; else break; }
+      catch { break; }
     }
   } else {
     const nextCheck = checkIndices[checkIndices.indexOf(lastFound) + 1] ?? lastFound + 1;
     let lo = lastFound, hi = nextCheck;
     while (lo + 1 < hi) {
       const mid = Math.floor((lo + hi) / 2);
-      try {
-        const r = await fetch(`${dir}/${nameFn(mid)}.${ext}`,{method:'HEAD'});
-        if (r.ok) lo = mid; else hi = mid;
-      } catch { hi = mid; }
+      try { const r = await fetch(`${dir}/${nameFn(mid)}.${ext}`,{method:'HEAD'}); if (r.ok) lo = mid; else hi = mid; }
+      catch { hi = mid; }
     }
     total = lo + 1;
   }
 
   // sliceCount = total / 2, clamped 4–20
   const sliceCount = Math.max(4, Math.min(20, Math.round(total / 2)));
-
-  // Generate sliceCount evenly-spaced frame URLs across 0..total-1
   const frames = Array.from({length: sliceCount}, (_, i) => {
     const idx = sliceCount === 1 ? 0 : Math.round(i * (total - 1) / (sliceCount - 1));
     return `${dir}/${nameFn(idx)}.${ext}`;
@@ -744,16 +735,13 @@ function buildStrip() {
   const minDur = Math.min(...projectData.map(p => p.duration));
   stripEl.innerHTML = '';
 
-  // Per-project slice count: use real count from thumbnail folder if loaded,
-  // fall back to duration-proportional estimate otherwise
   const MIN_SLICES = 4, MAX_SLICES = 20;
   const sliceCounts = projectData.map((p, i) => {
-    const sc = projectDetails[i] && projectDetails[i].sliceCount;
+    const sc = projectDetails[i]?.sliceCount;
     if (sc) return sc;
     return Math.round(Math.min(MAX_SLICES, Math.max(MIN_SLICES, (p.duration / minDur) * MIN_SLICES)));
   });
 
-  // All slices same pixel width, total fills 100vw exactly
   const totalSlices = sliceCounts.reduce((s, n) => s + n, 0);
   const sliceW = window.innerWidth / totalSlices;
   stripEl.style.setProperty('--sw', sliceW + 'px');
@@ -765,7 +753,7 @@ function buildStrip() {
     t.dataset.i  = i;
     t.style.width = (sc * sliceW) + 'px';
 
-    const frames     = projectDetails[i] && projectDetails[i].thumbFrames || [];
+    const frames     = projectDetails[i]?.thumbFrames || [];
     const slicesHTML = buildThumbSlices(frames, p.tc, sc);
 
     t.innerHTML = `
@@ -1365,39 +1353,60 @@ document.addEventListener('mouseout', e => {
 // ── INIT ──
 window.addEventListener('resize', () => { if (projectData.length) buildStrip(); });
 window.addEventListener('load', async () => {
-  // 1. Load project metadata (info.txt) — fast, no image probing yet
+  // 1. Load project metadata (info.txt) — fast text files
   await loadProjects();
 
-  // 2. Build strip and start immediately with color fallbacks
+  // 2. Preload first project video immediately — highest browser priority
+  if (projectData[0]?.src) {
+    const link = document.createElement('link');
+    link.rel = 'preload'; link.as = 'video';
+    link.href = projectData[0].src;
+    document.head.appendChild(link);
+  }
+
+  // 3. Build strip with color fallbacks and start playing
   buildStrip();
   setBg(0); setActiveThumb(0); updateMeta(0); setPlaying(true);
 
-  // 3. Load thumbnails in the background — doesn't block anything
-  loadThumbnailsInBackground();
-});
+  // 4. Load first project thumbnails immediately — visible in strip right away
+  const firstBase = `projects/${projectData[0].folder}`;
+  const firstPd   = projectDetails[0];
+  if (!firstPd.thumbFrames?.length) {
+    const result = await loadThumbnailFrames(firstBase);
+    if (result.frames.length > 0) {
+      firstPd.thumbFrames = result.frames;
+      firstPd.sliceCount  = result.sliceCount;
+      buildStrip();
+    }
+  }
 
-async function loadThumbnailsInBackground() {
-  for (let i = 0; i < projectDetails.length; i++) {
-    const base = `projects/${projectData[i].folder}`;
+  // 5. Load remaining thumbnails all in parallel (non-blocking)
+  Promise.all(projectData.slice(1).map(async (p, j) => {
+    const i    = j + 1;
+    const base = `projects/${p.folder}`;
     const pd   = projectDetails[i];
-
-    // Load thumbnail frames for strip
-    if (!pd.thumbFrames || pd.thumbFrames.length === 0) {
+    if (!pd.thumbFrames?.length) {
       const result = await loadThumbnailFrames(base);
       if (result.frames.length > 0) {
         pd.thumbFrames = result.frames;
         pd.sliceCount  = result.sliceCount;
-        // Rebuild so --sw and thumb widths recalculate with the real counts
         buildStrip();
       }
     }
+  }));
 
-    // Load detail images
-    if (!pd.images || pd.images.length === 0) {
-      pd.images = await loadImages(base, pd.imagesHint);
-    }
-  }
-}
+  // 6. Detail images — lowest priority, load after everything else
+  setTimeout(() => {
+    projectData.forEach(async (p, i) => {
+      const pd = projectDetails[i];
+      if (!pd.images?.length) {
+        pd.images = await loadImages(`projects/${p.folder}`, pd.imagesHint);
+      }
+    });
+  }, 2000);
+});
+
+async function loadThumbnailsInBackground() {} // kept for compat, no longer used
 </script>
 </body>
 </html>
