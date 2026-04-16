@@ -616,7 +616,6 @@ let totalDur = 0;
 // Build strip thumbs from loaded data
 function buildStrip() {
   totalDur = projectData.reduce((s,p) => s + p.duration, 0);
-  const stripEl = document.getElementById('strip-area');
   stripEl.innerHTML = '';
   projectData.forEach((p,i) => {
     const pct = (p.duration / totalDur * 100).toFixed(4) + '%';
@@ -641,6 +640,7 @@ const metaEl       = document.getElementById('meta');
 const hintEl       = document.getElementById('scroll-hint');
 const navEl        = document.querySelector('nav');
 const detailEl     = document.getElementById('detail');
+const stripEl      = document.getElementById('strip-area');
 
 let cur = 0, localProgress = 0, playing = true;
 let lastTs = null, raf = null;
