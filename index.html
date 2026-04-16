@@ -1555,21 +1555,27 @@ mobMuteBtn.addEventListener('click', (e) => {
 // ── NAV YEAR ──
 document.getElementById('nav-year').textContent = new Date().getFullYear();
 
-// Reset zoom on orientation change — works for both iOS Safari and Android Chrome
+// Fix zoom on orientation change for all mobile browsers including iOS Chrome
 function resetViewport() {
   const meta = document.querySelector('meta[name=viewport]');
-  // Temporarily force scale=1 to reset any browser zoom
-  meta.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0';
-  setTimeout(() => {
-    meta.content = 'width=device-width, initial-scale=1.0, shrink-to-fit=yes';
-    if (projectData.length) buildStrip();
-  }, 300);
+  meta.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0';
+  requestAnimationFrame(() => {
+    meta.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, shrink-to-fit=yes';
+    setTimeout(() => { if (projectData.length) buildStrip(); }, 200);
+  });
 }
+
+// Use visualViewport to detect and correct any residual zoom
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', () => {
+    const scale = window.visualViewport.scale;
+    if (Math.abs(scale - 1) > 0.05) resetViewport();
+    if (projectData.length) buildStrip();
+  });
+}
+
 window.addEventListener('orientationchange', resetViewport);
-// Chrome uses resize instead of orientationchange for viewport reflow
-window.addEventListener('resize', () => {
-  if (projectData.length) buildStrip();
-});
+window.addEventListener('resize', () => { if (projectData.length) buildStrip(); });
 
 // ── CUSTOM CURSOR ──
 const curEl = document.getElementById('cur');
