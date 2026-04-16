@@ -1147,12 +1147,18 @@ window.addEventListener('touchend', e => {
 
 // Keys
 document.addEventListener('keydown', e => {
-  if (e.key==='ArrowRight' && !detailOpen) goTo((cur+1)%projects.length);
-  if (e.key==='ArrowLeft'  && !detailOpen) goTo((cur-1+projects.length)%projects.length);
+  if (e.key==='ArrowRight' && !detailOpen) goTo((cur+1) % projectData.length);
+  if (e.key==='ArrowLeft'  && !detailOpen) goTo((cur-1+projectData.length) % projectData.length);
   if (e.key==='Escape' && detailOpen) closeDetail();
-  if (e.key===' ') {
+  if (e.key===' ' && !detailOpen) {
     e.preventDefault();
-    playing ? (playing=false, cancelAnimationFrame(raf)) : (playing=true, lastTs=null, schedTick());
+    if (playing) {
+      playing = false; cancelAnimationFrame(raf);
+      if (isLndVideo) { lndVideo.pause(); lndPlayIcon.innerHTML = '<path d="M1 1L13 7L1 13V1Z" fill="currentColor"/>'; }
+    } else {
+      playing = true; lastTs = null; schedTick();
+      if (isLndVideo) { lndVideo.play(); lndPlayIcon.innerHTML = '<rect x="1" y="1" width="4" height="12" fill="currentColor"/><rect x="9" y="1" width="4" height="12" fill="currentColor"/>'; }
+    }
   }
 });
 
@@ -1169,9 +1175,13 @@ lndPlayBtn.addEventListener('click', () => {
   if (lndVideo.paused) {
     lndVideo.play();
     lndPlayIcon.innerHTML = '<rect x="1" y="1" width="4" height="12" fill="currentColor"/><rect x="9" y="1" width="4" height="12" fill="currentColor"/>';
+    // resume strip ticker
+    playing = true; lastTs = null; schedTick();
   } else {
     lndVideo.pause();
     lndPlayIcon.innerHTML = '<path d="M1 1L13 7L1 13V1Z" fill="currentColor"/>';
+    // pause strip ticker
+    playing = false; cancelAnimationFrame(raf);
   }
 });
 
