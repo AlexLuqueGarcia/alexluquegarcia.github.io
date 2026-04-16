@@ -446,10 +446,10 @@ nav.hide {
 .df-values a {
   color:#fff;
   text-decoration:none;
-  transition:color 0.2s;
+  transition: opacity 0.2s;
   pointer-events:all;
 }
-.df-values a:hover { color:#fff; }
+.df-values a:hover { opacity: 0.5; }
 .tc-1{background:linear-gradient(160deg,#402810,#201408);}
 .tc-2{background:linear-gradient(160deg,#183820,#0a2010);}
 .tc-3{background:linear-gradient(160deg,#301850,#180830);}
@@ -557,7 +557,7 @@ nav.hide {
     <span class="tagline">Visual Artist & Generalist</span>
   </div>
   <div class="nav-links">
-    <a href="#">Contact</a><a href="#">©2026</a>
+    <a href="#" onclick="closeDetail();return false;">Contact</a><a href="#" onclick="closeDetail();return false;" title="Back to top">©2026</a>
   </div>
 </nav>
 
