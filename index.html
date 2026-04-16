@@ -340,13 +340,11 @@ nav.hide {
   backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
   font-family:'NM',sans-serif;
   overflow:hidden;
-  min-width:120px;
-  max-width:420px;
 }
 .win-text-inner {
   padding:1.6rem 1.8rem 1.8rem;
   transform-origin: top left;
-  white-space: nowrap; /* natural width before measuring */
+  white-space: nowrap;
 }
 .win-text .wlabel {
   font-size:0.62rem; text-transform:uppercase;
@@ -1015,17 +1013,21 @@ function buildWindows(p, pd) {
     // For text windows: measure natural content size, lock ratio, store for scaling
     if (spec.type === 'text') {
       const inner = win.querySelector('.win-text-inner');
-      // Remove white-space:nowrap after measuring so text can wrap when scaled down
+      // Measure natural size with nowrap still active
       const naturalW = inner.scrollWidth;
       const naturalH = inner.scrollHeight;
-      inner.style.whiteSpace = '';
+      // Now allow wrapping for when content is scaled down
+      inner.style.whiteSpace = 'normal';
+      // Fix inner to its natural width so content never wraps unexpectedly
+      inner.style.width  = naturalW + 'px';
+      inner.style.height = naturalH + 'px';
       // Set window to natural size
       win.style.width  = naturalW + 'px';
       win.style.height = naturalH + 'px';
-      win._ratio       = naturalW / naturalH;
-      win._naturalW    = naturalW;
-      // Scale inner to fill window (starts at 1:1)
-      inner.style.width = naturalW + 'px';
+      win._ratio    = naturalW / naturalH;
+      win._naturalW = naturalW;
+      win._naturalH = naturalH;
+      inner.style.transform = 'scale(1)';
     }
 
     makeDraggable(win);
@@ -1124,11 +1126,12 @@ function makeResizable(el) {
       el.style.height = nh + 'px';
       el.style.left   = nx + 'px';
       el.style.top    = ny + 'px';
-      // scale text content if this is a text window
+      // scale text content proportionally
       const inner = el.querySelector('.win-text-inner');
       if (inner && el._naturalW) {
         const scale = nw / el._naturalW;
         inner.style.transform = `scale(${scale})`;
+        inner.style.transformOrigin = 'top left';
       }
     });
 
