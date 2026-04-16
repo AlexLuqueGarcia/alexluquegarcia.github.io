@@ -182,7 +182,7 @@ nav.hide {
   width:100%; height:100%;
   display:flex; /* slices sit side by side */
 }
-/* each slice width is set via --sw so totalSlices × --sw = 100vw */
+/* each slice is a vertical strip of the thumbnail image */
 .thumb-slice {
   flex-shrink: 0;
   width: var(--sw, 40px);
@@ -581,39 +581,31 @@ const FALLBACK_DETAILS = [
 async function loadThumbnailFrames(base) {
   const dir  = `${base}/thumbnail`;
   const exts = ['png','jpg','jpeg','webp'];
-  const MAX  = 20;
 
-  // Detect pattern+ext with one request per candidate first frame (parallel, ~16 total)
+  // Detect pattern+ext by probing first frame of each — all parallel (~20 requests)
   const patterns = [
-    { name: i => `video_${String(i).padStart(3,'0')}`,    start: 0 },  // video_000.png
-    { name: i => `video_${100+i}`,                        start: 0 },  // video_100.png
-    { name: i => String(i+1).padStart(2,'0'),             start: 0 },  // 01.png
-    { name: i => `frame_${String(i+1).padStart(3,'0')}`,  start: 0 },  // frame_001.png
-    { name: i => `frame${String(i+1).padStart(3,'0')}`,   start: 0 },  // frame001.png
+    { name: i => `video_${String(i).padStart(3,'0')}` },  // video_000.png
+    { name: i => `video_${100+i}` },                       // video_100.png
+    { name: i => String(i+1).padStart(2,'0') },            // 01.png
+    { name: i => `frame_${String(i+1).padStart(3,'0')}` }, // frame_001.png
+    { name: i => `frame${String(i+1).padStart(3,'0')}` },  // frame001.png
   ];
 
   const firstProbes = patterns.flatMap(p =>
     exts.map(ext => ({ url:`${dir}/${p.name(0)}.${ext}`, p, ext }))
   );
-
-  // Fire all first-frame probes in parallel — just ~16 requests
   const results = await Promise.all(firstProbes.map(async item => {
     try { const r = await fetch(item.url,{method:'HEAD'}); return r.ok ? item : null; }
     catch { return null; }
   }));
 
   const match = results.find(Boolean);
-  if (!match) return []; // no thumbnail folder
+  if (!match) return { frames: [], total: 0 };
 
-  // We know the pattern and extension — now probe last frame to get count
-  // Do this with a parallel doubling probe (1,2,4,8,16,32...) then bisect
-  // But actually: just return MAX urls spread over a guessed range.
-  // CSS background-image silently ignores 404s — no blocking, no errors.
-  // Strategy: probe frame at index MAX-1 (19) and MAX*2-1 (39) to guess total.
   const nameFn = match.p.name;
   const ext    = match.ext;
 
-  // Check a few candidate "last frames" in parallel to estimate total
+  // Binary-search the total count: probe checkpoints in parallel, then narrow
   const checkIndices = [9, 19, 29, 39, 59, 99, 149, 199];
   const checkResults = await Promise.all(
     checkIndices.map(async idx => {
@@ -622,16 +614,41 @@ async function loadThumbnailFrames(base) {
     })
   );
 
-  // Last index that exists gives us the approximate total
   const lastFound = Math.max(...checkResults);
-  const total = lastFound + 1; // at least this many
+  // If nothing beyond index 9 existed, do a small sequential scan from 0
+  let total;
+  if (lastFound === -1) {
+    total = 1;
+    for (let k = 1; k <= 9; k++) {
+      try {
+        const r = await fetch(`${dir}/${nameFn(k)}.${ext}`,{method:'HEAD'});
+        if (r.ok) total = k + 1; else break;
+      } catch { break; }
+    }
+  } else {
+    // Binary search between lastFound and next checkpoint for exact end
+    const nextCheck = checkIndices[checkIndices.indexOf(lastFound) + 1] ?? lastFound + 1;
+    let lo = lastFound, hi = nextCheck;
+    while (lo + 1 < hi) {
+      const mid = Math.floor((lo + hi) / 2);
+      try {
+        const r = await fetch(`${dir}/${nameFn(mid)}.${ext}`,{method:'HEAD'});
+        if (r.ok) lo = mid; else hi = mid;
+      } catch { hi = mid; }
+    }
+    total = lo + 1;
+  }
 
-  // Generate MAX evenly-spaced URLs across 0..total-1
-  // CSS will silently skip any that 404 — zero blocking
-  return Array.from({length: MAX}, (_, i) => {
-    const idx = MAX === 1 ? 0 : Math.round(i * (total - 1) / (MAX - 1));
+  // sliceCount = total / 2, clamped 4–20
+  const sliceCount = Math.max(4, Math.min(20, Math.round(total / 2)));
+
+  // Generate sliceCount evenly-spaced frame URLs across the full range
+  const frames = Array.from({length: sliceCount}, (_, i) => {
+    const idx = sliceCount === 1 ? 0 : Math.round(i * (total - 1) / (sliceCount - 1));
     return `${dir}/${nameFn(idx)}.${ext}`;
   });
+
+  return { frames, total, sliceCount };
 }
 
 // Load images for a project folder.
@@ -723,21 +740,17 @@ function buildStrip() {
   const minDur = Math.min(...projectData.map(p => p.duration));
   stripEl.innerHTML = '';
 
-  // Compute per-project slice counts (proportional to duration)
-  const MIN_SLICES = 4;
-  const MAX_SLICES = 20;
-  const sliceCounts = projectData.map(p =>
-    Math.round(Math.min(MAX_SLICES, Math.max(MIN_SLICES, (p.duration / minDur) * MIN_SLICES)))
-  );
-
-  // Override with actual thumbnail counts where available
-  sliceCounts.forEach((_, i) => {
-    if (projectDetails[i] && projectDetails[i].sliceCount) {
-      sliceCounts[i] = projectDetails[i].sliceCount;
-    }
+  // Determine slice count per project:
+  // Use the real count from thumbnail folder (total/2) if loaded,
+  // otherwise fall back to duration-proportional estimate.
+  const MIN_SLICES = 4, MAX_SLICES = 20;
+  const sliceCounts = projectData.map((p, i) => {
+    const pd = projectDetails[i];
+    if (pd && pd.sliceCount) return pd.sliceCount;
+    return Math.round(Math.min(MAX_SLICES, Math.max(MIN_SLICES, (p.duration / minDur) * MIN_SLICES)));
   });
 
-  // Compute slice width so all slices together = 100vw
+  // Slice width: all slices together must fill exactly 100vw
   const totalSlices = sliceCounts.reduce((s, n) => s + n, 0);
   const sliceW = window.innerWidth / totalSlices;
   stripEl.style.setProperty('--sw', sliceW + 'px');
@@ -747,7 +760,6 @@ function buildStrip() {
     const t  = document.createElement('div');
     t.className  = 'thumb';
     t.dataset.i  = i;
-    // Width is driven by slices: sc × --sw fills correctly
     t.style.width = (sc * sliceW) + 'px';
 
     const frames     = projectDetails[i] && projectDetails[i].thumbFrames || [];
@@ -1348,7 +1360,7 @@ document.addEventListener('mouseout', e => {
 });
 
 // ── INIT ──
-window.addEventListener('resize', () => { buildStrip(); });
+window.addEventListener('resize', () => { if (projectData.length) buildStrip(); });
 window.addEventListener('load', async () => {
   // 1. Load project metadata (info.txt) — fast, no image probing yet
   await loadProjects();
@@ -1369,12 +1381,10 @@ async function loadThumbnailsInBackground() {
     // Load thumbnail frames for strip
     if (!pd.thumbFrames || pd.thumbFrames.length === 0) {
       const result = await loadThumbnailFrames(base);
-      const frames = Array.isArray(result) ? result : (result && result.frames || []);
-      if (frames.length > 0) {
-        pd.thumbFrames = frames;
-        // sliceCount = frames / 2, clamped 4–20
-        pd.sliceCount = Math.max(4, Math.min(20, Math.round(frames.length / 2)));
-        // Rebuild strip so --sw recalculates to fill 100vw with new counts
+      if (result.frames.length > 0) {
+        pd.thumbFrames = result.frames;
+        pd.sliceCount  = result.sliceCount;
+        // Rebuild strip so --sw recalculates with the real slice counts
         buildStrip();
       }
     }
