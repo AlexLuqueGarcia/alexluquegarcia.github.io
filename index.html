@@ -341,7 +341,10 @@ nav.hide {
   padding:1.6rem 1.8rem 1.8rem;
   font-family:'NM',sans-serif;
   overflow:visible;
+  width:auto !important;
   height:auto !important;
+  min-width:220px;
+  max-width:420px;
 }
 .win-text .wlabel {
   font-size:0.62rem; text-transform:uppercase;
@@ -844,7 +847,7 @@ function getWinSpecs(p, pd) {
   }));
   return [
     { type:'video', wf:0.40, hf:null, ratio:16/9 },
-    { type:'text',  wf:0.28, hf:null, ratio:null, p, pd },
+    { type:'text',  wf:null, hf:null, ratio:null, p, pd },
     ...imgSpecs,
   ];
 }
@@ -880,13 +883,13 @@ function packWindows(specs) {
   const placed = [];
   specs.forEach((spec, i) => {
     const zone = zones[i % zones.length];
-    const w = Math.round(spec.wf * vw);
-    // text window: estimate height for placement, actual height set by CSS
+    const w = spec.wf ? Math.round(spec.wf * vw) : Math.round(vw * 0.28);
+    // text window: estimate height for placement, actual size set by CSS
     const h = spec.ratio
       ? Math.round(w / spec.ratio)
       : spec.hf
         ? Math.round(spec.hf * vh)
-        : Math.round(vh * 0.35); // estimate for text
+        : Math.round(vh * 0.35);
     const maxX = zone.zx + zone.zw - w - PAD;
     const maxY = zone.zy + zone.zh - h - PAD;
     const x = Math.round(Math.max(zone.zx + PAD, Math.min(maxX, zone.zx + PAD + Math.random() * Math.max(0, maxX - zone.zx - PAD))));
@@ -908,7 +911,8 @@ function buildWindows(p, pd) {
     win.className = 'win';
     // text window: set width only, let height be natural
     if (spec.type === 'text') {
-      win.style.cssText = `left:${x}px;top:${y}px;width:${w}px;z-index:${10+idx};`;
+      // width and height both auto — sized purely by content
+      win.style.cssText = `left:${x}px;top:${y}px;z-index:${10+idx};`;
     } else {
       win.style.cssText = `left:${x}px;top:${y}px;width:${w}px;height:${h}px;z-index:${10+idx};`;
     }
