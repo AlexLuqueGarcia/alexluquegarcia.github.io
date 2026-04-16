@@ -783,6 +783,21 @@ function resetThumb(i) {
   b.style.left = '0'; b.style.right = '0'; b.style.width = 'auto';
 }
 
+// Single source of truth for play/pause state
+function setPlaying(val) {
+  playing = val;
+  if (playing) {
+    lastTs = null;
+    schedTick();
+    if (isLndVideo && lndVideo.paused) lndVideo.play();
+    if (lndPlayIcon) lndPlayIcon.innerHTML = '<rect x="1" y="1" width="4" height="12" fill="currentColor"/><rect x="9" y="1" width="4" height="12" fill="currentColor"/>';
+  } else {
+    cancelAnimationFrame(raf);
+    if (isLndVideo && !lndVideo.paused) lndVideo.pause();
+    if (lndPlayIcon) lndPlayIcon.innerHTML = '<path d="M1 1L13 7L1 13V1Z" fill="currentColor"/>';
+  }
+}
+
 function goTo(i) {
   cancelAnimationFrame(raf);
   lastTs = null;
@@ -791,7 +806,8 @@ function goTo(i) {
   setBg(i);
   setActiveThumb(i);
   updateMeta(i);
-  if (playing) schedTick();
+  // always resume when switching project — keeps video + marker in sync
+  setPlaying(true);
 }
 
 function schedTick() { raf = requestAnimationFrame(tick); }
@@ -800,7 +816,7 @@ function tick(ts) {
   if (lastTs === null) lastTs = ts;
   const dt = ts - lastTs; lastTs = ts;
   localProgress += (dt * SPEED) / (projectData[cur].duration * 1000);
-  if (localProgress >= 1) { setProgress(1); goTo((cur+1) % projects.length); return; }
+  if (localProgress >= 1) { setProgress(1); goTo((cur+1) % projectData.length); return; }
   setProgress(localProgress);
   schedTick();
 }
@@ -1152,13 +1168,7 @@ document.addEventListener('keydown', e => {
   if (e.key==='Escape' && detailOpen) closeDetail();
   if (e.key===' ' && !detailOpen) {
     e.preventDefault();
-    if (playing) {
-      playing = false; cancelAnimationFrame(raf);
-      if (isLndVideo) { lndVideo.pause(); lndPlayIcon.innerHTML = '<path d="M1 1L13 7L1 13V1Z" fill="currentColor"/>'; }
-    } else {
-      playing = true; lastTs = null; schedTick();
-      if (isLndVideo) { lndVideo.play(); lndPlayIcon.innerHTML = '<rect x="1" y="1" width="4" height="12" fill="currentColor"/><rect x="9" y="1" width="4" height="12" fill="currentColor"/>'; }
-    }
+    setPlaying(!playing);
   }
 });
 
@@ -1172,17 +1182,7 @@ const isLndVideo  = lndVideo && lndVideo.tagName === 'VIDEO';
 
 lndPlayBtn.addEventListener('click', () => {
   if (!isLndVideo) return;
-  if (lndVideo.paused) {
-    lndVideo.play();
-    lndPlayIcon.innerHTML = '<rect x="1" y="1" width="4" height="12" fill="currentColor"/><rect x="9" y="1" width="4" height="12" fill="currentColor"/>';
-    // resume strip ticker
-    playing = true; lastTs = null; schedTick();
-  } else {
-    lndVideo.pause();
-    lndPlayIcon.innerHTML = '<path d="M1 1L13 7L1 13V1Z" fill="currentColor"/>';
-    // pause strip ticker
-    playing = false; cancelAnimationFrame(raf);
-  }
+  setPlaying(!playing);
 });
 
 lndMuteBtn.addEventListener('click', () => {
@@ -1219,7 +1219,7 @@ window.addEventListener('load', async () => {
 
   // 2. Build strip and start immediately with color fallbacks
   buildStrip();
-  setBg(0); setActiveThumb(0); updateMeta(0); schedTick();
+  setBg(0); setActiveThumb(0); updateMeta(0); setPlaying(true);
 
   // 3. Load thumbnails in the background — doesn't block anything
   loadThumbnailsInBackground();
