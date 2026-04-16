@@ -415,7 +415,7 @@ nav.hide {
 
 <!-- Always-fixed video background -->
 <!-- Always-fixed video background -->
-<div id="video-bg"><video id="video-bg-inner" autoplay muted loop playsinline style="width:100%;height:100%;object-fit:cover;display:block;"><source src="EDIT_black_midi_-WelcomeToHell.mp4" type="video/mp4"></video></div>
+<div id="video-bg"><video id="video-bg-inner" autoplay muted loop playsinline crossorigin="anonymous" style="width:100%;height:100%;object-fit:cover;display:block;"><source src="EDIT_black_midi_-WelcomeToHell.mp4" type="video/mp4"></video></div>
 
 <!-- Custom cursor -->
 <div id="cur">
@@ -513,13 +513,19 @@ nav.hide {
 //   team: Alex Luque Garcia — CG Artist
 //   credits: Studio: x
 
-// Convert Dropbox share URL to direct download URL
+// Convert Dropbox share URL to direct streaming URL
 function fixDropbox(url) {
   if (!url) return null;
-  return url
-    .replace('www.dropbox.com', 'dl.dropboxusercontent.com')
-    .replace('?dl=0', '')
-    .replace('?dl=1', '');
+  url = url.trim();
+  if (url.includes('dropbox.com')) {
+    // Replace domain and force raw=1 for direct streaming
+    url = url.replace('www.dropbox.com', 'dl.dropboxusercontent.com');
+    // Remove any existing dl= or raw= params
+    url = url.replace(/[?&]dl=\d/g, '').replace(/[?&]raw=\d/g, '');
+    // Clean trailing ? or &
+    url = url.replace(/[?&]$/, '');
+  }
+  return url;
 }
 
 function parseInfo(txt) {
@@ -536,14 +542,43 @@ function parseInfo(txt) {
 let projectData    = [];
 let projectDetails = [];
 
+// Fallback projects used when projects.json can't be fetched (e.g. local preview)
+const FALLBACK_PROJECTS = [
+  { folder:'welcome-to-hell',    name:'Welcome To Hell',    client:'Black MIDI',              studio:'x',          type:'CG Artist',                duration:90,  tc:'tc-0', src:'EDIT_black_midi_-WelcomeToHell.mp4' },
+  { folder:'factmix',            name:'FactMix',            client:'AhoSsan KMRU',            studio:'x',          type:'CG Artist',                duration:75,  tc:'tc-2', src:'EDIT_black_midi_-WelcomeToHell.mp4' },
+  { folder:'carnet-jove-2025',   name:'Carnet Jove 2025',   client:'Generalitat de Catalunya',studio:'Olimpic TV', type:'CG Lead',                  duration:120, tc:'tc-5', src:'EDIT_black_midi_-WelcomeToHell.mp4' },
+  { folder:'bold-campaign-2026', name:'BOLD Campaign 2026', client:'Gentle Monster',          studio:'Olimpic TV', type:'VFX Supervisor · CG Lead', duration:60,  tc:'tc-6', src:'EDIT_black_midi_-WelcomeToHell.mp4' },
+];
+const FALLBACK_DETAILS = [
+  { about:'CG work for Black MIDI\'s Welcome To Hell music video.', team:'Alex Luque Garcia — CG Artist', credits:'Studio: x\nDirection: Páraic Mc Gloughlin', images:[] },
+  { about:'CG visuals for the FactMix series featuring AhoSsan and KMRU.', team:'Alex Luque Garcia — CG Artist', credits:'Studio: x\nLabel: Fact Magazine', images:[] },
+  { about:'CG Lead on the Carnet Jove 2025 campaign for the Generalitat de Catalunya.', team:'Alex Luque Garcia — CG Lead', credits:'Studio: Olimpic TV\nClient: Generalitat de Catalunya', images:[] },
+  { about:'VFX Supervisor and CG Lead for the BOLD Campaign 2026 with Gentle Monster.', team:'Alex Luque Garcia — VFX Supervisor · CG Lead', credits:'Studio: Olimpic TV\nClient: Gentle Monster', images:[] },
+];
+
 async function loadProjects() {
   const colors = ['tc-0','tc-1','tc-2','tc-3','tc-4','tc-5','tc-6','tc-7'];
-  const manifest = await fetch('projects/projects.json').then(r => r.json());
 
+  // Try to load projects.json manifest
+  let manifest;
+  try {
+    const res = await fetch('projects/projects.json');
+    if (!res.ok) throw new Error('projects.json not found');
+    manifest = await res.json();
+  } catch(e) {
+    console.warn('projects.json not found — using fallback projects');
+    projectData    = FALLBACK_PROJECTS;
+    projectDetails = FALLBACK_DETAILS;
+    return;
+  }
+
+  // Load each project's info.txt
   const results = await Promise.all(manifest.map(async (folder, idx) => {
     const base = `projects/${folder}`;
     try {
-      const txt  = await fetch(`${base}/info.txt`).then(r => r.text());
+      const res = await fetch(`${base}/info.txt`);
+      if (!res.ok) throw new Error('info.txt missing');
+      const txt  = await res.text();
       const info = parseInfo(txt);
       return {
         proj: {
@@ -554,7 +589,7 @@ async function loadProjects() {
           studio:   info.studio   || '',
           type:     info.type     || '',
           duration: parseInt(info.duration) || 60,
-          src: fixDropbox(info.video) || `${base}/video.mp4`,
+          src:      fixDropbox(info.video) || `${base}/video.mp4`,
         },
         detail: {
           about:   info.about   || '',
@@ -573,6 +608,7 @@ async function loadProjects() {
 
   projectData    = results.map(r => r.proj);
   projectDetails = results.map(r => r.detail);
+  console.log('Projects loaded:', projectData.map(p => `${p.name} → ${p.src}`));
 }
 const SPEED = 6;
 let totalDur = 0;
@@ -687,6 +723,7 @@ const RATIOS = { video: 16/9, img: 16/9, text: null };
 
 // Window specs — wf = fraction of vw, hf = fraction of vh
 function getWinSpecs(p, pd) {
+  pd = pd || { about:'', team:'', credits:'', images:[] };
   const imgs = pd.images || [];
   const ci   = projectData.indexOf(p);
   // cycle images across all project folders for variety
@@ -771,7 +808,7 @@ function buildWindows(p, pd) {
     if (spec.type === 'video') {
       win.classList.add('win-video');
       win.innerHTML = `
-        <video autoplay muted loop playsinline style="width:100%;height:100%;object-fit:cover;display:block;">
+        <video autoplay muted loop playsinline crossorigin="anonymous" style="width:100%;height:100%;object-fit:cover;display:block;">
           <source src="${p.src}" type="video/mp4">
         </video>
         <div class="win-vid-controls">
