@@ -744,8 +744,13 @@ function allThumbs() { return Array.from(document.getElementById('strip-area').q
 function setBg(i) {
   const vid = document.getElementById('video-bg-inner');
   if (vid && vid.tagName === 'VIDEO') {
-    const src = vid.querySelector('source');
-    if (src) { src.src = projectData[i].src; vid.load(); }
+    const srcEl  = vid.querySelector('source');
+    const newSrc = projectData[i].src;
+    if (srcEl && srcEl.src !== newSrc) {
+      srcEl.src = newSrc;
+      vid.load();
+      vid.play();
+    }
   }
 }
 
@@ -1116,8 +1121,11 @@ function openDetail() {
   metaEl.classList.add('hide');
   hintEl.classList.add('hide');
 
-  // pause landing video while in detail
-  if (isLndVideo) lndVideo.pause();
+  // pause landing video, remember position
+  if (isLndVideo) {
+    lndVideo._savedTime = lndVideo.currentTime;
+    lndVideo.pause();
+  }
 
   setTimeout(() => {
     videoBg.classList.add('blurred');
@@ -1136,8 +1144,11 @@ function closeDetail() {
   detailEl.classList.remove('open');
   videoBg.classList.remove('blurred');
 
-  // resume landing video on close (only if playing)
-  if (isLndVideo && playing) lndVideo.play();
+  // resume landing video from saved position
+  if (isLndVideo && playing) {
+    if (lndVideo._savedTime) lndVideo.currentTime = lndVideo._savedTime;
+    lndVideo.play();
+  }
 
   // 2. strip comes back up after detail is gone
   setTimeout(() => {
