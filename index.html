@@ -412,7 +412,7 @@ nav.hide {
 
 /* detail footer */
 #detail-footer {
-  position:absolute;
+  position:fixed;
   bottom:0; left:0; right:0;
   z-index:200;
   display:flex;
@@ -421,7 +421,10 @@ nav.hide {
   padding:1rem 1.6rem;
   font-family:'NM',sans-serif;
   pointer-events:none;
+  opacity:0;
+  transition: opacity 0.3s;
 }
+#detail.open #detail-footer { opacity:1; }
 .df-copy {
   font-size:1.08rem;
   color:#fff;
@@ -523,7 +526,10 @@ nav.hide {
 
   /* Detail page */
   .win-text .wtitle { font-size: 1.2rem; }
-  #detail-footer { padding: 1rem 1.2rem; font-size: 0.75rem; }
+  #detail-footer { padding: 0.8rem 1rem 1.2rem; font-size: 0.75rem; }
+  .df-copy { font-size: 0.75rem; }
+  .df-labels, .df-values { font-size: 0.75rem; gap: 2px; }
+  .df-contact { gap: 1rem; }
 }
 </style>
 </head>
