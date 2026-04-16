@@ -356,6 +356,14 @@ nav.hide {
   pointer-events:all;
 }
 .win-video:hover .win-vid-controls { opacity:1; }
+:fullscreen,
+:-webkit-full-screen { cursor: auto !important; }
+:fullscreen *,
+:-webkit-full-screen * { cursor: auto !important; }
+body.is-fullscreen,
+body.is-fullscreen * { cursor: auto !important; }
+body.is-fullscreen #cur { display: none !important; }
+body.is-fullscreen .win-resize { display: none !important; }
 :fullscreen .win-vid-controls,
 :-webkit-full-screen .win-vid-controls { opacity:1 !important; }
 :fullscreen .win-video video,
@@ -1173,6 +1181,7 @@ function buildWindows(p, pd) {
       // Update FS button icon and keep controls visible in fullscreen
       document.addEventListener('fullscreenchange', () => {
         const isFs = !!document.fullscreenElement;
+        document.body.classList.toggle('is-fullscreen', isFs);
         const fsBtn = win.querySelector('.win-fs-btn svg');
         if (fsBtn) fsBtn.innerHTML = isFs
           ? '<path d="M4 1H1V4M8 1H11V4M1 8V11H4M11 8V11H8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>'
