@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, shrink-to-fit=yes">
 <title>Alex Luque Garcia</title>
 <style>
 @font-face {
@@ -1554,6 +1554,13 @@ mobMuteBtn.addEventListener('click', (e) => {
 
 // ── NAV YEAR ──
 document.getElementById('nav-year').textContent = new Date().getFullYear();
+
+// Reset zoom on orientation change (iOS Safari zooms otherwise)
+window.addEventListener('orientationchange', () => {
+  const meta = document.querySelector('meta[name=viewport]');
+  meta.content = 'width=device-width, initial-scale=1.0, shrink-to-fit=yes';
+  setTimeout(() => { if (projectData.length) buildStrip(); }, 300);
+});
 
 // ── CUSTOM CURSOR ──
 const curEl = document.getElementById('cur');
