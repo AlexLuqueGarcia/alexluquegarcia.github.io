@@ -608,7 +608,6 @@ async function loadThumbnailFrames(base) {
   const nameFn = match.p.name;
   const ext    = match.ext;
 
-  // Probe checkpoints in parallel to find where frames end
   const checkIndices = [9, 19, 29, 39, 59, 99, 149, 199];
   const checkResults = await Promise.all(
     checkIndices.map(async idx => {
@@ -636,7 +635,6 @@ async function loadThumbnailFrames(base) {
     total = lo + 1;
   }
 
-  // sliceCount = total / 2, clamped 4–20
   const sliceCount = Math.max(4, Math.min(20, Math.round(total / 2)));
   const frames = Array.from({length: sliceCount}, (_, i) => {
     const idx = sliceCount === 1 ? 0 : Math.round(i * (total - 1) / (sliceCount - 1));
@@ -764,6 +762,10 @@ function buildStrip() {
     t.addEventListener('click', () => { if (!detailOpen) goTo(i); });
     stripEl.appendChild(t);
   });
+
+  // Restore active state and marker after every rebuild
+  setActiveThumb(cur);
+  setProgress(localProgress);
 }
 
 function buildThumbSlices(frames, fallbackTc, sliceCount) {
@@ -1353,10 +1355,10 @@ document.addEventListener('mouseout', e => {
 // ── INIT ──
 window.addEventListener('resize', () => { if (projectData.length) buildStrip(); });
 window.addEventListener('load', async () => {
-  // 1. Load project metadata (info.txt) — fast text files
+  // 1. Load project metadata
   await loadProjects();
 
-  // 2. Preload first project video immediately — highest browser priority
+  // 2. Preload first video at highest browser priority
   if (projectData[0]?.src) {
     const link = document.createElement('link');
     link.rel = 'preload'; link.as = 'video';
@@ -1364,29 +1366,27 @@ window.addEventListener('load', async () => {
     document.head.appendChild(link);
   }
 
-  // 3. Build strip with color fallbacks and start playing
+  // 3. Build strip with color fallbacks, start playing
   buildStrip();
   setBg(0); setActiveThumb(0); updateMeta(0); setPlaying(true);
 
-  // 4. Load first project thumbnails immediately — visible in strip right away
-  const firstBase = `projects/${projectData[0].folder}`;
-  const firstPd   = projectDetails[0];
+  // 4. First project thumbnails — await so strip fills in fast
+  const firstPd = projectDetails[0];
   if (!firstPd.thumbFrames?.length) {
-    const result = await loadThumbnailFrames(firstBase);
+    const result = await loadThumbnailFrames(`projects/${projectData[0].folder}`);
     if (result.frames.length > 0) {
       firstPd.thumbFrames = result.frames;
       firstPd.sliceCount  = result.sliceCount;
-      buildStrip();
+      buildStrip(); // restores active thumb + marker via setActiveThumb/setProgress
     }
   }
 
-  // 5. Load remaining thumbnails all in parallel (non-blocking)
+  // 5. Remaining thumbnails — all in parallel, non-blocking
   Promise.all(projectData.slice(1).map(async (p, j) => {
-    const i    = j + 1;
-    const base = `projects/${p.folder}`;
-    const pd   = projectDetails[i];
+    const i  = j + 1;
+    const pd = projectDetails[i];
     if (!pd.thumbFrames?.length) {
-      const result = await loadThumbnailFrames(base);
+      const result = await loadThumbnailFrames(`projects/${p.folder}`);
       if (result.frames.length > 0) {
         pd.thumbFrames = result.frames;
         pd.sliceCount  = result.sliceCount;
@@ -1395,7 +1395,7 @@ window.addEventListener('load', async () => {
     }
   }));
 
-  // 6. Detail images — lowest priority, load after everything else
+  // 6. Detail images — lowest priority, not visible on landing
   setTimeout(() => {
     projectData.forEach(async (p, i) => {
       const pd = projectDetails[i];
@@ -1406,7 +1406,7 @@ window.addEventListener('load', async () => {
   }, 2000);
 });
 
-async function loadThumbnailsInBackground() {} // kept for compat, no longer used
+async function loadThumbnailsInBackground() {} // no longer used
 </script>
 </body>
 </html>
