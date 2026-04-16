@@ -719,6 +719,7 @@ let totalDur = 0;
 // Build strip thumbs from loaded data
 function buildStrip() {
   totalDur = projectData.reduce((s,p) => s + p.duration, 0);
+  const minDur = Math.min(...projectData.map(p => p.duration));
   stripEl.innerHTML = '';
   projectData.forEach((p, i) => {
     const pct = (p.duration / totalDur * 100).toFixed(4) + '%';
@@ -727,8 +728,16 @@ function buildStrip() {
     t.dataset.i   = i;
     t.style.width = pct;
 
+    // Slice count proportional to duration — shortest project gets MIN_SLICES,
+    // longer ones get proportionally more so each slice = same time unit
+    const MIN_SLICES = 6;
+    const MAX_SLICES = 20;
+    const sliceCount = Math.round(
+      Math.min(MAX_SLICES, Math.max(MIN_SLICES, (p.duration / minDur) * MIN_SLICES))
+    );
+
     const frames     = projectDetails[i] && projectDetails[i].thumbFrames || [];
-    const slicesHTML = buildThumbSlices(frames, p.tc);
+    const slicesHTML = buildThumbSlices(frames, p.tc, sliceCount);
 
     t.innerHTML = `
       <div class="thumb-bg">${slicesHTML}</div>
@@ -740,17 +749,20 @@ function buildStrip() {
   });
 }
 
-function buildThumbSlices(frames, fallbackTc) {
+function buildThumbSlices(frames, fallbackTc, sliceCount) {
+  const N = sliceCount || 12;
   if (!frames || frames.length === 0) {
-    // No frames — solid color with slight brightness variation per slice
-    const N = 12;
     return Array.from({length: N}, (_, i) => {
       const b = 0.7 + (i % 4) * 0.1;
       return `<div class="thumb-slice ${fallbackTc}" style="filter:brightness(${b})"></div>`;
     }).join('');
   }
-  // One slice per frame, each fills the full height, cover the slice width
-  return frames.map(src =>
+  // Pick N evenly-spaced frames from the available set
+  const picked = Array.from({length: N}, (_, i) => {
+    const idx = N === 1 ? 0 : Math.round(i * (frames.length - 1) / (N - 1));
+    return frames[Math.min(idx, frames.length - 1)];
+  });
+  return picked.map(src =>
     `<div class="thumb-slice" style="background-image:url('${src}');background-size:cover;background-position:center center;"></div>`
   ).join('');
 }
@@ -1345,7 +1357,11 @@ async function loadThumbnailsInBackground() {
       if (frames.length > 0) {
         pd.thumbFrames = frames;
         const thumbBg = document.querySelector(`.thumb[data-i="${i}"] .thumb-bg`);
-        if (thumbBg) thumbBg.innerHTML = buildThumbSlices(frames, projectData[i].tc);
+        if (thumbBg) {
+          const minDur = Math.min(...projectData.map(p => p.duration));
+          const sliceCount = Math.round(Math.min(20, Math.max(6, (projectData[i].duration / minDur) * 6)));
+          thumbBg.innerHTML = buildThumbSlices(frames, projectData[i].tc, sliceCount);
+        }
       }
     }
 
