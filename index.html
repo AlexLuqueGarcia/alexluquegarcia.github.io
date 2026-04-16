@@ -662,10 +662,11 @@ async function loadProjects() {
           about:       info.about   || '',
           team:        info.team    || '',
           credits:     info.credits || '',
-          images:      await loadImages(base, info.images),
+          imagesHint:  info.images  || '', // used later by background loader
+          images:      [],
           thumbFrames: info.frames
             ? info.frames.split(',').map(f => `${base}/thumbnail/${f.trim()}`)
-            : await loadThumbnailFrames(base),
+            : [],
           get thumb()  { return this.images[0] || null; }
         }
       };
@@ -1203,10 +1204,38 @@ document.addEventListener('mouseout', e => {
 
 // ── INIT ──
 window.addEventListener('load', async () => {
+  // 1. Load project metadata (info.txt) — fast, no image probing yet
   await loadProjects();
+
+  // 2. Build strip and start immediately with color fallbacks
   buildStrip();
   setBg(0); setActiveThumb(0); updateMeta(0); schedTick();
+
+  // 3. Load thumbnails in the background — doesn't block anything
+  loadThumbnailsInBackground();
 });
+
+async function loadThumbnailsInBackground() {
+  for (let i = 0; i < projectDetails.length; i++) {
+    const base = `projects/${projectData[i].folder}`;
+    const pd   = projectDetails[i];
+
+    // Load thumbnail frames for strip
+    if (!pd.thumbFrames || pd.thumbFrames.length === 0) {
+      const frames = await loadThumbnailFrames(base);
+      if (frames.length > 0) {
+        pd.thumbFrames = frames;
+        const thumbBg = document.querySelector(`.thumb[data-i="${i}"] .thumb-bg`);
+        if (thumbBg) thumbBg.innerHTML = buildThumbSlices(frames, projectData[i].tc);
+      }
+    }
+
+    // Load detail images
+    if (!pd.images || pd.images.length === 0) {
+      pd.images = await loadImages(base, pd.imagesHint);
+    }
+  }
+}
 </script>
 </body>
 </html>
