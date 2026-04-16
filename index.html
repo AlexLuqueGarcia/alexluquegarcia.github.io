@@ -91,6 +91,11 @@ nav.hide {
   color:#fff;
 }
 .nav-brand { text-align:center; }
+#nav-brand-inner {
+  display:inline-block;
+  text-align:left;
+  overflow:visible;
+}
 .nav-brand .name {
   font-size:1.32rem; color:#fff;
   display:block; font-weight:500; line-height:1.4;
@@ -573,8 +578,10 @@ body.is-fullscreen .win-resize { display: none !important; }
     <a href="#" onclick="goHome();return false;">Feed</a><a href="#">Work</a><a href="#">Info</a>
   </div>
   <div class="nav-brand" onclick="goHome()" style="cursor:pointer;">
-    <span class="name">Alex Luque Garcia</span>
-    <span class="tagline">Visual Artist & Generalist</span>
+    <div id="nav-brand-inner">
+      <span class="name">Alex Luque Garcia</span>
+      <span class="tagline">Visual Artist & Generalist</span>
+    </div>
   </div>
   <div class="nav-links">
     <a href="#" onclick="closeDetail();return false;">Contact</a><span id="nav-year"></span>
@@ -1559,18 +1566,25 @@ mobMuteBtn.addEventListener('click', (e) => {
 // ── NAV YEAR ──
 document.getElementById('nav-year').textContent = new Date().getFullYear();
 
-// Scale tagline horizontally to match name width
+// Scale tagline horizontally to match name width exactly
 function fitTagline() {
-  const name    = document.querySelector('.nav-brand .name');
-  const tagline = document.querySelector('.nav-brand .tagline');
-  if (!name || !tagline) return;
+  const name     = document.querySelector('.nav-brand .name');
+  const tagline  = document.querySelector('.nav-brand .tagline');
+  const inner    = document.getElementById('nav-brand-inner');
+  if (!name || !tagline || !inner) return;
+  // Reset
   tagline.style.transform = '';
+  inner.style.width = '';
+  // Measure name width and lock container to it
   const nameW = name.offsetWidth;
-  const tagW  = tagline.offsetWidth;
+  inner.style.width = nameW + 'px';
+  // Scale tagline to fill that exact width
+  const tagW = tagline.offsetWidth;
   if (tagW > 0) tagline.style.transform = `scaleX(${nameW / tagW})`;
 }
 window.addEventListener('load', fitTagline);
 window.addEventListener('resize', fitTagline);
+document.fonts.ready.then(fitTagline);
 
 // ── CUSTOM CURSOR ──
 const curEl = document.getElementById('cur');
