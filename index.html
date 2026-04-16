@@ -91,21 +91,13 @@ nav.hide {
   color:#fff;
 }
 .nav-brand { text-align:center; }
-#nav-brand-inner {
-  display:inline-block;
-  text-align:left;
-  overflow:visible;
-}
 .nav-brand .name {
-  font-size:1.32rem; color:#fff;
+  font-size:1.23rem; color:#fff;
   display:block; font-weight:500; line-height:1.4;
-  white-space:nowrap;
 }
 .nav-brand .tagline {
-  font-size:1.14rem; color:#fff;
+  font-size:1.23rem; color:#fff;
   display:block; margin-top:1px; line-height:1.4;
-  white-space:nowrap;
-  transform-origin: left top;
 }
 
 /* ── META — fixed above strip ── */
@@ -512,8 +504,7 @@ body.is-fullscreen .win-resize { display: none !important; }
   nav { padding: 0.9rem 1rem; }
   .nav-links { gap: 1.2rem; }
   .nav-links a, #nav-year { font-size: 0.85rem; }
-  .nav-brand .name    { font-size: 0.9rem; }
-  .nav-brand .tagline { font-size: 0.9rem; }
+  .nav-brand .name, .nav-brand .tagline { font-size: 0.85rem; }
 
   /* Meta */
   #meta { left: 1rem; bottom: calc(var(--strip-h) + var(--pad-b) + 14px); }
@@ -578,10 +569,8 @@ body.is-fullscreen .win-resize { display: none !important; }
     <a href="#" onclick="goHome();return false;">Feed</a><a href="#">Work</a><a href="#">Info</a>
   </div>
   <div class="nav-brand" onclick="goHome()" style="cursor:pointer;">
-    <div id="nav-brand-inner">
-      <span class="name">Alex Luque Garcia</span>
-      <span class="tagline">Visual Artist & Generalist</span>
-    </div>
+    <span class="name">Alex Luque Garcia</span>
+    <span class="tagline">Visual Artist & Generalist</span>
   </div>
   <div class="nav-links">
     <a href="#" onclick="closeDetail();return false;">Contact</a><span id="nav-year"></span>
@@ -1565,35 +1554,6 @@ mobMuteBtn.addEventListener('click', (e) => {
 
 // ── NAV YEAR ──
 document.getElementById('nav-year').textContent = new Date().getFullYear();
-
-// Scale tagline horizontally to match name width exactly
-function fitTagline() {
-  const name    = document.querySelector('.nav-brand .name');
-  const tagline = document.querySelector('.nav-brand .tagline');
-  const inner   = document.getElementById('nav-brand-inner');
-  if (!name || !tagline || !inner) return;
-
-  // Reset
-  tagline.style.transform = '';
-  inner.style.width = '';
-
-  // Measure name
-  const nameW = name.offsetWidth;
-
-  // Measure tagline unconstrained via a temporary off-screen clone
-  const clone = tagline.cloneNode(true);
-  clone.style.cssText = 'position:fixed;visibility:hidden;white-space:nowrap;transform:none;width:auto;';
-  document.body.appendChild(clone);
-  const tagW = clone.offsetWidth;
-  document.body.removeChild(clone);
-
-  // Lock container and scale
-  inner.style.width = nameW + 'px';
-  if (tagW > 0) tagline.style.transform = `scaleX(${nameW / tagW})`;
-}
-window.addEventListener('load', fitTagline);
-window.addEventListener('resize', fitTagline);
-document.fonts.ready.then(fitTagline);
 
 // ── CUSTOM CURSOR ──
 const curEl = document.getElementById('cur');
