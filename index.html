@@ -1180,12 +1180,19 @@ const lndMuteBtn  = document.getElementById('lnd-mute');
 const lndWaves    = document.getElementById('lnd-waves');
 const isLndVideo  = lndVideo && lndVideo.tagName === 'VIDEO';
 
-lndPlayBtn.addEventListener('click', () => {
+lndPlayBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
   if (!isLndVideo) return;
   setPlaying(!playing);
 });
 
-lndMuteBtn.addEventListener('click', () => {
+// Click landing video → next project
+videoBg.addEventListener('click', () => {
+  if (!detailOpen) goTo((cur + 1) % projectData.length);
+});
+
+lndMuteBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
   if (!isLndVideo) return;
   lndVideo.muted = !lndVideo.muted;
   lndWaves.style.opacity = lndVideo.muted ? '0.15' : '1';
