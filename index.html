@@ -1019,28 +1019,26 @@ function getWinSpecs(p, pd) {
     type:'img', wf: widths[i % widths.length], hf:null, ratio:16/9, src
   }));
   return [
-    { type:'video', wf:0.40, hf:null, ratio:16/9 },
-    { type:'text',  wf:0.30, hf:0.52, ratio:null, p, pd },
+    { type:'video', wf:0.40, hf:null,  ratio:16/9 },
+    { type:'text',  wf:0.30, hf:0.50,  ratio:null, p, pd },
     ...imgSpecs,
   ];
 }
 
-// Grid-based placement — every window guaranteed fully inside viewport
+// Grid-based placement — one window per zone, no overlaps, nothing off-screen
 function packWindows(specs) {
   const vw  = window.innerWidth;
   const vh  = window.innerHeight;
-  const PAD = 16;
+  const PAD = 20;
   const TOP = 60;
   const BOT = 20;
-  const usableW = vw - PAD * 2;
-  const usableH = vh - TOP - BOT;
 
   const cols = 3;
   const rows = Math.max(2, Math.ceil(specs.length / cols));
-  const zw   = (usableW - PAD * (cols - 1)) / cols;
-  const zh   = (usableH - PAD * (rows - 1)) / rows;
+  const zw   = Math.floor((vw - PAD * (cols + 1)) / cols);
+  const zh   = Math.floor((vh - TOP - BOT - PAD * (rows + 1)) / rows);
 
-  // Build zones (not shuffled — text always gets a predictable slot)
+  // Build zones row by row
   const zones = [];
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
@@ -1052,75 +1050,46 @@ function packWindows(specs) {
     }
   }
 
-  // Shuffle only the non-text specs, keep text (index 1) fixed to right zone
-  const textSpec  = specs[1];
-  const otherSpecs = specs.filter((_, i) => i !== 1);
-
-  // Shuffle zones for other windows
-  const shuffledZones = [...zones];
-  for (let i = shuffledZones.length - 1; i > 0; i--) {
+  // Shuffle zones so layout feels random each visit
+  for (let i = zones.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
-    [shuffledZones[i], shuffledZones[j]] = [shuffledZones[j], shuffledZones[i]];
+    [zones[i], zones[j]] = [zones[j], zones[i]];
   }
 
-  const placed = [];
+  return specs.map((spec, i) => {
+    const zone = zones[i % zones.length];
 
-  function placeSpec(spec, zone) {
-    // Width — capped to zone
-    let w = spec.wf ? Math.round(spec.wf * vw) : Math.round(zone.zw * 0.92);
+    // Compute width — capped to zone width
+    let w = spec.wf ? Math.round(spec.wf * vw) : Math.round(zone.zw * 0.9);
     w = Math.min(w, zone.zw);
 
-    // Height
+    // Hard max-width for text so it never gets too wide or overflows
+    if (spec.type === 'text') w = Math.min(w, Math.round(vw * 0.30), zone.zw);
+
+    // Compute height
     let h = spec.ratio
       ? Math.round(w / spec.ratio)
-      : spec.hf
-        ? Math.round(spec.hf * vh)
-        : Math.round(zone.zh * 0.85);
+      : Math.round(spec.hf * vh);
 
-    // Clamp height to zone
+    // Shrink to fit zone height, maintaining ratio
     if (h > zone.zh) {
-      h = Math.round(zone.zh);
-      if (spec.ratio) w = Math.round(h * spec.ratio);
-      w = Math.min(w, zone.zw);
+      h = zone.zh;
+      if (spec.ratio) w = Math.min(Math.round(h * spec.ratio), zone.zw);
     }
 
-    // Random position within zone, fully clamped inside viewport
-    const maxX = Math.max(zone.zx, zone.zx + zone.zw - w);
-    const maxY = Math.max(zone.zy, zone.zy + zone.zh - h);
-    const x = Math.round(zone.zx + Math.random() * Math.max(0, maxX - zone.zx));
-    const y = Math.round(zone.zy + Math.random() * Math.max(0, maxY - zone.zy));
+    // Random offset within zone
+    const rx = Math.random() * Math.max(0, zone.zw - w);
+    const ry = Math.random() * Math.max(0, zone.zh - h);
+    const x  = Math.round(zone.zx + rx);
+    const y  = Math.round(zone.zy + ry);
 
-    // Hard clamp to viewport
+    // Hard clamp — never off-screen
     return {
       x: Math.max(0, Math.min(vw - w, x)),
-      y: Math.max(TOP, Math.min(vh - h - BOT, y)),
+      y: Math.max(TOP, Math.min(vh - BOT - h, y)),
       w, h, spec
     };
-  }
-
-  // Place other specs first, each in its own zone
-  otherSpecs.forEach((spec, i) => {
-    placed.push(placeSpec(spec, shuffledZones[i % shuffledZones.length]));
   });
-
-  // Place text in the rightmost available zone, guaranteed on screen
-  const textZone = {
-    zx: PAD,
-    zy: TOP + PAD,
-    zw: Math.round(vw * 0.32),
-    zh: Math.round(usableH * 0.9)
-  };
-  const tw = Math.round(Math.min(textZone.zw, vw * 0.30));
-  const th = Math.round(Math.min(textZone.zh, vh * 0.52));
-  const tx = PAD + Math.round(Math.random() * Math.max(0, textZone.zw - tw));
-  const ty = TOP + PAD + Math.round(Math.random() * Math.max(0, textZone.zh - th));
-  placed.push({
-    x: Math.max(0, Math.min(vw - tw, tx)),
-    y: Math.max(TOP, Math.min(vh - th - BOT, ty)),
-    w: tw, h: th, spec: textSpec
-  });
-
-  return placed;
 }
 
 function buildWindows(p, pd) {
