@@ -453,6 +453,41 @@ nav.hide {
 .tc-5{background:linear-gradient(160deg,#103040,#081e2c);}
 .tc-6{background:linear-gradient(160deg,#401018,#280810);}
 .tc-7{background:linear-gradient(160deg,#282828,#141414);}
+
+/* ── MOBILE ── */
+@media (max-width: 768px) {
+  /* Restore normal cursor on touch devices */
+  html, body { cursor: auto; }
+  * { cursor: auto !important; }
+  #cur { display: none !important; }
+
+  /* Nav */
+  nav { padding: 0.9rem 1rem; }
+  .nav-links { gap: 1.2rem; }
+  .nav-links a { font-size: 0.85rem; }
+  .nav-brand .name    { font-size: 0.9rem; }
+  .nav-brand .tagline { font-size: 0.75rem; }
+
+  /* Meta */
+  #meta { left: 1rem; bottom: calc(var(--strip-h) + var(--pad-b) + 14px); }
+  #meta .m-studio { font-size: 0.75rem; }
+  #meta .m-title  { font-size: 1.2rem; }
+  #meta .m-role   { font-size: 0.75rem; }
+
+  /* Scroll hint */
+  #scroll-hint { right: 1rem; }
+  #scroll-hint span { font-size: 1.3rem; }
+
+  /* Strip labels */
+  .thumb-label { font-size: 0.7rem; }
+
+  /* Strip height */
+  :root { --strip-h: 56px; }
+
+  /* Detail page */
+  .win-text .wtitle { font-size: 1.2rem; }
+  #detail-footer { padding: 1rem 1.2rem; font-size: 0.75rem; }
+}
 </style>
 </head>
 <body>
@@ -1360,23 +1395,22 @@ lndMuteBtn.addEventListener('click', (e) => {
 // ── CUSTOM CURSOR ──
 const curEl = document.getElementById('cur');
 const hoverTargets = 'a, button, [onclick], .thumb, .win, .win-resize-drag, #scroll-hint span, #scroll-hint .scroll-arrow, .df-values a';
+const isTouch = window.matchMedia('(pointer: coarse)').matches;
 
-document.addEventListener('mousemove', e => {
-  curEl.style.left = e.clientX + 'px';
-  curEl.style.top  = e.clientY + 'px';
-});
+if (!isTouch) {
+  document.addEventListener('mousemove', e => {
+    curEl.style.left = e.clientX + 'px';
+    curEl.style.top  = e.clientY + 'px';
+  });
 
-document.addEventListener('mouseover', e => {
-  if (e.target.closest(hoverTargets)) {
-    document.body.classList.add('cur-hover');
-  }
-});
+  document.addEventListener('mouseover', e => {
+    if (e.target.closest(hoverTargets)) document.body.classList.add('cur-hover');
+  });
 
-document.addEventListener('mouseout', e => {
-  if (e.target.closest(hoverTargets)) {
-    document.body.classList.remove('cur-hover');
-  }
-});
+  document.addEventListener('mouseout', e => {
+    if (e.target.closest(hoverTargets)) document.body.classList.remove('cur-hover');
+  });
+}
 
 // ── INIT ──
 window.addEventListener('resize', () => { if (projectData.length) buildStrip(); });
