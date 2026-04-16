@@ -1568,18 +1568,27 @@ document.getElementById('nav-year').textContent = new Date().getFullYear();
 
 // Scale tagline horizontally to match name width exactly
 function fitTagline() {
-  const name     = document.querySelector('.nav-brand .name');
-  const tagline  = document.querySelector('.nav-brand .tagline');
-  const inner    = document.getElementById('nav-brand-inner');
+  const name    = document.querySelector('.nav-brand .name');
+  const tagline = document.querySelector('.nav-brand .tagline');
+  const inner   = document.getElementById('nav-brand-inner');
   if (!name || !tagline || !inner) return;
+
   // Reset
   tagline.style.transform = '';
   inner.style.width = '';
-  // Measure name width and lock container to it
+
+  // Measure name
   const nameW = name.offsetWidth;
+
+  // Measure tagline unconstrained via a temporary off-screen clone
+  const clone = tagline.cloneNode(true);
+  clone.style.cssText = 'position:fixed;visibility:hidden;white-space:nowrap;transform:none;width:auto;';
+  document.body.appendChild(clone);
+  const tagW = clone.offsetWidth;
+  document.body.removeChild(clone);
+
+  // Lock container and scale
   inner.style.width = nameW + 'px';
-  // Scale tagline to fill that exact width
-  const tagW = tagline.offsetWidth;
   if (tagW > 0) tagline.style.transform = `scaleX(${nameW / tagW})`;
 }
 window.addEventListener('load', fitTagline);
