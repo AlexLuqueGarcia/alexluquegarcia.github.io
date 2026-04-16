@@ -852,29 +852,31 @@ function getWinSpecs(p, pd) {
   ];
 }
 
-// Grid-based non-overlapping placement
-// Divide screen into zones, shuffle, assign one window per zone
+// Grid-based placement — every window guaranteed fully inside viewport
 function packWindows(specs) {
   const vw  = window.innerWidth;
   const vh  = window.innerHeight;
-  const PAD = 14;
-  const TOP = 52;
-  const n   = specs.length;
+  const PAD = 16;
+  const TOP = 60;
+  const BOT = 20;
+  const usableH = vh - TOP - BOT;
 
-  // Build enough grid zones to cover all specs
-  // Use 3 columns, as many rows as needed
   const cols = 3;
-  const rows = Math.max(2, Math.ceil(n / cols));
-  const zw   = vw / cols;
-  const zh   = (vh - TOP) / rows;
+  const rows = Math.max(2, Math.ceil(specs.length / cols));
+  const zw   = (vw - PAD * (cols + 1)) / cols;
+  const zh   = (usableH - PAD * (rows + 1)) / rows;
 
+  // Build and shuffle zones
   const zones = [];
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
-      zones.push({ zx: c * zw, zy: TOP + r * zh, zw, zh });
+      zones.push({
+        zx: PAD + c * (zw + PAD),
+        zy: TOP + PAD + r * (zh + PAD),
+        zw, zh
+      });
     }
   }
-  // Shuffle
   for (let i = zones.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [zones[i], zones[j]] = [zones[j], zones[i]];
@@ -883,17 +885,31 @@ function packWindows(specs) {
   const placed = [];
   specs.forEach((spec, i) => {
     const zone = zones[i % zones.length];
-    const w = spec.wf ? Math.round(spec.wf * vw) : Math.round(vw * 0.28);
-    // text window: estimate height for placement, actual size set by CSS
-    const h = spec.ratio
+
+    // Desired width — cap to zone width
+    let w = spec.wf ? Math.round(spec.wf * vw) : Math.round(zw * 0.9);
+    w = Math.min(w, zone.zw);
+
+    // Desired height
+    let h = spec.ratio
       ? Math.round(w / spec.ratio)
       : spec.hf
         ? Math.round(spec.hf * vh)
-        : Math.round(vh * 0.35);
-    const maxX = zone.zx + zone.zw - w - PAD;
-    const maxY = zone.zy + zone.zh - h - PAD;
-    const x = Math.round(Math.max(zone.zx + PAD, Math.min(maxX, zone.zx + PAD + Math.random() * Math.max(0, maxX - zone.zx - PAD))));
-    const y = Math.round(Math.max(zone.zy + PAD, Math.min(maxY, zone.zy + PAD + Math.random() * Math.max(0, maxY - zone.zy - PAD))));
+        : Math.round(zh * 0.85);
+
+    // If height overflows zone, shrink to fit (maintain ratio)
+    if (h > zone.zh) {
+      h = Math.round(zone.zh);
+      if (spec.ratio) w = Math.round(h * spec.ratio);
+      w = Math.min(w, zone.zw);
+    }
+
+    // Random position within zone, fully clamped
+    const maxX = zone.zx + zone.zw - w;
+    const maxY = zone.zy + zone.zh - h;
+    const x = Math.round(Math.max(zone.zx, Math.min(maxX, zone.zx + Math.random() * Math.max(0, maxX - zone.zx))));
+    const y = Math.round(Math.max(zone.zy, Math.min(maxY, zone.zy + Math.random() * Math.max(0, maxY - zone.zy))));
+
     placed.push({ x, y, w, h, spec });
   });
   return placed;
