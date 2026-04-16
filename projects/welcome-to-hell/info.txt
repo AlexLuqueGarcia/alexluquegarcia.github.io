@@ -1,0 +1,11 @@
+name: Welcome To Hell
+client: Black MIDI
+studio: x
+type: CG Artist
+duration: 90
+color: tc-0
+about: CG work for Black MIDI's Welcome To Hell music video. Directed by Páraic Mc Gloughlin, combining hand-drawn 2D animation with procedural 3D environments.
+team: Alex Luque Garcia — CG Artist
+credits: Studio: x
+Direction: Páraic Mc Gloughlin
+Animation: Black MIDI
