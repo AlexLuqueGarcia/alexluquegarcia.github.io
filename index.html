@@ -580,14 +580,14 @@ const FALLBACK_DETAILS = [
 async function loadThumbnailFrames(base) {
   const dir  = `${base}/thumbnail`;
   const exts = ['png','jpg','jpeg','webp'];
+  const MAX  = 20;
 
-  // Probe all likely names in parallel — max 20 frames
-  // Supports: video_100.png, 01.png, frame_001.png, frame001.png
+  // Probe up to 200 frames in parallel across all naming patterns
   const names = [
-    ...Array.from({length:20}, (_,i) => `video_${100+i}`),
-    ...Array.from({length:20}, (_,i) => String(i+1).padStart(2,'0')),
-    ...Array.from({length:20}, (_,i) => `frame_${String(i+1).padStart(3,'0')}`),
-    ...Array.from({length:20}, (_,i) => `frame${String(i+1).padStart(3,'0')}`),
+    ...Array.from({length:200}, (_,i) => `video_${100+i}`),
+    ...Array.from({length:100}, (_,i) => String(i+1).padStart(2,'0')),
+    ...Array.from({length:100}, (_,i) => `frame_${String(i+1).padStart(3,'0')}`),
+    ...Array.from({length:100}, (_,i) => `frame${String(i+1).padStart(3,'0')}`),
   ];
 
   const candidates = names.flatMap(name => exts.map(ext => `${dir}/${name}.${ext}`));
@@ -597,9 +597,9 @@ async function loadThumbnailFrames(base) {
     catch { return null; }
   }));
 
-  // Keep first extension match per name, deduplicate, natural sort
+  // Deduplicate by stem, natural sort — gives us all frames in order
   const seen = new Set();
-  return found
+  const all = found
     .filter(url => {
       if (!url) return false;
       const stem = url.replace(/\.[^.]+$/, '');
@@ -607,8 +607,16 @@ async function loadThumbnailFrames(base) {
       seen.add(stem);
       return true;
     })
-    .sort((a, b) => a.localeCompare(b, undefined, {numeric: true}))
-    .slice(0, 20);
+    .sort((a, b) => a.localeCompare(b, undefined, {numeric: true}));
+
+  // If we have MAX or fewer, use all. Otherwise subsample evenly.
+  if (all.length <= MAX) return all;
+
+  // Pick MAX frames evenly distributed from first to last
+  return Array.from({length: MAX}, (_, i) => {
+    const idx = Math.round(i * (all.length - 1) / (MAX - 1));
+    return all[idx];
+  });
 }
 
 // Load images for a project folder.
