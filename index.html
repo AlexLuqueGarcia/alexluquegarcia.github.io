@@ -1103,10 +1103,9 @@ function buildWindows(p, pd) {
     const { x, y, w, h, spec } = item;
     const win = document.createElement('div');
     win.className = 'win';
-    // text window: set width only, let height be natural
+    // text window: set width + max-width inline; max-width removed when user resizes
     if (spec.type === 'text') {
-      // width and height both auto — sized purely by content
-      win.style.cssText = `left:${x}px;top:${y}px;z-index:${10+idx};`;
+      win.style.cssText = `left:${x}px;top:${y}px;width:${w}px;max-width:${w}px;z-index:${10+idx};`;
     } else {
       win.style.cssText = `left:${x}px;top:${y}px;width:${w}px;height:${h}px;z-index:${10+idx};`;
     }
@@ -1273,6 +1272,8 @@ function makeResizable(el) {
 
     handle.addEventListener('mousedown', e => {
       active = true;
+      // Remove max-width constraint on first resize so it can grow freely
+      el.style.maxWidth = '';
       sx = e.clientX; sy = e.clientY;
       ox = parseInt(el.style.left) || 0;
       oy = parseInt(el.style.top)  || 0;
