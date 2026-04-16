@@ -340,9 +340,7 @@ nav.hide {
   backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
   padding:1.6rem 1.8rem 1.8rem;
   font-family:'NM',sans-serif;
-  overflow:visible;
-  width:auto !important;
-  height:auto !important;
+  overflow:hidden;
   min-width:220px;
   max-width:420px;
 }
@@ -1007,6 +1005,18 @@ function buildWindows(p, pd) {
     }
 
     canvasInner.appendChild(win);
+
+    // For text windows: measure natural rendered size and lock that as aspect ratio
+    if (spec.type === 'text') {
+      const rect = win.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) {
+        win._ratio = rect.width / rect.height;
+        // Now fix both dimensions so resize works
+        win.style.width  = rect.width  + 'px';
+        win.style.height = rect.height + 'px';
+      }
+    }
+
     makeDraggable(win);
     makeResizable(win);
   });
