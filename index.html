@@ -82,17 +82,17 @@ nav.hide {
 }
 .nav-links { display:flex; gap:2rem; }
 .nav-links a {
-  font-size:0.82rem;
-  color:var(--dim); text-decoration:none; transition:color 0.2s;
+  font-size:1.23rem;
+  color:#fff; text-decoration:none; transition:color 0.2s;
 }
-.nav-links a:hover { color:#fff; }
+.nav-links a:hover { color:#fff; opacity:0.6; }
 .nav-brand { text-align:center; }
 .nav-brand .name {
-  font-size:0.88rem; color:#fff;
+  font-size:1.32rem; color:#fff;
   display:block; font-weight:500; line-height:1.4;
 }
 .nav-brand .tagline {
-  font-size:0.76rem; color:var(--dim);
+  font-size:1.14rem; color:#fff;
   display:block; margin-top:1px; line-height:1.4;
 }
 
@@ -112,17 +112,17 @@ nav.hide {
   opacity:0;
 }
 #meta .m-studio {
-  font-size:0.72rem; color:var(--dim);
+  font-size:1.08rem; color:#fff;
   margin-bottom:6px; line-height:1.4;
   letter-spacing:0.04em;
 }
 #meta .m-title {
-  font-size:1.2rem; color:#fff;
+  font-size:1.8rem; color:#fff;
   font-weight:500; line-height:1.3;
   margin-bottom:6px;
 }
 #meta .m-role {
-  font-size:0.72rem; color:var(--dim);
+  font-size:1.08rem; color:#fff;
   line-height:1.4;
 }
 
@@ -143,9 +143,11 @@ nav.hide {
   transform: translateY(calc(var(--strip-h) + var(--pad-b) + 60px));
   opacity:0;
 }
-#scroll-hint .vid-btn { color:var(--dim); }
-#scroll-hint .vid-btn:hover { color:#fff; }
-#scroll-hint span { font-size:1.2rem; color:var(--dim); cursor:pointer; font-weight:300; }
+#scroll-hint .vid-btn { color:#fff; }
+#scroll-hint .vid-btn:hover { color:#fff; opacity:0.6; }
+#scroll-hint span { cursor:pointer; }
+#scroll-hint span:hover { opacity:0.6; }
+#scroll-hint span { font-size:1.8rem; color:#fff; cursor:pointer; font-weight:300; }
 #scroll-hint .scroll-arrow { animation:bob 1.8s ease-in-out infinite; cursor:pointer; }
 @keyframes bob {
   0%,100%{transform:translateY(0);}
@@ -175,6 +177,7 @@ nav.hide {
   border-right:1px solid rgba(0,0,0,0.5);
 }
 .thumb:last-child { border-right:none; }
+.thumb:hover .thumb-bg { filter:brightness(0.6); }
 .thumb-bg {
   width:100%; height:100%;
   display:flex; /* slices sit side by side */
@@ -203,7 +206,7 @@ nav.hide {
 .thumb.active .thumb-marker { opacity:1; }
 .thumb-label {
   position:absolute; bottom:6px; left:7px; right:4px;
-  font-size:0.7rem; color:rgba(255,255,255,0.65);
+  font-size:1.05rem; color:#fff;
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
   pointer-events:none; z-index:9;
 }
@@ -267,11 +270,11 @@ nav.hide {
 
 .vid-btn {
   background:none; border:none; cursor:pointer;
-  color:rgba(255,255,255,0.55); padding:0;
+  color:#fff; padding:0;
   display:flex; align-items:center; justify-content:center;
   transition:color 0.15s;
 }
-.vid-btn:hover { color:#fff; }
+.vid-btn:hover { color:#fff; opacity:0.6; }
 .vid-btn svg { display:block; }
 .win-resize {
   position:absolute;
@@ -282,6 +285,8 @@ nav.hide {
   z-index:10;
 }
 .win:hover .win-resize { opacity:1; }
+.win:hover { filter:brightness(0.85); }
+.win.dragging, .win.resizing { filter:none; }
 
 /* four corner brackets */
 .win-resize::before,
@@ -291,7 +296,7 @@ nav.hide {
   content:'';
   position:absolute;
   width:14px; height:14px;
-  border-color:rgba(255,255,255,0.65);
+  border-color:#fff;
   border-style:solid;
 }
 .win-resize::before  { top:0;    left:0;  border-width:1.5px 0 0 1.5px; }
@@ -331,7 +336,7 @@ nav.hide {
 }
 .win-video-label {
   position:absolute; bottom:0.7rem; left:0.9rem;
-  font-size:0.65rem; color:rgba(255,255,255,0.25);
+  font-size:0.975rem; color:#fff;
   font-family:'NM',sans-serif;
 }
 
@@ -347,21 +352,21 @@ nav.hide {
   white-space: nowrap;
 }
 .win-text .wlabel {
-  font-size:0.62rem; text-transform:uppercase;
-  color:rgba(255,255,255,0.28); letter-spacing:0.07em;
+  font-size:0.93rem; text-transform:uppercase;
+  color:#fff; letter-spacing:0.07em;
   margin-bottom:0.7rem;
 }
 .win-text .wtitle {
-  font-size:1.8rem; font-weight:500;
+  font-size:2.7rem; font-weight:500;
   color:#fff; line-height:1.1;
   margin-bottom:0.4rem;
 }
 .win-text .wsub {
-  font-size:0.75rem; color:rgba(255,255,255,0.35);
+  font-size:1.12rem; color:#fff;
   margin-bottom:1.2rem;
 }
 .win-text .wbody {
-  font-size:0.84rem; color:rgba(255,255,255,0.62);
+  font-size:1.26rem; color:#fff;
   line-height:1.75;
 }
 .win-text .wrow {
@@ -370,12 +375,12 @@ nav.hide {
   border-top:1px solid rgba(255,255,255,0.07);
 }
 .win-text .wcol-label {
-  font-size:0.6rem; text-transform:uppercase;
-  color:rgba(255,255,255,0.25); letter-spacing:0.07em;
+  font-size:0.9rem; text-transform:uppercase;
+  color:#fff; letter-spacing:0.07em;
   margin-bottom:0.5rem;
 }
 .win-text .wcol-body {
-  font-size:0.78rem; color:rgba(255,255,255,0.55);
+  font-size:1.17rem; color:#fff;
   line-height:1.7;
 }
 
@@ -394,8 +399,8 @@ nav.hide {
   pointer-events:none;
 }
 .df-copy {
-  font-size:0.72rem;
-  color:rgba(255,255,255,0.3);
+  font-size:1.08rem;
+  color:#fff;
   font-weight:300;
 }
 .df-contact {
@@ -403,16 +408,16 @@ nav.hide {
 }
 .df-labels {
   display:flex; flex-direction:column; gap:3px;
-  font-size:0.68rem; color:rgba(255,255,255,0.28);
+  font-size:1.02rem; color:#fff;
   font-weight:300; text-align:right;
 }
 .df-values {
   display:flex; flex-direction:column; gap:3px;
-  font-size:0.72rem; color:rgba(255,255,255,0.5);
+  font-size:1.08rem; color:#fff;
   font-weight:300; text-align:left;
 }
 .df-values a {
-  color:rgba(255,255,255,0.5);
+  color:#fff;
   text-decoration:none;
   transition:color 0.2s;
   pointer-events:all;
@@ -478,7 +483,7 @@ nav.hide {
   </button>
   <span onclick="openDetail()">Scroll</span>
   <svg class="scroll-arrow" width="18" height="12" viewBox="0 0 12 8" fill="none" onclick="openDetail()">
-    <path d="M1 1L6 7L11 1" stroke="rgba(255,255,255,0.38)" stroke-width="1.5" stroke-linecap="round"/>
+    <path d="M1 1L6 7L11 1" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/>
   </svg>
 </div>
 
