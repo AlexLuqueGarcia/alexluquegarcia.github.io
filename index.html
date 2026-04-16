@@ -182,10 +182,10 @@ nav.hide {
   width:100%; height:100%;
   display:flex; /* slices sit side by side */
 }
-/* each slice is a fixed-width vertical strip — more slices = wider thumb */
+/* each slice width is set via --sw so totalSlices × --sw = 100vw */
 .thumb-slice {
   flex-shrink: 0;
-  width: 36px;
+  width: var(--sw, 40px);
   height: 100%;
   background-size: cover;
   background-repeat: no-repeat;
@@ -603,7 +603,7 @@ async function loadThumbnailFrames(base) {
   }));
 
   const match = results.find(Boolean);
-  if (!match) return { frames: [], sliceCount: 0 };
+  if (!match) return []; // no thumbnail folder
 
   // We know the pattern and extension — now probe last frame to get count
   // Do this with a parallel doubling probe (1,2,4,8,16,32...) then bisect
@@ -626,17 +626,12 @@ async function loadThumbnailFrames(base) {
   const lastFound = Math.max(...checkResults);
   const total = lastFound + 1; // at least this many
 
-  // sliceCount = total / 2, clamped 4–20. Each slice is fixed-width so
-  // more slices = proportionally wider thumb in the strip.
-  const sliceCount = Math.max(4, Math.min(20, Math.round(total / 2)));
-
-  // Generate sliceCount evenly-spaced URLs — CSS ignores any 404s silently
-  const frames = Array.from({length: sliceCount}, (_, i) => {
-    const idx = sliceCount === 1 ? 0 : Math.round(i * (total - 1) / (sliceCount - 1));
+  // Generate MAX evenly-spaced URLs across 0..total-1
+  // CSS will silently skip any that 404 — zero blocking
+  return Array.from({length: MAX}, (_, i) => {
+    const idx = MAX === 1 ? 0 : Math.round(i * (total - 1) / (MAX - 1));
     return `${dir}/${nameFn(idx)}.${ext}`;
   });
-
-  return { frames, sliceCount };
 }
 
 // Load images for a project folder.
@@ -725,16 +720,38 @@ let totalDur = 0;
 // Build strip thumbs from loaded data
 function buildStrip() {
   totalDur = projectData.reduce((s,p) => s + p.duration, 0);
+  const minDur = Math.min(...projectData.map(p => p.duration));
   stripEl.innerHTML = '';
+
+  // Compute per-project slice counts (proportional to duration)
+  const MIN_SLICES = 4;
+  const MAX_SLICES = 20;
+  const sliceCounts = projectData.map(p =>
+    Math.round(Math.min(MAX_SLICES, Math.max(MIN_SLICES, (p.duration / minDur) * MIN_SLICES)))
+  );
+
+  // Override with actual thumbnail counts where available
+  sliceCounts.forEach((_, i) => {
+    if (projectDetails[i] && projectDetails[i].sliceCount) {
+      sliceCounts[i] = projectDetails[i].sliceCount;
+    }
+  });
+
+  // Compute slice width so all slices together = 100vw
+  const totalSlices = sliceCounts.reduce((s, n) => s + n, 0);
+  const sliceW = window.innerWidth / totalSlices;
+  stripEl.style.setProperty('--sw', sliceW + 'px');
+
   projectData.forEach((p, i) => {
-    const t = document.createElement('div');
-    t.className = 'thumb';
-    t.dataset.i = i;
-    // Width is NOT set here — it grows naturally from slice count × slice width
+    const sc = sliceCounts[i];
+    const t  = document.createElement('div');
+    t.className  = 'thumb';
+    t.dataset.i  = i;
+    // Width is driven by slices: sc × --sw fills correctly
+    t.style.width = (sc * sliceW) + 'px';
 
     const frames     = projectDetails[i] && projectDetails[i].thumbFrames || [];
-    const sliceCount = projectDetails[i] && projectDetails[i].sliceCount  || 8;
-    const slicesHTML = buildThumbSlices(frames, p.tc, sliceCount);
+    const slicesHTML = buildThumbSlices(frames, p.tc, sc);
 
     t.innerHTML = `
       <div class="thumb-bg">${slicesHTML}</div>
@@ -1331,6 +1348,7 @@ document.addEventListener('mouseout', e => {
 });
 
 // ── INIT ──
+window.addEventListener('resize', () => { buildStrip(); });
 window.addEventListener('load', async () => {
   // 1. Load project metadata (info.txt) — fast, no image probing yet
   await loadProjects();
@@ -1351,14 +1369,13 @@ async function loadThumbnailsInBackground() {
     // Load thumbnail frames for strip
     if (!pd.thumbFrames || pd.thumbFrames.length === 0) {
       const result = await loadThumbnailFrames(base);
-      if (result && result.frames.length > 0) {
-        pd.thumbFrames = result.frames;
-        pd.sliceCount  = result.sliceCount;
-        const thumbEl  = document.querySelector(`.thumb[data-i="${i}"]`);
-        const thumbBg  = thumbEl && thumbEl.querySelector('.thumb-bg');
-        if (thumbBg) {
-          thumbBg.innerHTML = buildThumbSlices(result.frames, projectData[i].tc, result.sliceCount);
-        }
+      const frames = Array.isArray(result) ? result : (result && result.frames || []);
+      if (frames.length > 0) {
+        pd.thumbFrames = frames;
+        // sliceCount = frames / 2, clamped 4–20
+        pd.sliceCount = Math.max(4, Math.min(20, Math.round(frames.length / 2)));
+        // Rebuild strip so --sw recalculates to fill 100vw with new counts
+        buildStrip();
       }
     }
 
