@@ -190,9 +190,27 @@ nav.hide {
   background-repeat: no-repeat;
   background-position: center center;
 }
-.thumb-black {
+.thumb-corners {
   position:absolute; inset:0;
-  backdrop-filter: blur(4px);
+  pointer-events:none; z-index:10;
+  opacity:0;
+}
+.thumb.active .thumb-corners { opacity:1; }
+.thumb-corners::before,
+.thumb-corners::after,
+.thumb-corners .tc-rc::before,
+.thumb-corners .tc-rc::after {
+  content:'';
+  position:absolute;
+  width:21px; height:21px;
+  border-color:#fff;
+  border-style:solid;
+}
+.thumb-corners::before        { top:0;    left:0;  border-width:2.25px 0 0 2.25px; }
+.thumb-corners::after         { top:0;    right:0; border-width:2.25px 2.25px 0 0; }
+.thumb-corners .tc-rc::before { bottom:0; left:0;  border-width:0 0 2.25px 2.25px; }
+.thumb-corners .tc-rc::after  { bottom:0; right:0; border-width:0 2.25px 2.25px 0; }
+.thumb-black {
   -webkit-backdrop-filter: blur(4px);
   background: rgba(0,0,0,0.45);
   z-index:6;
@@ -760,6 +778,7 @@ function buildStrip() {
       <div class="thumb-bg">${slicesHTML}</div>
       <div class="thumb-black"></div>
       <div class="thumb-marker"></div>
+      <div class="thumb-corners"><span class="tc-rc"></span></div>
       <div class="thumb-label">${p.name}</div>`;
     t.addEventListener('click', () => { if (!detailOpen) goTo(i); });
     stripEl.appendChild(t);
