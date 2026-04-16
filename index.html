@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, shrink-to-fit=yes">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, shrink-to-fit=yes">
 <title>Alex Luque Garcia</title>
 <style>
 @font-face {
@@ -1555,11 +1555,20 @@ mobMuteBtn.addEventListener('click', (e) => {
 // ── NAV YEAR ──
 document.getElementById('nav-year').textContent = new Date().getFullYear();
 
-// Reset zoom on orientation change (iOS Safari zooms otherwise)
-window.addEventListener('orientationchange', () => {
+// Reset zoom on orientation change — works for both iOS Safari and Android Chrome
+function resetViewport() {
   const meta = document.querySelector('meta[name=viewport]');
-  meta.content = 'width=device-width, initial-scale=1.0, shrink-to-fit=yes';
-  setTimeout(() => { if (projectData.length) buildStrip(); }, 300);
+  // Temporarily force scale=1 to reset any browser zoom
+  meta.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0';
+  setTimeout(() => {
+    meta.content = 'width=device-width, initial-scale=1.0, shrink-to-fit=yes';
+    if (projectData.length) buildStrip();
+  }, 300);
+}
+window.addEventListener('orientationchange', resetViewport);
+// Chrome uses resize instead of orientationchange for viewport reflow
+window.addEventListener('resize', () => {
+  if (projectData.length) buildStrip();
 });
 
 // ── CUSTOM CURSOR ──
