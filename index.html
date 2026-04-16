@@ -1121,7 +1121,8 @@ function openDetail() {
   metaEl.classList.add('hide');
   hintEl.classList.add('hide');
 
-  // pause landing video, remember position
+  // pause ticker and landing video
+  cancelAnimationFrame(raf);
   if (isLndVideo) {
     lndVideo._savedTime = lndVideo.currentTime;
     lndVideo.pause();
@@ -1144,11 +1145,12 @@ function closeDetail() {
   detailEl.classList.remove('open');
   videoBg.classList.remove('blurred');
 
-  // resume landing video from saved position
+  // resume landing video and ticker from saved position
   if (isLndVideo && playing) {
     if (lndVideo._savedTime) lndVideo.currentTime = lndVideo._savedTime;
     lndVideo.play();
   }
+  if (playing) { lastTs = null; schedTick(); }
 
   // 2. strip comes back up after detail is gone
   setTimeout(() => {
