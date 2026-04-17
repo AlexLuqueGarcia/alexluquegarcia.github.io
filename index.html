@@ -231,12 +231,45 @@ body.cur-hover #cur svg {
 }
 .info-section .info-body a:hover { opacity: 0.6; }
 
+/* Hero bio — larger type with an Apple-style subtle shimmer.
+   The info panel is inverted, so we use a black-based gradient that inverts
+   to a moving white highlight on the viewer's end. */
+.info-bio {
+  font-size: 1.55rem;
+  line-height: 1.35;
+  font-weight: 300;
+  letter-spacing: -0.01em;
+  background: linear-gradient(
+    110deg,
+    #000 0%,
+    #000 35%,
+    rgba(0,0,0,0.35) 48%,
+    rgba(0,0,0,0.15) 50%,
+    rgba(0,0,0,0.35) 52%,
+    #000 65%,
+    #000 100%
+  );
+  background-size: 250% 100%;
+  background-position: 100% 0;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  animation: infoShimmer 5.5s ease-in-out infinite;
+}
+@keyframes infoShimmer {
+  0%   { background-position: 150% 0; }
+  50%  { background-position: -50% 0; }
+  100% { background-position: 150% 0; }
+}
+
 @media (max-width: 768px) {
   #info-panel {
     width: calc(100vw - 2rem);
     padding: 1.8rem 1.5rem 1.5rem;
   }
   .info-section .info-body { font-size: 1rem; }
+  .info-bio { font-size: 1.3rem; }
 }
 
 /* ── NAV — fixed, always on top ── */
@@ -1042,8 +1075,7 @@ body.is-fullscreen .win-resize { display: none !important; }
     <span class="corner-br"></span>
     <div class="info-content">
       <div class="info-section">
-        <div class="info-label">About</div>
-        <div class="info-body">Digital Wizard ready to serve your evil commercial/creative purposes</div>
+        <div class="info-body info-bio">A Digital Wizard ready to serve your evil commercial/creative purposes</div>
       </div>
       <div class="info-section">
         <div class="info-label">Contact</div>
