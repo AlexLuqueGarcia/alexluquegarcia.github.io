@@ -1785,10 +1785,16 @@ function createFlyThumb(startRect, endRect, frames, sc, fallbackTc) {
   return fly;
 }
 
+let workWasPlaying = false;
+
 function openWork() {
   if (workOpen || transitioning) return;
   workOpen = true;
   transitioning = true;
+
+  // Pause landing video while on work page
+  workWasPlaying = playing;
+  setPlaying(false);
 
   // 1. Measure where each thumbnail is NOW in the strip
   const startRects = allThumbs().map(t => t.getBoundingClientRect());
@@ -1828,6 +1834,9 @@ function closeWork() {
   if (!workOpen || transitioning) return;
   workOpen = false;
   transitioning = true;
+
+  // Resume landing video if it was playing before
+  if (workWasPlaying) setPlaying(true);
 
   // 1. Measure current positions of work rows (start position)
   const rows = Array.from(workInner.querySelectorAll('.work-row'));
