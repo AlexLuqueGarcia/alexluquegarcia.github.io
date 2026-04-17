@@ -1896,13 +1896,33 @@ window.addEventListener('wheel', e => {
 }, { passive:true });
 
 // Touch
-let ty0 = 0;
-window.addEventListener('touchstart', e => { ty0 = e.touches[0].clientY; }, { passive:true });
+let ty0 = 0, tx0 = 0;
+window.addEventListener('touchstart', e => {
+  ty0 = e.touches[0].clientY;
+  tx0 = e.touches[0].clientX;
+}, { passive:true });
 window.addEventListener('touchend', e => {
   if (workOpen) return;
+  // Ignore touches that started on the strip (scrubbing there)
+  if (e.target.closest('#strip-area')) return;
   const dy = ty0 - e.changedTouches[0].clientY;
-  if (!detailOpen && dy > 40) openDetail();
-  else if (detailOpen && dy < -40) closeDetail();
+  const dx = tx0 - e.changedTouches[0].clientX;
+  // Only vertical swipes — ignore horizontal
+  if (Math.abs(dx) > Math.abs(dy)) return;
+
+  if (isTouch) {
+    // Mobile: TikTok/Reels style — swipe cycles projects
+    if (!detailOpen) {
+      if (dy > 40) goTo((cur + 1) % projectData.length);              // swipe up → next
+      else if (dy < -40) goTo((cur - 1 + projectData.length) % projectData.length); // swipe down → prev
+    } else {
+      if (dy < -40) closeDetail();
+    }
+  } else {
+    // Desktop-like touch: open/close detail as before
+    if (!detailOpen && dy > 40) openDetail();
+    else if (detailOpen && dy < -40) closeDetail();
+  }
 }, { passive:true });
 
 // Keys
