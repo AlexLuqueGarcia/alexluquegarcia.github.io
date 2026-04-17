@@ -710,48 +710,58 @@ body.is-fullscreen .win-resize { display: none !important; }
 }
 
 .win-text {
-  background:rgba(10,10,10,0.55);
-  backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
+  background: rgba(255,255,255,0.08);
+  backdrop-filter: blur(30px) saturate(1.4);
+  -webkit-backdrop-filter: blur(30px) saturate(1.4);
+  border: 1px solid rgba(255,255,255,0.12);
+  box-shadow: 0 20px 60px rgba(0,0,0,0.4);
   font-family:'NM',sans-serif;
   overflow:hidden;
 }
 .win-text-inner {
-  padding:1.6rem 1.8rem 1.8rem;
+  padding: 2.2rem 2rem 2rem;
   transform-origin: top left;
   white-space: normal;
   word-wrap: break-word;
 }
 .win-text .wlabel {
-  font-size:0.93rem; text-transform:uppercase;
-  color:#fff; letter-spacing:0.07em;
-  margin-bottom:0.7rem;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: rgba(255,255,255,0.55);
+  margin-bottom: 0.6rem;
+  font-weight: 500;
 }
 .win-text .wtitle {
-  font-size:2.7rem; font-weight:500;
-  color:#fff; line-height:1.1;
+  font-size: 2.2rem; font-weight:500;
+  color:#fff; line-height:1.15;
   margin-bottom:0.4rem;
 }
 .win-text .wsub {
-  font-size:1.12rem; color:#fff;
-  margin-bottom:1.2rem;
+  font-size:1.05rem;
+  color: rgba(255,255,255,0.75);
+  margin-bottom:1.4rem;
 }
 .win-text .wbody {
-  font-size:1.26rem; color:#fff;
-  line-height:1.75;
+  font-size:1.1rem; color:#fff;
+  line-height:1.55;
 }
 .win-text .wrow {
-  display:flex; gap:2.5rem; margin-top:1.4rem;
-  padding-top:1.2rem;
-  border-top:1px solid rgba(255,255,255,0.07);
+  display:flex; gap:2rem; margin-top:1.6rem;
+  padding-top:1.4rem;
+  border-top: 1px solid rgba(255,255,255,0.15);
 }
 .win-text .wcol-label {
-  font-size:0.9rem; text-transform:uppercase;
-  color:#fff; letter-spacing:0.07em;
-  margin-bottom:0.5rem;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: rgba(255,255,255,0.55);
+  margin-bottom: 0.5rem;
+  font-weight: 500;
 }
 .win-text .wcol-body {
-  font-size:1.17rem; color:#fff;
-  line-height:1.7;
+  font-size:1.05rem; color:#fff;
+  line-height:1.55;
 }
 
 .win-img { overflow:hidden; }
