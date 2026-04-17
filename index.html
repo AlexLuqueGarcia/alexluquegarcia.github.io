@@ -2451,7 +2451,7 @@ function buildWork() {
 
       row.appendChild(bg);
       row.appendChild(overlay);
-      row.addEventListener('click', () => { closeWork(); goTo(i); openDetail(); });
+      row.addEventListener('click', () => { closeWork(true); goTo(i); openDetail(); });
       workInner.appendChild(row);
     });
   }
@@ -2633,16 +2633,24 @@ function openWork() {
   }, 750);
 }
 
-function closeWork() {
+function closeWork(skipAnim = false) {
   if (!workOpen || transitioning) return;
   workOpen = false;
   transitioning = true;
 
-  // Disable infinite scroll listener so closing animation isn't disturbed
+  // Disable infinite scroll listener
   workEl.onscroll = null;
 
   // Resume landing video if it was playing before
   if (workWasPlaying) setPlaying(true);
+
+  // If we're going straight to detail, skip the FLIP animation — just fade out cleanly
+  // openDetail() will manage the `transitioning` flag itself
+  if (skipAnim) {
+    workEl.classList.remove('open');
+    stripEl.style.visibility = '';
+    return;
+  }
 
   // 1. Measure current positions of work rows — from middle block
   const allRows = Array.from(workInner.querySelectorAll('.work-row'));
@@ -2653,7 +2661,7 @@ function closeWork() {
   // Measure where each thumb will land
   const endRects = allThumbs().map(t => t.getBoundingClientRect());
 
-  // 3. Hide all work rows (all 3 copies) so only clones are visible during animation
+  // 3. Hide all work rows (all copies) so only clones are visible during animation
   allRows.forEach(r => r.style.visibility = 'hidden');
 
   // 4. Create flying clones from row positions → strip positions
