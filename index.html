@@ -179,19 +179,8 @@ body.cur-hover #cur svg {
 }
 
 #info-close {
-  position: absolute;
-  top: 1rem; right: 1rem;
-  width: 32px; height: 32px;
-  background: rgba(255,255,255,0.1);
-  border: none; border-radius: 50%;
-  color: #fff;
-  display: flex; align-items: center; justify-content: center;
-  cursor: pointer;
-  transition: background 0.25s ease, transform 0.2s ease;
-  outline: none;
+  display: none;
 }
-#info-close:hover { background: rgba(255,255,255,0.18); }
-#info-close:active { transform: scale(0.9); }
 
 .info-content {
   display: flex;
@@ -966,11 +955,6 @@ body.is-fullscreen .win-resize { display: none !important; }
 <div id="info-sheet">
   <div id="info-backdrop"></div>
   <div id="info-panel">
-    <button id="info-close" aria-label="Close">
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-        <path d="M3 3L13 13M13 3L3 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-      </svg>
-    </button>
     <div class="info-content">
       <div class="info-section">
         <div class="info-label">About</div>
@@ -2094,7 +2078,6 @@ function goHome() {
 let infoOpen = false;
 const infoEl       = document.getElementById('info-sheet');
 const infoBackdrop = document.getElementById('info-backdrop');
-const infoCloseBtn = document.getElementById('info-close');
 
 function openInfo() {
   if (infoOpen) return;
@@ -2107,11 +2090,6 @@ function closeInfo() {
   infoEl.classList.remove('open');
 }
 infoBackdrop.addEventListener('click', closeInfo);
-infoCloseBtn.addEventListener('click', (e) => {
-  e.stopPropagation();
-  e.currentTarget.blur();
-  closeInfo();
-});
 
 let workOpen = false;
 const workEl    = document.getElementById('work');
@@ -2344,7 +2322,7 @@ function closeDetail() {
 // Wheel
 let wCool = false;
 window.addEventListener('wheel', e => {
-  if (wCool || workOpen) return;
+  if (wCool || workOpen || infoOpen) return;
   wCool = true; setTimeout(() => wCool = false, 900);
   if (!detailOpen && e.deltaY > 15) openDetail();
   else if (detailOpen && e.deltaY < -15) closeDetail();
@@ -2366,7 +2344,7 @@ window.addEventListener('touchstart', e => {
 }, { passive:true });
 
 window.addEventListener('touchmove', e => {
-  if (workOpen || detailOpen || transitioning) return;
+  if (workOpen || detailOpen || transitioning || infoOpen) return;
   if (e.target.closest('#strip-area, #scroll-hint, nav')) return;
 
   const dy = e.touches[0].clientY - ty0;
@@ -2404,7 +2382,7 @@ window.addEventListener('touchmove', e => {
 }, { passive:true });
 
 window.addEventListener('touchend', e => {
-  if (workOpen) return;
+  if (workOpen || infoOpen) return;
 
   if (swipeActive && isTouch) {
     videoBg.classList.remove('swiping');
@@ -2511,7 +2489,7 @@ lndPlayBtn.addEventListener('click', (e) => {
 // - Desktop: go to next project
 // - Mobile: toggle play/pause (TikTok style)
 videoBg.addEventListener('click', () => {
-  if (detailOpen || workOpen) return;
+  if (detailOpen || workOpen || infoOpen) return;
   if (isTouch) {
     setPlaying(!playing);
   } else {
