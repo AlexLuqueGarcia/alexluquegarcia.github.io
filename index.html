@@ -136,6 +136,7 @@ nav.hide {
   transform: translateY(calc(var(--strip-h) + var(--pad-b) + 60px));
   opacity:0;
 }
+#meta.clickable { pointer-events: auto; cursor: pointer; }
 #meta .m-studio {
   font-size:1.08rem; color:#fff;
   margin-bottom:6px; line-height:1.4;
@@ -374,6 +375,65 @@ nav.hide {
   width:100%;
   height:100%;
 }
+/* Mobile detail — vertical stacked layout */
+#canvas-inner.mobile-detail {
+  height:auto;
+  min-height:100%;
+  padding: 5rem 1.2rem 6rem;
+  display:flex;
+  flex-direction:column;
+  gap: 1.5rem;
+}
+/* Allow scrolling on mobile detail */
+#detail.open #canvas { overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; }
+.mobile-detail-text {
+  color:#fff;
+  font-family:'NM',sans-serif;
+}
+.mobile-detail-text .md-studio {
+  font-size:0.85rem; text-transform:uppercase;
+  color:#fff; letter-spacing:0.07em;
+  margin-bottom:0.6rem;
+}
+.mobile-detail-text .md-title {
+  font-size:1.8rem; font-weight:500;
+  color:#fff; line-height:1.15;
+  margin-bottom:0.4rem;
+}
+.mobile-detail-text .md-role {
+  font-size:0.95rem; color:rgba(255,255,255,0.75);
+  margin-bottom:1rem;
+}
+.mobile-detail-text .md-about {
+  font-size:1rem; color:#fff; line-height:1.5;
+  margin-bottom:1.2rem;
+}
+.mobile-detail-text .md-section {
+  margin-top:0.8rem;
+  padding-top:0.8rem;
+  border-top: 1px solid rgba(255,255,255,0.15);
+}
+.mobile-detail-text .md-label {
+  font-size:0.75rem; text-transform:uppercase;
+  color:rgba(255,255,255,0.6); letter-spacing:0.08em;
+  margin-bottom:0.3rem;
+}
+.mobile-detail-text .md-body {
+  font-size:0.95rem; color:#fff; line-height:1.5;
+}
+.mobile-detail-video {
+  width:100%;
+  background:#000;
+  border-radius:4px;
+  overflow:hidden;
+}
+.mobile-detail-img {
+  width:100%;
+  background:#000;
+  border-radius:4px;
+  overflow:hidden;
+}
+.mobile-detail-img img { object-fit: cover; }
 
 /* back btn — removed, escape/scroll closes */
 
@@ -1153,6 +1213,13 @@ videoBgInner.addEventListener('ended', () => {
   if (!detailOpen && !workOpen) goTo((cur + 1) % projectData.length);
 });
 const metaEl       = document.getElementById('meta');
+if (isTouch) {
+  metaEl.classList.add('clickable');
+  metaEl.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (!detailOpen && !workOpen && !transitioning) openDetail();
+  });
+}
 const hintEl       = document.getElementById('scroll-hint');
 const navEl        = document.querySelector('nav');
 const detailEl     = document.getElementById('detail');
@@ -1694,7 +1761,62 @@ function makeResizable(el) {
 }
 
 function fillDetail(i) {
-  buildWindows(projectData[i], projectDetails[i]);
+  if (isTouch) {
+    buildMobileDetail(projectData[i], projectDetails[i]);
+  } else {
+    buildWindows(projectData[i], projectDetails[i]);
+  }
+}
+
+function buildMobileDetail(p, pd) {
+  canvasInner.innerHTML = '';
+  canvasInner.classList.add('mobile-detail');
+
+  const studio = (p.studio && p.studio !== 'x') ? p.studio : '';
+  const client = (p.client && p.client !== 'x') ? p.client : '';
+  const title  = client ? `${p.name} — ${client}` : p.name;
+  const teamLines   = (pd?.team || '').replace(/\n/g, '<br>');
+  const creditLines = (pd?.credits || '').replace(/\n/g, '<br>');
+
+  // 1. Text block (no window bg)
+  const textBlock = document.createElement('div');
+  textBlock.className = 'mobile-detail-text';
+  textBlock.innerHTML = `
+    ${studio ? `<div class="md-studio">${studio}</div>` : ''}
+    <div class="md-title">${title}</div>
+    ${p.type ? `<div class="md-role">${p.type}</div>` : ''}
+    ${pd?.about ? `<div class="md-about">${pd.about}</div>` : ''}
+    ${pd?.team ? `<div class="md-section"><div class="md-label">TEAM</div><div class="md-body">${teamLines}</div></div>` : ''}
+    ${pd?.credits ? `<div class="md-section"><div class="md-label">CREDITS</div><div class="md-body">${creditLines}</div></div>` : ''}
+  `;
+  canvasInner.appendChild(textBlock);
+
+  // 2. Video
+  const videoBlock = document.createElement('div');
+  videoBlock.className = 'mobile-detail-video';
+  videoBlock.innerHTML = `
+    <video autoplay muted loop playsinline crossorigin="anonymous" controls style="width:100%;display:block;"></video>
+  `;
+  canvasInner.appendChild(videoBlock);
+
+  const vid = videoBlock.querySelector('video');
+  const src = p.src || '';
+  const isHLS = src.includes('.m3u8');
+  if (isHLS && typeof Hls !== 'undefined' && Hls.isSupported()) {
+    const h = new Hls({ autoStartLoad: true, startLevel: -1 });
+    h.loadSource(src); h.attachMedia(vid);
+  } else if (src) {
+    vid.src = src;
+  }
+  if (pd?.thumbFrames?.[0]) vid.poster = pd.thumbFrames[0];
+
+  // 3. Images stacked
+  (pd?.images || []).forEach(imgSrc => {
+    const imgBlock = document.createElement('div');
+    imgBlock.className = 'mobile-detail-img';
+    imgBlock.innerHTML = `<img src="${imgSrc}" style="width:100%;display:block;" loading="lazy">`;
+    canvasInner.appendChild(imgBlock);
+  });
 }
 
 // close on wheel up
@@ -1903,6 +2025,7 @@ function closeDetail() {
 
   detailEl.classList.remove('open');
   videoBg.classList.remove('blurred');
+  canvasInner.classList.remove('mobile-detail');
 
   // resume landing video and ticker from saved position
   if (isLndVideo && playing) {
