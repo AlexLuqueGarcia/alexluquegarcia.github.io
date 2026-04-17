@@ -652,7 +652,7 @@ body.is-fullscreen .win-resize { display: none !important; }
 
 <!-- Always-fixed video background -->
 <!-- Always-fixed video background -->
-<div id="video-bg"><video id="video-bg-inner" autoplay muted loop playsinline crossorigin="anonymous" style="width:100%;height:100%;object-fit:cover;display:block;"></video></div>
+<div id="video-bg"><video id="video-bg-inner" autoplay muted playsinline crossorigin="anonymous" style="width:100%;height:100%;object-fit:cover;display:block;"></video></div>
 
 <!-- Custom cursor -->
 <div id="cur">
@@ -1036,13 +1036,34 @@ function buildStrip() {
       <div class="thumb-marker"></div>
       <div class="thumb-corners"><span class="tc-rc"></span></div>
       <div class="thumb-label">${p.name}</div>`;
-    t.addEventListener('click', () => { if (!detailOpen) goTo(i); });
+    t.addEventListener('click', (e) => {
+      if (detailOpen) return;
+      if (i === cur) {
+        // Click on active thumb — seek video to that position
+        const rect = t.getBoundingClientRect();
+        const pct  = (e.clientX - rect.left) / rect.width;
+        seekVideo(pct);
+      } else {
+        // Click on different thumb — switch project
+        goTo(i);
+      }
+    });
     stripEl.appendChild(t);
   });
 
   // Restore active state and marker after every rebuild
   setActiveThumb(cur);
   setProgress(localProgress);
+}
+
+function seekVideo(pct) {
+  const vid = document.getElementById('video-bg-inner');
+  pct = Math.max(0, Math.min(1, pct));
+  if (vid && vid.duration && !isNaN(vid.duration)) {
+    vid.currentTime = pct * vid.duration;
+    localProgress = pct;
+    setProgress(pct);
+  }
 }
 
 function buildThumbSlices(frames, fallbackTc, sliceCount) {
@@ -1066,6 +1087,11 @@ function buildThumbSlices(frames, fallbackTc, sliceCount) {
 // Refs
 const videoBgInner = document.getElementById('video-bg-inner');
 const videoBg      = document.getElementById('video-bg');
+
+// When video ends, advance to next project
+videoBgInner.addEventListener('ended', () => {
+  if (!detailOpen && !workOpen) goTo((cur + 1) % projectData.length);
+});
 const metaEl       = document.getElementById('meta');
 const hintEl       = document.getElementById('scroll-hint');
 const navEl        = document.querySelector('nav');
@@ -1189,11 +1215,24 @@ function goTo(i) {
 function schedTick() { raf = requestAnimationFrame(tick); }
 function tick(ts) {
   if (!playing) return;
-  if (lastTs === null) lastTs = ts;
-  const dt = ts - lastTs; lastTs = ts;
-  localProgress += (dt * SPEED) / (projectData[cur].duration * 1000);
-  if (localProgress >= 1) { setProgress(1); goTo((cur+1) % projectData.length); return; }
-  setProgress(localProgress);
+  const vid = document.getElementById('video-bg-inner');
+  if (vid && vid.duration && !isNaN(vid.duration) && vid.duration > 0) {
+    // Drive progress from actual video time
+    localProgress = vid.currentTime / vid.duration;
+    if (localProgress >= 0.999) {
+      setProgress(1);
+      goTo((cur + 1) % projectData.length);
+      return;
+    }
+    setProgress(localProgress);
+  } else {
+    // Fallback: fake timer while video not ready
+    if (lastTs === null) lastTs = ts;
+    const dt = ts - lastTs; lastTs = ts;
+    localProgress += (dt * SPEED) / (projectData[cur].duration * 1000);
+    if (localProgress >= 1) { setProgress(1); goTo((cur+1) % projectData.length); return; }
+    setProgress(localProgress);
+  }
   schedTick();
 }
 
