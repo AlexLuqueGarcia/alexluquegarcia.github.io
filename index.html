@@ -1425,17 +1425,15 @@ function scrubMove(clientX) {
   const rect = scrubState.targetEl.getBoundingClientRect();
   const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
   scrubState.pendingPct = pct;
-  // Marker always moves smoothly
   localProgress = pct;
   setProgress(pct);
-  // Throttle preview seeks — these are cosmetic only, not the authoritative position
   const now = performance.now();
   if (now - scrubState.lastPreviewAt > 80) {
     scrubState.lastPreviewAt = now;
     previewSeek(pct);
   }
 }
-function scrubEnd() {
+async function scrubEnd() {
   if (!scrubState.active) return;
   scrubState.active = false;
   const wasPlaying = scrubState.wasPlaying;
@@ -1450,45 +1448,44 @@ function scrubEnd() {
   }
 
   const targetTime = finalPct * vid.duration;
+
+  // Step 1: wait one frame so any in-flight preview seek from touchmove
+  // can finish/cancel cleanly before we issue our authoritative seek
+  await new Promise(r => requestAnimationFrame(r));
+  await new Promise(r => requestAnimationFrame(r));
+
+  // Step 2: pause the video and issue the authoritative seek
+  if (!vid.paused) vid.pause();
+  vid.currentTime = targetTime;
+
+  // Step 3: POLL until currentTime is actually at target AND not seeking
+  // This is bomb-proof because it doesn't rely on events — it checks the actual state
+  const TIMEOUT = 1500;
+  const POLL_INTERVAL = 30;
+  const start = performance.now();
+  while (performance.now() - start < TIMEOUT) {
+    await new Promise(r => setTimeout(r, POLL_INTERVAL));
+    // Reached target?
+    if (!vid.seeking && Math.abs(vid.currentTime - targetTime) < 0.15) {
+      break;
+    }
+    // Maybe the browser moved elsewhere due to a late preview seek — re-assert target
+    if (!vid.seeking && Math.abs(vid.currentTime - targetTime) > 0.3) {
+      vid.currentTime = targetTime;
+    }
+  }
+
+  // Step 4: Final state check & settle
   localProgress = finalPct;
   setProgress(finalPct);
 
-  const resume = () => {
-    // Settling delay lets the decoder display the seeked frame before playback starts
-    setTimeout(() => {
-      if (wasPlaying) setPlaying(true);
-    }, 100);
-  };
+  // Settling delay — let the decoder render the frame
+  await new Promise(r => setTimeout(r, 80));
 
-  // Check if we're already at the target (within 50ms) — no need to wait
-  if (Math.abs(vid.currentTime - targetTime) < 0.05 && !vid.seeking) {
-    resume();
-    return;
-  }
-
-  // Seek to authoritative position, wait for it specifically to complete
-  let done = false;
-  const onSeeked = () => {
-    // Only resume if we've actually reached the target (not some intermediate seek)
-    if (Math.abs(vid.currentTime - targetTime) < 0.1) {
-      if (done) return;
-      done = true;
-      vid.removeEventListener('seeked', onSeeked);
-      resume();
-    }
-  };
-  vid.addEventListener('seeked', onSeeked);
-  vid.currentTime = targetTime;
-
-  // Fallback — force resume after 900ms even if seeked never fires
-  setTimeout(() => {
-    if (done) return;
-    done = true;
-    vid.removeEventListener('seeked', onSeeked);
-    resume();
-  }, 900);
+  // Step 5: Resume playback
+  if (wasPlaying) setPlaying(true);
 }
-// Cosmetic preview seek during drag — can be interrupted without consequence
+// Cosmetic preview seek during drag — may be superseded
 function previewSeek(pct) {
   const vid = document.getElementById('video-bg-inner');
   if (vid && vid.duration && !isNaN(vid.duration)) {
