@@ -1103,13 +1103,15 @@ async function loadThumbnailFrames(base) {
   const exts = ['png','jpg','jpeg','webp'];
   const MAX  = 20;
 
-  // Detect pattern+ext with one request per candidate first frame (parallel, ~16 total)
+  // Detect pattern+ext with one request per candidate first frame (parallel)
+  // Try both 0-indexed and 1-indexed starts
   const patterns = [
-    { name: i => `video_${String(i).padStart(3,'0')}`,    start: 0 },  // video_000.png
-    { name: i => `video_${100+i}`,                        start: 0 },  // video_100.png
-    { name: i => String(i+1).padStart(2,'0'),             start: 0 },  // 01.png
-    { name: i => `frame_${String(i+1).padStart(3,'0')}`,  start: 0 },  // frame_001.png
-    { name: i => `frame${String(i+1).padStart(3,'0')}`,   start: 0 },  // frame001.png
+    { name: i => `video_${String(i).padStart(3,'0')}`,      start: 0 },  // video_000.png
+    { name: i => `video_${String(i+1).padStart(3,'0')}`,    start: 0 },  // video_001.png (ffmpeg default)
+    { name: i => `video_${100+i}`,                          start: 0 },  // video_100.png
+    { name: i => String(i+1).padStart(2,'0'),               start: 0 },  // 01.png
+    { name: i => `frame_${String(i+1).padStart(3,'0')}`,    start: 0 },  // frame_001.png
+    { name: i => `frame${String(i+1).padStart(3,'0')}`,     start: 0 },  // frame001.png
   ];
 
   const firstProbes = patterns.flatMap(p =>
@@ -1393,10 +1395,8 @@ function seekVideo(pct) {
 function buildThumbSlices(frames, fallbackTc, sliceCount) {
   const N = sliceCount || 12;
   if (!frames || frames.length === 0) {
-    return Array.from({length: N}, (_, i) => {
-      const b = 0.7 + (i % 4) * 0.1;
-      return `<div class="thumb-slice ${fallbackTc}" style="filter:brightness(${b})"></div>`;
-    }).join('');
+    // No frames loaded yet — show empty slices instead of a gradient placeholder
+    return Array.from({length: N}, () => '<div class="thumb-slice"></div>').join('');
   }
   // Pick N evenly-spaced frames from the available set
   const picked = Array.from({length: N}, (_, i) => {
@@ -2147,7 +2147,6 @@ function buildWork() {
       const s = document.createElement('div');
       s.className = 'work-slice';
       if (src) s.style.backgroundImage = `url('${src}')`;
-      else s.classList.add(p.tc);
       bg.appendChild(s);
     });
 
@@ -2186,7 +2185,6 @@ function createFlyThumb(startRect, endRect, frames, sc, fallbackTc) {
     const s = document.createElement('div');
     s.className = 'fly-slice';
     if (src) s.style.backgroundImage = `url('${src}')`;
-    else s.classList.add(fallbackTc);
     bg.appendChild(s);
   });
   fly.appendChild(bg);
