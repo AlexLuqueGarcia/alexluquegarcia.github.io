@@ -2402,8 +2402,8 @@ function buildWork() {
   const rowH = Math.max(140, window.innerHeight / n);
   workInner.style.setProperty('--row-h', rowH + 'px');
   // Build many copies for a smoother infinite scroll illusion.
-  // Mobile needs more copies because iOS momentum is much stronger than desktop.
-  const copies = isTouch ? 9 : 5;
+  // With enough copies, typical scroll sessions never hit the edges where snap happens.
+  const copies = isTouch ? 21 : 9;
   workInner.dataset.copies = copies;
   workInner.dataset.middle = Math.floor(copies / 2); // middle block index
   for (let rep = 0; rep < copies; rep++) {
@@ -2459,6 +2459,7 @@ function middleWorkRows() {
 // Infinite scroll wiring: set up once when work opens
 function setupInfiniteWorkScroll() {
   workEl.onscroll = null;
+  if (workEl._scrollEndTimer) clearTimeout(workEl._scrollEndTimer);
 
   requestAnimationFrame(() => {
     const n = projectData.length;
@@ -2475,28 +2476,36 @@ function setupInfiniteWorkScroll() {
     const middleOffset = blockHeight * middle;
     workEl.scrollTop = middleOffset;
 
-    // Snap thresholds: trigger only when user has scrolled deep enough that
-    // there's still plenty of content between the snap point and the actual edge.
-    // This keeps iOS momentum scrolling smooth — the snap lands them far from
-    // any edge so the browser never runs out of scrollable area.
-    const topThreshold    = blockHeight * 1.0;              // snap up when entering block 0 area
-    const bottomThreshold = blockHeight * (copies - 2);     // snap down when leaving block (copies-2) area
-    const snapAmount      = blockHeight * (copies - 3);     // jump by ~middle distance
+    const topThreshold    = blockHeight * 2;
+    const bottomThreshold = blockHeight * (copies - 3);
+    const snapTargetTop    = blockHeight * middle;            // recentered top target
+    const snapTargetBottom = blockHeight * middle;            // recentered bottom target
 
     let snapping = false;
-    workEl.onscroll = () => {
+    const checkAndSnap = () => {
       if (snapping) return;
       const st = workEl.scrollTop;
       if (st < topThreshold) {
         snapping = true;
-        workEl.scrollTop = st + snapAmount;
+        // Preserve the offset from the nearest project row so the user stays at the same
+        // visual position within the currently-visible project
+        const offsetInBlock = st % blockHeight;
+        workEl.scrollTop = snapTargetTop + offsetInBlock;
         requestAnimationFrame(() => { snapping = false; });
       }
       else if (st > bottomThreshold) {
         snapping = true;
-        workEl.scrollTop = st - snapAmount;
+        const offsetInBlock = st % blockHeight;
+        workEl.scrollTop = snapTargetBottom + offsetInBlock;
         requestAnimationFrame(() => { snapping = false; });
       }
+    };
+
+    workEl.onscroll = () => {
+      // Debounce: only snap once scrolling has paused (no scroll event for 150ms)
+      // This avoids cancelling iOS momentum mid-flick.
+      if (workEl._scrollEndTimer) clearTimeout(workEl._scrollEndTimer);
+      workEl._scrollEndTimer = setTimeout(checkAndSnap, 150);
     };
   });
 }
