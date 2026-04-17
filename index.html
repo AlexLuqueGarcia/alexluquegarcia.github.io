@@ -339,7 +339,7 @@ nav.hide {
   background-size:cover; background-position:center;
 }
 /* Nav blur gradient — blur only, no darkening */
-#work-blur-header {
+#nav-blur-header {
   position:fixed;
   top:0; left:0; right:0;
   height:180px;
@@ -347,12 +347,9 @@ nav.hide {
   -webkit-backdrop-filter: blur(16px);
   -webkit-mask-image: linear-gradient(to bottom, black 30%, rgba(0,0,0,0.5) 65%, transparent 100%);
   mask-image: linear-gradient(to bottom, black 30%, rgba(0,0,0,0.5) 65%, transparent 100%);
-  z-index:200;
+  z-index:99;
   pointer-events:none;
-  opacity:0;
-  transition: opacity 0.4s;
 }
-#work.open #work-blur-header { opacity:1; }
 
 #detail {
   position:fixed;
@@ -680,6 +677,9 @@ body.is-fullscreen .win-resize { display: none !important; }
   </svg>
 </div>
 
+<!-- Global blur header -->
+<div id="nav-blur-header"></div>
+
 <!-- Nav -->
 <nav>
   <div class="nav-links">
@@ -739,7 +739,6 @@ body.is-fullscreen .win-resize { display: none !important; }
 
 <!-- Work page -->
 <div id="work">
-  <div id="work-blur-header"></div>
   <div id="work-inner"></div>
 </div>
 
