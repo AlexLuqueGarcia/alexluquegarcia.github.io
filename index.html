@@ -1442,7 +1442,7 @@ function flashActiveThumb() {
     stripEl.classList.remove('strip-pressing');
     active.classList.remove('pressed');
     _flashTimer = null;
-  }, 600);
+  }, 350);
 }
 
 function buildThumbSlices(frames, fallbackTc, sliceCount) {
@@ -2740,8 +2740,8 @@ document.addEventListener('keydown', e => {
     if (e.key === 'Escape') closeWork();
     return;
   }
-  if (e.key==='ArrowRight' && !detailOpen) goTo((cur+1) % projectData.length);
-  if (e.key==='ArrowLeft'  && !detailOpen) goTo((cur-1+projectData.length) % projectData.length);
+  if (e.key==='ArrowRight' && !detailOpen) { goTo((cur+1) % projectData.length); flashActiveThumb(); }
+  if (e.key==='ArrowLeft'  && !detailOpen) { goTo((cur-1+projectData.length) % projectData.length); flashActiveThumb(); }
   if (e.key==='Escape' && detailOpen) closeDetail();
   if (e.key===' ' && !detailOpen && !infoOpen) {
     e.preventDefault();
@@ -2779,6 +2779,7 @@ videoBg.addEventListener('click', () => {
     setPlaying(!playing);
   } else {
     goTo((cur + 1) % projectData.length);
+    flashActiveThumb();
   }
 });
 
