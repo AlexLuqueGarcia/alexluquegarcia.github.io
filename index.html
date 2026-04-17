@@ -1368,27 +1368,64 @@ function tick(ts) {
 const canvasInner = document.getElementById('canvas-inner');
 const canvasEl    = document.getElementById('canvas');
 
-// Mobile detail: pull-down at top closes detail
+// Mobile detail: pull-down at top follows finger, releases to close or snap back
 if (isTouch) {
-  let dtlTy0 = 0, dtlOvershoot = 0;
+  let dtlTy0 = 0, dtlActive = false;
+  const detailEl_ref = document.getElementById('detail');
+
   canvasEl.addEventListener('touchstart', e => {
+    if (!detailOpen) return;
     dtlTy0 = e.touches[0].clientY;
-    dtlOvershoot = 0;
+    dtlActive = false;
   }, { passive: true });
+
   canvasEl.addEventListener('touchmove', e => {
     if (!detailOpen) return;
     const dy = e.touches[0].clientY - dtlTy0;
-    // Only track downward drags when already at scroll top
+
+    // Only activate when at scroll top AND dragging down
     if (canvasEl.scrollTop <= 0 && dy > 0) {
-      dtlOvershoot = dy;
-    } else {
-      dtlOvershoot = 0;
+      if (!dtlActive) {
+        dtlActive = true;
+        detailEl_ref.style.transition = 'none';
+      }
+      // Apply a slight resistance so it feels natural
+      const resisted = dy * 0.7;
+      detailEl_ref.style.transform = `translateY(${resisted}px)`;
+    } else if (dtlActive) {
+      // User scrolled back up while dragging — cancel
+      dtlActive = false;
+      detailEl_ref.style.transition = 'transform 0.3s cubic-bezier(0.33,1,0.68,1)';
+      detailEl_ref.style.transform = '';
+      setTimeout(() => { detailEl_ref.style.transition = ''; }, 300);
     }
   }, { passive: true });
-  canvasEl.addEventListener('touchend', () => {
-    if (!detailOpen) return;
-    if (dtlOvershoot > 80) closeDetail();
-    dtlOvershoot = 0;
+
+  canvasEl.addEventListener('touchend', e => {
+    if (!detailOpen || !dtlActive) return;
+    const dy = e.changedTouches[0].clientY - dtlTy0;
+    const resisted = dy * 0.7;
+    dtlActive = false;
+
+    if (resisted > 120) {
+      // Commit — continue sliding down off screen, then close
+      const h = window.innerHeight;
+      detailEl_ref.style.transition = 'transform 0.35s cubic-bezier(0.33,1,0.68,1)';
+      detailEl_ref.style.transform  = `translateY(${h}px)`;
+      setTimeout(() => {
+        // Reset styles silently and trigger normal close
+        detailEl_ref.style.transition = 'none';
+        detailEl_ref.style.transform  = '';
+        closeDetail();
+        // Restore transition after a frame
+        requestAnimationFrame(() => { detailEl_ref.style.transition = ''; });
+      }, 350);
+    } else {
+      // Snap back
+      detailEl_ref.style.transition = 'transform 0.3s cubic-bezier(0.33,1,0.68,1)';
+      detailEl_ref.style.transform  = '';
+      setTimeout(() => { detailEl_ref.style.transition = ''; }, 300);
+    }
   }, { passive: true });
 }
 
