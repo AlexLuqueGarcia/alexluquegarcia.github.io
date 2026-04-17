@@ -696,12 +696,15 @@ function parseInfo(txt) {
 let projectData    = [];
 let projectDetails = [];
 
+// ── ASSET BASE URL ──
+// Local dev:  'projects'
+// Bunny CDN:  'https://YOUR-ZONE.b-cdn.net'
+const ASSETS_BASE = 'projects';
+
 // Fallback projects used when projects.json can't be fetched (e.g. local preview)
 const FALLBACK_PROJECTS = [
-  { folder:'welcome-to-hell',    name:'Welcome To Hell',    client:'Black MIDI',              studio:'x',          type:'CG Artist',                duration:90,  tc:'tc-0', src:'EDIT_black_midi_-WelcomeToHell.mp4' },
-  { folder:'factmix',            name:'FactMix',            client:'AhoSsan KMRU',            studio:'x',          type:'CG Artist',                duration:75,  tc:'tc-2', src:'EDIT_black_midi_-WelcomeToHell.mp4' },
-  { folder:'carnet-jove-2025',   name:'Carnet Jove 2025',   client:'Generalitat de Catalunya',studio:'Olimpic TV', type:'CG Lead',                  duration:120, tc:'tc-5', src:'EDIT_black_midi_-WelcomeToHell.mp4' },
-  { folder:'bold-campaign-2026', name:'BOLD Campaign 2026', client:'Gentle Monster',          studio:'Olimpic TV', type:'VFX Supervisor · CG Lead', duration:60,  tc:'tc-6', src:'EDIT_black_midi_-WelcomeToHell.mp4' },
+  { folder:'2025-bold',            name:'BOLD 2025',        client:'Gentle Monster', studio:'Olimpic TV', type:'VFX Supervisor · CG Lead', duration:60,  tc:'tc-6', src:'' },
+  { folder:'2022-welcome-to-hell', name:'Welcome To Hell',  client:'Black MIDI',     studio:'x',          type:'CG Artist',                duration:90,  tc:'tc-0', src:'' },
 ];
 const FALLBACK_DETAILS = [
   { about:'CG work for Black MIDI\'s Welcome To Hell music video.', team:'Alex Luque Garcia — CG Artist', credits:'Studio: x\nDirection: Páraic Mc Gloughlin', images:[] },
@@ -803,7 +806,7 @@ async function loadProjects() {
   // Try to load projects.json manifest
   let manifest;
   try {
-    const res = await fetch('projects/projects.json');
+    const res = await fetch(`${ASSETS_BASE}/projects.json`);
     if (!res.ok) throw new Error('projects.json not found');
     manifest = await res.json();
   } catch(e) {
@@ -815,7 +818,7 @@ async function loadProjects() {
 
   // Load each project's info.txt
   const results = await Promise.all(manifest.map(async (folder, idx) => {
-    const base = `projects/${folder}`;
+    const base = `${ASSETS_BASE}/${folder}`;
     try {
       const res = await fetch(`${base}/info.txt`);
       if (!res.ok) throw new Error('info.txt missing');
@@ -1618,7 +1621,7 @@ window.addEventListener('load', async () => {
   // 4. First project thumbnails — await so strip fills in immediately
   const firstPd = projectDetails[0];
   if (!firstPd.thumbFrames?.length) {
-    const result = await loadThumbnailFrames(`projects/${projectData[0].folder}`);
+    const result = await loadThumbnailFrames(`${ASSETS_BASE}/${projectData[0].folder}`);
     if (result.frames.length > 0) {
       firstPd.thumbFrames = result.frames;
       firstPd.sliceCount  = result.sliceCount;
@@ -1631,7 +1634,7 @@ window.addEventListener('load', async () => {
     const i  = j + 1;
     const pd = projectDetails[i];
     if (!pd.thumbFrames?.length) {
-      const result = await loadThumbnailFrames(`projects/${p.folder}`);
+      const result = await loadThumbnailFrames(`${ASSETS_BASE}/${p.folder}`);
       if (result.frames.length > 0) {
         pd.thumbFrames = result.frames;
         pd.sliceCount  = result.sliceCount;
@@ -1645,7 +1648,7 @@ window.addEventListener('load', async () => {
     projectData.forEach(async (p, i) => {
       const pd = projectDetails[i];
       if (!pd.images?.length) {
-        pd.images = await loadImages(`projects/${p.folder}`, pd.imagesHint);
+        pd.images = await loadImages(`${ASSETS_BASE}/${p.folder}`, pd.imagesHint);
       }
     });
   }, 2000);
