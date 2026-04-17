@@ -968,7 +968,7 @@ function setBg(i) {
   const newSrc = (projectData[i]?.src || '').trim();
   if (!newSrc) return;
 
-  const isHLS = newSrc.includes('.m3u8') || newSrc.includes('mediadelivery.net') || newSrc.includes('bunnycdn.com') || newSrc.includes('b-cdn.net');
+  const isHLS = newSrc.includes('.m3u8');
 
   // Remove any leftover <source> children — they interfere with hls.js
   while (vid.firstChild) vid.removeChild(vid.firstChild);
@@ -1211,7 +1211,7 @@ function buildWindows(p, pd) {
       const vid = win.querySelector('video');
       // Load video with HLS support
       const winSrc = p.src || '';
-      const winIsHLS = winSrc.includes('.m3u8') || winSrc.includes('bunnycdn.com') || winSrc.includes('b-cdn.net');
+      const winIsHLS = winSrc.includes('.m3u8');
       if (winIsHLS && Hls && Hls.isSupported()) {
         const winHls = new Hls({ autoStartLoad: true, startLevel: -1 });
         winHls.loadSource(winSrc);
