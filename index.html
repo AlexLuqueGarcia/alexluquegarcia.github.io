@@ -1978,20 +1978,28 @@ window.addEventListener('touchend', e => {
       ? (cur + 1) % projectData.length
       : (cur - 1 + projectData.length) % projectData.length;
 
-    // Commit if swiped more than half the screen
-    if (Math.abs(swipeDy) > h / 2) {
+    // Commit if swiped more than 20% of screen
+    if (Math.abs(swipeDy) > h * 0.2) {
       // Slide both all the way off — current moves fully off, peek moves fully in
       videoBg.style.transition = 'transform 0.35s cubic-bezier(0.33,1,0.68,1)';
       peekEl.style.transition  = 'transform 0.35s cubic-bezier(0.33,1,0.68,1)';
       videoBg.style.transform  = `translateY(${isSwipeUp ? -h : h}px)`;
       peekEl.style.transform   = 'translateY(0)';
       setTimeout(() => {
-        videoBg.style.transition = '';
+        // Peek is now covering the screen — move video silently to same position
+        // so when goTo loads the new video, it's already in place
+        videoBg.style.transition = 'none';
         videoBg.style.transform  = '';
-        peekEl.style.transition  = '';
-        peekEl.style.transform   = '';
-        peekEl.classList.remove('visible');
+        peekEl.style.transition  = 'none';
+        // Load the new project (this updates the bg thumbnail poster and starts video)
         goTo(nextIdx);
+        // Hide peek on next frame, once video has the new poster set
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            peekEl.classList.remove('visible');
+            peekEl.style.transform = '';
+          });
+        });
       }, 350);
     } else {
       // Snap back
