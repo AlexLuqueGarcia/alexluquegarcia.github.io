@@ -548,6 +548,7 @@ body.is-fullscreen .win-resize { display: none !important; }
   .df-contact { gap: 1rem; }
 }
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.7/hls.min.js"></script>
 </head>
 <body>
 
@@ -959,18 +960,40 @@ let transitioning = false;
 
 function allThumbs() { return Array.from(document.getElementById('strip-area').querySelectorAll('.thumb')); }
 
+let _hlsInstance = null;
+
 function setBg(i) {
-  const vid = document.getElementById('video-bg-inner');
-  if (vid && vid.tagName === 'VIDEO') {
-    const srcEl  = vid.querySelector('source');
-    const newSrc = projectData[i].src;
+  const vid    = document.getElementById('video-bg-inner');
+  if (!vid || vid.tagName !== 'VIDEO') return;
+  const newSrc = projectData[i]?.src || '';
+
+  const isHLS = newSrc.includes('.m3u8') || newSrc.includes('bunnycdn.com') || newSrc.includes('b-cdn.net');
+
+  if (isHLS) {
+    // Destroy previous HLS instance
+    if (_hlsInstance) { _hlsInstance.destroy(); _hlsInstance = null; }
+
+    if (Hls && Hls.isSupported()) {
+      _hlsInstance = new Hls({ autoStartLoad: true, startLevel: -1 });
+      _hlsInstance.loadSource(newSrc);
+      _hlsInstance.attachMedia(vid);
+      _hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => { vid.play().catch(() => {}); });
+    } else if (vid.canPlayType('application/vnd.apple.mpegurl')) {
+      // Safari — native HLS support
+      vid.src = newSrc;
+      vid.play().catch(() => {});
+    }
+  } else {
+    // Plain MP4 fallback
+    if (_hlsInstance) { _hlsInstance.destroy(); _hlsInstance = null; }
+    const srcEl = vid.querySelector('source');
     if (srcEl && srcEl.src !== newSrc) {
       srcEl.src = newSrc;
       vid.load();
-      vid.play();
+      vid.play().catch(() => {});
     } else {
       vid.currentTime = 0;
-      vid.play();
+      vid.play().catch(() => {});
     }
   }
 }
@@ -1167,9 +1190,7 @@ function buildWindows(p, pd) {
     if (spec.type === 'video') {
       win.classList.add('win-video');
       win.innerHTML = `
-        <video autoplay muted loop playsinline crossorigin="anonymous" style="width:100%;height:100%;object-fit:cover;display:block;">
-          <source src="${p.src}" type="video/mp4">
-        </video>
+        <video autoplay muted loop playsinline crossorigin="anonymous" style="width:100%;height:100%;object-fit:cover;display:block;"></video>
         <div class="win-vid-controls">
           <button class="vid-btn win-mute-btn" title="Mute">
             <svg width="23" height="17" viewBox="0 0 15 11" fill="none">
@@ -1191,6 +1212,21 @@ function buildWindows(p, pd) {
         </div>
         ${resizeHandle}`;
       const vid = win.querySelector('video');
+      // Load video with HLS support
+      const winSrc = p.src || '';
+      const winIsHLS = winSrc.includes('.m3u8') || winSrc.includes('bunnycdn.com') || winSrc.includes('b-cdn.net');
+      if (winIsHLS && Hls && Hls.isSupported()) {
+        const winHls = new Hls({ autoStartLoad: true, startLevel: -1 });
+        winHls.loadSource(winSrc);
+        winHls.attachMedia(vid);
+        winHls.on(Hls.Events.MANIFEST_PARSED, () => { vid.play().catch(() => {}); });
+      } else if (winIsHLS && vid.canPlayType('application/vnd.apple.mpegurl')) {
+        vid.src = winSrc;
+        vid.play().catch(() => {});
+      } else if (winSrc) {
+        vid.src = winSrc;
+        vid.play().catch(() => {});
+      }
       // fullscreen
       win.querySelector('.win-fs-btn').addEventListener('click', e => {
         e.stopPropagation();
