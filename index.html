@@ -161,7 +161,6 @@ body.cur-hover #cur svg {
   background: rgba(255,255,255,0.08);
   backdrop-filter: blur(30px) saturate(1.4) invert(1) hue-rotate(180deg);
   -webkit-backdrop-filter: blur(30px) saturate(1.4) invert(1) hue-rotate(180deg);
-  border: 1px solid rgba(0,0,0,0.15);
   border-radius: 0;
   padding: 2.2rem 2rem 2rem;
   color: #000;
@@ -171,6 +170,24 @@ body.cur-hover #cur svg {
   box-shadow: 0 20px 60px rgba(0,0,0,0.4);
   overflow: hidden;
 }
+/* White corner brackets */
+#info-panel::before,
+#info-panel::after,
+#info-panel .corner-br::before,
+#info-panel .corner-br::after {
+  content: '';
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  border-color: #fff;
+  border-style: solid;
+  pointer-events: none;
+  z-index: 3;
+}
+#info-panel::before          { top:0;    left:0;  border-width: 2.5px 0 0 2.5px; }
+#info-panel::after           { top:0;    right:0; border-width: 2.5px 2.5px 0 0; }
+#info-panel .corner-br::before { bottom:0; left:0;  border-width: 0 0 2.5px 2.5px; }
+#info-panel .corner-br::after  { bottom:0; right:0; border-width: 0 2.5px 2.5px 0; }
 #info-sheet.open #info-panel {
   opacity: 1;
   transform: translate(-50%, -50%) scale(1);
@@ -967,6 +984,7 @@ body.is-fullscreen .win-resize { display: none !important; }
 <div id="info-sheet">
   <div id="info-backdrop"></div>
   <div id="info-panel">
+    <span class="corner-br"></span>
     <div class="info-content">
       <div class="info-section">
         <div class="info-label">About</div>
