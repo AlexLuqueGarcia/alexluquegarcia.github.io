@@ -9,3 +9,4 @@ about: CG work for Black MIDI's Welcome To Hell music video.
 team: Alex Luque Garcia — CG Artist
 credits: Studio: x
 Direction: Páraic Mc Gloughlin
+images: 01.png
