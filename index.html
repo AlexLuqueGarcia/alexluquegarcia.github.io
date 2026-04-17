@@ -477,7 +477,7 @@ nav.hide {
 .work-row {
   position:relative;
   width:100%;
-  flex: 1 0 140px;
+  flex: 0 0 var(--row-h, 140px);
   overflow:hidden;
   cursor:pointer;
   display:flex;
@@ -2395,10 +2395,15 @@ const workInner = document.getElementById('work-inner');
 
 function buildWork() {
   workInner.innerHTML = '';
+  const n = projectData.length;
+  if (n === 0) return;
+  // Each row height = viewport / projectCount so one block = one viewport.
+  // Minimum 140px so even with many projects rows stay usable.
+  const rowH = Math.max(140, window.innerHeight / n);
+  workInner.style.setProperty('--row-h', rowH + 'px');
   // Build the rows 5x for a smoother infinite scroll: [c0][c1][middle=c2][c3][c4]
   // User sits in the middle (c2); when they scroll into c0 or c4, we silently
   // jump them back to the middle at the same visual position.
-  // More copies = less frequent snapping = smoother momentum scroll.
   for (let rep = 0; rep < 5; rep++) {
     projectData.forEach((p, i) => {
       const pd     = projectDetails[i];
