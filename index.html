@@ -377,11 +377,11 @@ nav.hide {
 }
 /* Desktop hover behavior */
 @media (hover: hover) and (pointer: fine) {
-  #strip-area:hover .thumb .thumb-bg {
+  #strip-area:has(.thumb:hover) .thumb .thumb-bg {
     opacity: 0.75;
     filter: brightness(0.82) saturate(0.9);
   }
-  #strip-area:hover .thumb:hover .thumb-bg {
+  #strip-area:has(.thumb:hover) .thumb:hover .thumb-bg {
     opacity: 1;
     filter: brightness(1.05) saturate(1.05);
   }
@@ -504,13 +504,13 @@ nav.hide {
   pointer-events:none;
   transition: transform 0.4s var(--ease-out);
 }
-/* Apple-style focus: hovered row stays full, others gently recede */
+/* Apple-style focus: dims only when a row is actually hovered */
 @media (hover: hover) and (pointer: fine) {
-  #work-inner:hover .work-row .work-bg {
+  #work-inner:has(.work-row:hover) .work-row .work-bg {
     opacity: 0.75;
     filter: brightness(0.82) saturate(0.9);
   }
-  #work-inner:hover .work-row:hover .work-bg {
+  #work-inner:has(.work-row:hover) .work-row:hover .work-bg {
     opacity: 1;
     filter: brightness(1.05) saturate(1.05);
   }
@@ -663,13 +663,13 @@ nav.hide {
 .win:active { cursor:grabbing; }
 .win.dragging { z-index:150; box-shadow: 0 20px 60px rgba(0,0,0,0.5), 0 4px 12px rgba(0,0,0,0.3); }
 
-/* Apple-style focus on windows — hovered window stays full, others gently recede */
+/* Apple-style focus on windows — only dims when user is actually hovering a window */
 @media (hover: hover) and (pointer: fine) {
-  #canvas-inner:hover .win {
+  #canvas-inner:has(.win:hover) .win {
     opacity: 0.75;
     filter: brightness(0.82) saturate(0.9);
   }
-  #canvas-inner:hover .win:hover {
+  #canvas-inner:has(.win:hover) .win:hover {
     opacity: 1;
     filter: brightness(1.05) saturate(1.05);
   }
