@@ -78,13 +78,15 @@ body.cur-hover #cur svg {
 #video-bg-peek {
   position:fixed;
   inset:0;
-  z-index:0;
+  z-index:1;
   background-size:cover;
   background-position:center;
   background-color:#000;
   opacity:0;
+  will-change: transform;
 }
 #video-bg-peek.visible { opacity:1; }
+#video-bg-peek.swiping { transition: none; }
 
 /* ── NAV — fixed, always on top ── */
 nav {
@@ -1928,32 +1930,39 @@ window.addEventListener('touchstart', e => {
 
 window.addEventListener('touchmove', e => {
   if (workOpen || detailOpen || transitioning) return;
-  // Ignore touches on the strip (scrubbing) or on controls
   if (e.target.closest('#strip-area, #mobile-controls, #scroll-hint, nav')) return;
 
   const dy = e.touches[0].clientY - ty0;
   const dx = e.touches[0].clientX - tx0;
 
-  // Only activate swipe if movement is mostly vertical and past a small threshold
   if (!swipeActive) {
     if (Math.abs(dy) > 15 && Math.abs(dy) > Math.abs(dx)) {
       swipeActive = true;
       videoBg.classList.add('swiping');
+      peekEl.classList.add('swiping');
     } else return;
   }
 
   if (!isTouch) return;
 
   swipeDy = dy;
+  const h = window.innerHeight;
+
   // Current video follows finger
   videoBg.style.transform = `translateY(${dy}px)`;
 
-  // Show peek of next/prev project
+  // Peek of next/prev project sits edge-to-edge with current,
+  // so they move together like a film strip
   const isSwipeUp = dy < 0;
   const nextIdx = isSwipeUp ? (cur + 1) % projectData.length
                             : (cur - 1 + projectData.length) % projectData.length;
   const nextThumb = projectDetails[nextIdx]?.thumbFrames?.[0];
   if (nextThumb) peekEl.style.backgroundImage = `url('${nextThumb}')`;
+
+  // Position peek: if swiping up, peek sits below (+h), moves with finger to 0
+  // If swiping down, peek sits above (-h), moves with finger to 0
+  const peekY = isSwipeUp ? (h + dy) : (-h + dy);
+  peekEl.style.transform = `translateY(${peekY}px)`;
   peekEl.classList.add('visible');
 }, { passive:true });
 
@@ -1962,27 +1971,38 @@ window.addEventListener('touchend', e => {
 
   if (swipeActive && isTouch) {
     videoBg.classList.remove('swiping');
-    // Snap: if swipe is long enough, go to next/prev; otherwise reset
-    if (Math.abs(swipeDy) > SWIPE_THRESHOLD) {
-      const nextIdx = swipeDy < 0
-        ? (cur + 1) % projectData.length
-        : (cur - 1 + projectData.length) % projectData.length;
-      // Animate current video off screen in swipe direction
-      const h = window.innerHeight;
+    peekEl.classList.remove('swiping');
+    const h = window.innerHeight;
+    const isSwipeUp = swipeDy < 0;
+    const nextIdx = isSwipeUp
+      ? (cur + 1) % projectData.length
+      : (cur - 1 + projectData.length) % projectData.length;
+
+    // Commit if swiped more than half the screen
+    if (Math.abs(swipeDy) > h / 2) {
+      // Slide both all the way off — current moves fully off, peek moves fully in
       videoBg.style.transition = 'transform 0.35s cubic-bezier(0.33,1,0.68,1)';
-      videoBg.style.transform  = `translateY(${swipeDy < 0 ? -h : h}px)`;
+      peekEl.style.transition  = 'transform 0.35s cubic-bezier(0.33,1,0.68,1)';
+      videoBg.style.transform  = `translateY(${isSwipeUp ? -h : h}px)`;
+      peekEl.style.transform   = 'translateY(0)';
       setTimeout(() => {
         videoBg.style.transition = '';
         videoBg.style.transform  = '';
+        peekEl.style.transition  = '';
+        peekEl.style.transform   = '';
         peekEl.classList.remove('visible');
         goTo(nextIdx);
       }, 350);
     } else {
-      // Not enough — snap back
+      // Snap back
       videoBg.style.transition = 'transform 0.25s ease-out';
+      peekEl.style.transition  = 'transform 0.25s ease-out';
       videoBg.style.transform  = 'translateY(0)';
+      peekEl.style.transform   = `translateY(${isSwipeUp ? h : -h}px)`;
       setTimeout(() => {
         videoBg.style.transition = '';
+        peekEl.style.transition  = '';
+        peekEl.style.transform   = '';
         peekEl.classList.remove('visible');
       }, 250);
     }
@@ -1991,7 +2011,7 @@ window.addEventListener('touchend', e => {
     return;
   }
 
-  // Non-swipe: desktop-like touch behavior for detail page
+  // Non-swipe: desktop touch behavior
   if (!isTouch) {
     if (e.target.closest('#strip-area')) return;
     const dy = ty0 - e.changedTouches[0].clientY;
