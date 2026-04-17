@@ -412,7 +412,9 @@ nav.hide {
   color:#fff; padding:0;
   display:flex; align-items:center; justify-content:center;
   transition:color 0.15s;
+  outline:none;
 }
+.vid-btn:focus { outline:none; }
 .vid-btn:hover { color:#fff; opacity:0.6; }
 .vid-btn svg { display:block; }
 .win-resize {
@@ -2073,6 +2075,7 @@ const mobIndicator = document.getElementById('mob-play-indicator');
 
 lndPlayBtn.addEventListener('click', (e) => {
   e.stopPropagation();
+  e.currentTarget.blur();
   if (!isLndVideo) return;
   setPlaying(!playing);
 });
@@ -2091,6 +2094,7 @@ videoBg.addEventListener('click', () => {
 
 lndMuteBtn.addEventListener('click', (e) => {
   e.stopPropagation();
+  e.currentTarget.blur();
   if (!isLndVideo) return;
   lndVideo.muted = !lndVideo.muted;
   lndWaves.style.opacity = lndVideo.muted ? '0.15' : '1';
