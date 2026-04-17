@@ -2395,10 +2395,11 @@ const workInner = document.getElementById('work-inner');
 
 function buildWork() {
   workInner.innerHTML = '';
-  // Build the rows 3x so we can do infinite scroll: [copy-1][middle][copy+1]
-  // User sits in the middle; when they scroll into copy-1 or copy+1, we silently
-  // jump them back to the middle copy at the same visual position.
-  for (let rep = 0; rep < 3; rep++) {
+  // Build the rows 5x for a smoother infinite scroll: [c0][c1][middle=c2][c3][c4]
+  // User sits in the middle (c2); when they scroll into c0 or c4, we silently
+  // jump them back to the middle at the same visual position.
+  // More copies = less frequent snapping = smoother momentum scroll.
+  for (let rep = 0; rep < 5; rep++) {
     projectData.forEach((p, i) => {
       const pd     = projectDetails[i];
       const frames = pd?.thumbFrames || [];
@@ -2441,41 +2442,43 @@ function buildWork() {
   }
 }
 
-// Returns the rows belonging to the middle block (copy index 1) — used by FLIP
+// Returns the rows belonging to the middle block (copy index 2) — used by FLIP
 // animations so the flying thumbs land on the visible, normally-scrolled copies.
 function middleWorkRows() {
-  return Array.from(workInner.querySelectorAll('.work-row[data-rep="1"]'));
+  return Array.from(workInner.querySelectorAll('.work-row[data-rep="2"]'));
 }
 
 // Infinite scroll wiring: set up once when work opens
 function setupInfiniteWorkScroll() {
-  // Remove any previous listener
   workEl.onscroll = null;
 
-  // Wait a frame for layout so heights are correct
   requestAnimationFrame(() => {
     const n = projectData.length;
     if (n === 0) return;
     const rows = Array.from(workInner.querySelectorAll('.work-row'));
-    if (rows.length < n * 2 || !rows[n] || !rows[0]) return; // not ready
+    if (rows.length < n * 5 || !rows[n] || !rows[0]) return;
 
     // Height of one "block" (one full set of projects)
     const blockHeight = rows[n].offsetTop - rows[0].offsetTop;
     if (blockHeight <= 0) return;
 
-    // Start scrolled to the middle block
-    workEl.scrollTop = blockHeight;
+    // Total content = 5 blocks. Start at block 2 (the middle)
+    const middleOffset = blockHeight * 2;
+    workEl.scrollTop = middleOffset;
 
     let snapping = false;
     workEl.onscroll = () => {
       if (snapping) return;
       const st = workEl.scrollTop;
-      if (st < blockHeight * 0.5) {
+      // Only snap when user reaches deep into the outer edge copies (c0 or c4)
+      // At that point we jump by 1 block so they end up in c1 or c3 — they
+      // still have plenty of content ahead/behind and never feel the snap.
+      if (st < blockHeight * 0.8) {
         snapping = true;
         workEl.scrollTop = st + blockHeight;
         requestAnimationFrame(() => { snapping = false; });
       }
-      else if (st > blockHeight * 1.5) {
+      else if (st > blockHeight * 3.2) {
         snapping = true;
         workEl.scrollTop = st - blockHeight;
         requestAnimationFrame(() => { snapping = false; });
@@ -2544,9 +2547,9 @@ function openWork() {
   // Scroll to the middle block before measuring — flights will land on visible rows
   const allRows = Array.from(workInner.querySelectorAll('.work-row'));
   const n = projectData.length;
-  if (n > 0 && allRows.length >= n * 2 && allRows[n] && allRows[0]) {
+  if (n > 0 && allRows.length >= n * 5 && allRows[n] && allRows[0]) {
     const blockHeight = allRows[n].offsetTop - allRows[0].offsetTop;
-    if (blockHeight > 0) workEl.scrollTop = blockHeight;
+    if (blockHeight > 0) workEl.scrollTop = blockHeight * 2;
   }
 
   // 3. Measure where each row WILL BE in the work page — use middle block
