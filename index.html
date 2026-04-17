@@ -247,32 +247,33 @@ nav.hide {
   z-index:91;
   overflow-y:auto;
   overflow-x:hidden;
-  background:transparent;
+  background:#000;
   transition: top 0.72s cubic-bezier(0.76,0,0.24,1);
 }
 #work.open { top:0; }
 #work-inner {
-  padding-top: 80px;
-  padding-bottom: 40px;
+  min-height:100vh;
+  display:flex;
+  flex-direction:column;
 }
 .work-row {
   position:relative;
   width:100%;
-  height:120px;
+  min-height:80px;
+  flex:1;
   overflow:hidden;
   cursor:pointer;
-  border-bottom:1px solid rgba(255,255,255,0.07);
   display:flex;
 }
-.work-row:last-child { border-bottom:none; }
 .work-row .work-bg {
   display:flex;
   flex-direction:row;
   width:100%;
   height:100%;
+  position:absolute; inset:0;
 }
 .work-row .work-slice {
-  flex-shrink:0;
+  flex:1;
   height:100%;
   background-size:cover;
   background-position:center;
@@ -281,35 +282,36 @@ nav.hide {
   position:absolute; inset:0;
   display:flex; align-items:center;
   padding:0 2rem;
-  background: linear-gradient(to right, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.1) 60%, transparent 100%);
   pointer-events:none;
 }
 .work-row .work-title {
   font-family:'NM',sans-serif;
   font-size:1.4rem; font-weight:500;
   color:#fff; white-space:nowrap;
+  text-shadow: 0 1px 8px rgba(0,0,0,0.7);
 }
 .work-row .work-sub {
   font-family:'NM',sans-serif;
-  font-size:0.9rem; color:rgba(255,255,255,0.65);
+  font-size:0.9rem; color:rgba(255,255,255,0.8);
   margin-top:3px; white-space:nowrap;
+  text-shadow: 0 1px 6px rgba(0,0,0,0.7);
 }
 .work-row:hover .work-bg { filter:brightness(1.1); }
-/* Nav blur gradient for work page */
-#work::before {
-  content:'';
-  position:sticky;
+/* Nav blur gradient — blur only, no darkening */
+#work-blur-header {
+  position:fixed;
   top:0; left:0; right:0;
   height:80px;
-  display:block;
-  background: linear-gradient(to bottom, rgba(0,0,0,0.7) 0%, transparent 100%);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  -webkit-mask-image: linear-gradient(to bottom, black 60%, transparent 100%);
-  mask-image: linear-gradient(to bottom, black 60%, transparent 100%);
-  z-index:10;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  -webkit-mask-image: linear-gradient(to bottom, black 40%, transparent 100%);
+  mask-image: linear-gradient(to bottom, black 40%, transparent 100%);
+  z-index:200;
   pointer-events:none;
+  opacity:0;
+  transition: opacity 0.4s;
 }
+#work.open #work-blur-header { opacity:1; }
 
 #detail {
   position:fixed;
@@ -695,6 +697,7 @@ body.is-fullscreen .win-resize { display: none !important; }
 
 <!-- Work page -->
 <div id="work">
+  <div id="work-blur-header"></div>
   <div id="work-inner"></div>
 </div>
 
@@ -1578,14 +1581,13 @@ function buildWork() {
     const pd     = projectDetails[i];
     const frames = pd?.thumbFrames || [];
     const sc     = pd?.sliceCount  || 20;
-    const sliceW = window.innerWidth / sc;
 
     const row = document.createElement('div');
     row.className = 'work-row';
 
-    // Build slices
     const bg = document.createElement('div');
     bg.className = 'work-bg';
+
     const picked = Array.from({length: sc}, (_, j) => {
       if (!frames.length) return null;
       const idx = sc === 1 ? 0 : Math.round(j * (frames.length - 1) / (sc - 1));
@@ -1594,9 +1596,8 @@ function buildWork() {
     picked.forEach(src => {
       const s = document.createElement('div');
       s.className = 'work-slice';
-      s.style.width = sliceW + 'px';
       if (src) s.style.backgroundImage = `url('${src}')`;
-      else s.className += ' ' + p.tc;
+      else s.classList.add(p.tc);
       bg.appendChild(s);
     });
 
