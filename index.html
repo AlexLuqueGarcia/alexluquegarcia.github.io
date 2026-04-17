@@ -833,7 +833,7 @@ body.is-fullscreen .win-resize { display: none !important; }
 .tc-6{background:linear-gradient(160deg,#401018,#280810);}
 .tc-7{background:linear-gradient(160deg,#282828,#141414);}
 
-/* Mobile-only center play indicator — blurred triangle of video underneath */
+/* Mobile-only center play indicator — inverted blurred triangle of video underneath */
 #mob-play-indicator {
   display: none;
   position: fixed;
@@ -845,9 +845,9 @@ body.is-fullscreen .win-resize { display: none !important; }
   pointer-events: none;
   opacity: 0;
   transition: opacity 0.25s ease, transform 0.3s var(--ease-spring);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  background: rgba(255,255,255,0.1);
+  backdrop-filter: blur(10px) saturate(1.4) invert(1) hue-rotate(180deg);
+  -webkit-backdrop-filter: blur(10px) saturate(1.4) invert(1) hue-rotate(180deg);
+  background: rgba(255,255,255,0.05);
   clip-path: polygon(18% 10%, 18% 90%, 88% 50%);
   -webkit-clip-path: polygon(18% 10%, 18% 90%, 88% 50%);
 }
