@@ -587,23 +587,22 @@ body.is-fullscreen .win-resize { display: none !important; }
 .tc-6{background:linear-gradient(160deg,#401018,#280810);}
 .tc-7{background:linear-gradient(160deg,#282828,#141414);}
 
-/* Mobile-only play/mute controls — hidden on desktop */
-#mobile-controls {
+/* Mobile-only center play indicator — shown when paused on mobile */
+#mob-play-indicator {
   display: none;
   position: fixed;
-  right: 1.2rem;
-  top: 50%;
-  transform: translateY(-50%);
-  flex-direction: column;
-  gap: 20px;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
   z-index: 101;
   pointer-events: none;
   opacity: 0;
-  transition: opacity 0.4s;
+  transition: opacity 0.2s;
+  filter: drop-shadow(0 2px 12px rgba(0,0,0,0.5));
 }
-#mobile-controls.visible { opacity: 1; pointer-events: all; }
-#mobile-controls.hide { opacity: 0; pointer-events: none; }
-#mobile-controls .vid-btn { color: #fff; }
+#mob-play-indicator.visible { opacity: 1; }
+#mobile-controls {
+  display: none;
+}
 
 /* ── MOBILE ── */
 @media (max-width: 768px) {
@@ -639,12 +638,8 @@ body.is-fullscreen .win-resize { display: none !important; }
   #scroll-hint.hide { transform: translateY(calc(var(--strip-h) + var(--pad-b) + 60px)); opacity: 0; }
   #scroll-hint span { font-size: 1.1rem; }
   #lnd-play, #lnd-mute { display: none; }
-  /* Mobile controls — TikTok right center */
-  #mobile-controls {
-    display: flex;
-    opacity: 1;
-    pointer-events: all;
-  }
+  /* Show center play indicator on mobile when paused */
+  #mob-play-indicator { display: block; }
 
   /* Strip labels */
   .thumb-label { font-size: 0.7rem; }
@@ -722,19 +717,11 @@ body.is-fullscreen .win-resize { display: none !important; }
 </div>
 
 <!-- Mobile-only play/mute — TikTok style right center -->
-<div id="mobile-controls">
-  <button class="vid-btn" id="mob-play" onclick="event.stopPropagation()">
-    <svg id="mob-play-icon" width="28" height="28" viewBox="0 0 13 13" fill="none">
-      <rect x="1" y="1" width="3.5" height="11" fill="currentColor"/>
-      <rect x="8.5" y="1" width="3.5" height="11" fill="currentColor"/>
-    </svg>
-  </button>
-  <button class="vid-btn" id="mob-mute" onclick="event.stopPropagation()">
-    <svg width="28" height="28" viewBox="0 0 15 11" fill="none">
-      <path d="M1 3.5H3.2L6.5 1V10L3.2 7.5H1V3.5Z" stroke="currentColor" stroke-width="1.1" fill="none"/>
-      <path id="mob-waves" d="M9 2.5C10 3.3 10.5 4.4 10.5 5.5C10.5 6.6 10 7.7 9 8.5M11.5 1C13 2.3 14 3.8 14 5.5C14 7.2 13 8.7 11.5 10" stroke="currentColor" stroke-width="1.1"/>
-    </svg>
-  </button>
+<!-- Mobile center play indicator — shown only when paused -->
+<div id="mob-play-indicator">
+  <svg width="80" height="80" viewBox="0 0 13 13" fill="none">
+    <path d="M2 1.5L11 6.5L2 11.5V1.5Z" fill="white" opacity="0.85"/>
+  </svg>
 </div>
 
 <!-- Work page -->
@@ -1224,7 +1211,7 @@ function updateMeta(i) {
   document.getElementById('m-title').textContent  = title;
   document.getElementById('m-role').textContent   = role;
   metaEl.classList.add('visible');
-  hintEl.classList.add('visible'); if(mobControls) mobControls.classList.add('visible');
+  hintEl.classList.add('visible');
 }
 
 function setActiveThumb(i) {
@@ -1257,12 +1244,14 @@ function setPlaying(val) {
     schedTick();
     if (isLndVideo && lndVideo.paused) lndVideo.play();
     if (lndPlayIcon) lndPlayIcon.innerHTML = '<rect x="1" y="1" width="4" height="12" fill="currentColor"/><rect x="9" y="1" width="4" height="12" fill="currentColor"/>';
-    if (mobPlayIcon) mobPlayIcon.innerHTML = '<rect x="1" y="1" width="3.5" height="11" fill="currentColor"/><rect x="8.5" y="1" width="3.5" height="11" fill="currentColor"/>';
+    const ind = document.getElementById('mob-play-indicator');
+    if (ind) ind.classList.remove('visible');
   } else {
     cancelAnimationFrame(raf);
     if (isLndVideo && !lndVideo.paused) lndVideo.pause();
     if (lndPlayIcon) lndPlayIcon.innerHTML = '<path d="M1 1L13 7L1 13V1Z" fill="currentColor"/>';
-    if (mobPlayIcon) mobPlayIcon.innerHTML = '<path d="M1.5 1L11.5 6.5L1.5 12V1Z" fill="currentColor"/>';
+    const ind = document.getElementById('mob-play-indicator');
+    if (ind) ind.classList.add('visible');
   }
 }
 
@@ -1810,7 +1799,6 @@ function openWork() {
   stripEl.style.visibility = 'hidden';
   metaEl.classList.add('hide');
   hintEl.classList.add('hide');
-  if (mobControls) mobControls.classList.add('hide');
   rows.forEach(r => r.style.visibility = 'hidden');
 
   // 5. Create flying clones that animate from startRect to endRect
@@ -1857,7 +1845,6 @@ function closeWork() {
   workEl.classList.remove('open');
   metaEl.classList.remove('hide');
   hintEl.classList.remove('hide');
-  if (mobControls) mobControls.classList.remove('hide');
 
   // 6. After animation finishes, restore strip visibility and remove clones
   setTimeout(() => {
@@ -1875,7 +1862,7 @@ function openDetail() {
 
   stripEl.classList.add('hide');
   metaEl.classList.add('hide');
-  hintEl.classList.add('hide'); if(mobControls) mobControls.classList.add('hide');
+  hintEl.classList.add('hide');
 
   // pause ticker and landing video
   cancelAnimationFrame(raf);
@@ -1912,13 +1899,13 @@ function closeDetail() {
   setTimeout(() => {
     stripEl.classList.remove('hide');
     metaEl.classList.remove('hide');
-    hintEl.classList.remove('hide'); if(mobControls) mobControls.classList.remove('hide');
+    hintEl.classList.remove('hide');
     
     metaEl.classList.remove('visible');
-    hintEl.classList.remove('visible'); if(mobControls) mobControls.classList.remove('visible');
+    hintEl.classList.remove('visible');
     setTimeout(() => {
       metaEl.classList.add('visible');
-      hintEl.classList.add('visible'); if(mobControls) mobControls.classList.add('visible');
+      hintEl.classList.add('visible');
       transitioning = false;
     }, 50);
   }, 500);
@@ -1950,7 +1937,7 @@ window.addEventListener('touchstart', e => {
 
 window.addEventListener('touchmove', e => {
   if (workOpen || detailOpen || transitioning) return;
-  if (e.target.closest('#strip-area, #mobile-controls, #scroll-hint, nav')) return;
+  if (e.target.closest('#strip-area, #scroll-hint, nav')) return;
 
   const dy = e.touches[0].clientY - ty0;
   const dx = e.touches[0].clientX - tx0;
@@ -2073,12 +2060,8 @@ const lndMuteBtn  = document.getElementById('lnd-mute');
 const lndWaves    = document.getElementById('lnd-waves');
 const isLndVideo  = lndVideo && lndVideo.tagName === 'VIDEO';
 
-// Mobile controls
-const mobControls  = document.getElementById('mobile-controls');
-const mobPlayBtn   = document.getElementById('mob-play');
-const mobPlayIcon  = document.getElementById('mob-play-icon');
-const mobMuteBtn   = document.getElementById('mob-mute');
-const mobWaves     = document.getElementById('mob-waves');
+// Mobile center play indicator
+const mobIndicator = document.getElementById('mob-play-indicator');
 
 lndPlayBtn.addEventListener('click', (e) => {
   e.stopPropagation();
@@ -2086,15 +2069,16 @@ lndPlayBtn.addEventListener('click', (e) => {
   setPlaying(!playing);
 });
 
-mobPlayBtn.addEventListener('click', (e) => {
-  e.stopPropagation();
-  if (!isLndVideo) return;
-  setPlaying(!playing);
-});
-
-// Click landing video → next project
+// Click landing video:
+// - Desktop: go to next project
+// - Mobile: toggle play/pause (TikTok style)
 videoBg.addEventListener('click', () => {
-  if (!detailOpen) goTo((cur + 1) % projectData.length);
+  if (detailOpen || workOpen) return;
+  if (isTouch) {
+    setPlaying(!playing);
+  } else {
+    goTo((cur + 1) % projectData.length);
+  }
 });
 
 lndMuteBtn.addEventListener('click', (e) => {
@@ -2102,15 +2086,6 @@ lndMuteBtn.addEventListener('click', (e) => {
   if (!isLndVideo) return;
   lndVideo.muted = !lndVideo.muted;
   lndWaves.style.opacity = lndVideo.muted ? '0.15' : '1';
-  if (mobWaves) mobWaves.style.opacity = lndVideo.muted ? '0.15' : '1';
-});
-
-mobMuteBtn.addEventListener('click', (e) => {
-  e.stopPropagation();
-  if (!isLndVideo) return;
-  lndVideo.muted = !lndVideo.muted;
-  lndWaves.style.opacity = lndVideo.muted ? '0.15' : '1';
-  if (mobWaves) mobWaves.style.opacity = lndVideo.muted ? '0.15' : '1';
 });
 
 // ── NAV YEAR ──
