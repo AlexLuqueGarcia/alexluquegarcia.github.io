@@ -2401,10 +2401,12 @@ function buildWork() {
   // Minimum 140px so even with many projects rows stay usable.
   const rowH = Math.max(140, window.innerHeight / n);
   workInner.style.setProperty('--row-h', rowH + 'px');
-  // Build the rows 5x for a smoother infinite scroll: [c0][c1][middle=c2][c3][c4]
-  // User sits in the middle (c2); when they scroll into c0 or c4, we silently
-  // jump them back to the middle at the same visual position.
-  for (let rep = 0; rep < 5; rep++) {
+  // Build many copies for a smoother infinite scroll illusion.
+  // Mobile needs more copies because iOS momentum is much stronger than desktop.
+  const copies = isTouch ? 9 : 5;
+  workInner.dataset.copies = copies;
+  workInner.dataset.middle = Math.floor(copies / 2); // middle block index
+  for (let rep = 0; rep < copies; rep++) {
     projectData.forEach((p, i) => {
       const pd     = projectDetails[i];
       const frames = pd?.thumbFrames || [];
@@ -2447,10 +2449,11 @@ function buildWork() {
   }
 }
 
-// Returns the rows belonging to the middle block (copy index 2) — used by FLIP
-// animations so the flying thumbs land on the visible, normally-scrolled copies.
+// Returns the rows belonging to the middle block — used by FLIP animations
+// so the flying thumbs land on the visible, normally-scrolled copies.
 function middleWorkRows() {
-  return Array.from(workInner.querySelectorAll('.work-row[data-rep="2"]'));
+  const middle = workInner.dataset.middle || '2';
+  return Array.from(workInner.querySelectorAll(`.work-row[data-rep="${middle}"]`));
 }
 
 // Infinite scroll wiring: set up once when work opens
@@ -2461,31 +2464,37 @@ function setupInfiniteWorkScroll() {
     const n = projectData.length;
     if (n === 0) return;
     const rows = Array.from(workInner.querySelectorAll('.work-row'));
-    if (rows.length < n * 5 || !rows[n] || !rows[0]) return;
+    const copies = parseInt(workInner.dataset.copies) || 5;
+    if (rows.length < n * copies || !rows[n] || !rows[0]) return;
 
     // Height of one "block" (one full set of projects)
     const blockHeight = rows[n].offsetTop - rows[0].offsetTop;
     if (blockHeight <= 0) return;
 
-    // Total content = 5 blocks. Start at block 2 (the middle)
-    const middleOffset = blockHeight * 2;
+    const middle = parseInt(workInner.dataset.middle) || 2;
+    const middleOffset = blockHeight * middle;
     workEl.scrollTop = middleOffset;
+
+    // Snap thresholds: trigger only when user has scrolled deep enough that
+    // there's still plenty of content between the snap point and the actual edge.
+    // This keeps iOS momentum scrolling smooth — the snap lands them far from
+    // any edge so the browser never runs out of scrollable area.
+    const topThreshold    = blockHeight * 1.0;              // snap up when entering block 0 area
+    const bottomThreshold = blockHeight * (copies - 2);     // snap down when leaving block (copies-2) area
+    const snapAmount      = blockHeight * (copies - 3);     // jump by ~middle distance
 
     let snapping = false;
     workEl.onscroll = () => {
       if (snapping) return;
       const st = workEl.scrollTop;
-      // Only snap when user reaches deep into the outer edge copies (c0 or c4)
-      // At that point we jump by 1 block so they end up in c1 or c3 — they
-      // still have plenty of content ahead/behind and never feel the snap.
-      if (st < blockHeight * 0.8) {
+      if (st < topThreshold) {
         snapping = true;
-        workEl.scrollTop = st + blockHeight;
+        workEl.scrollTop = st + snapAmount;
         requestAnimationFrame(() => { snapping = false; });
       }
-      else if (st > blockHeight * 3.2) {
+      else if (st > bottomThreshold) {
         snapping = true;
-        workEl.scrollTop = st - blockHeight;
+        workEl.scrollTop = st - snapAmount;
         requestAnimationFrame(() => { snapping = false; });
       }
     };
@@ -2552,9 +2561,11 @@ function openWork() {
   // Scroll to the middle block before measuring — flights will land on visible rows
   const allRows = Array.from(workInner.querySelectorAll('.work-row'));
   const n = projectData.length;
-  if (n > 0 && allRows.length >= n * 5 && allRows[n] && allRows[0]) {
+  const copies = parseInt(workInner.dataset.copies) || 5;
+  const middleIdx = parseInt(workInner.dataset.middle) || 2;
+  if (n > 0 && allRows.length >= n * copies && allRows[n] && allRows[0]) {
     const blockHeight = allRows[n].offsetTop - allRows[0].offsetTop;
-    if (blockHeight > 0) workEl.scrollTop = blockHeight * 2;
+    if (blockHeight > 0) workEl.scrollTop = blockHeight * middleIdx;
   }
 
   // 3. Measure where each row WILL BE in the work page — use middle block
