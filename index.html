@@ -158,9 +158,9 @@ body.cur-hover #cur svg {
   transform: translate(-50%, -48%) scale(0.94);
   width: min(520px, calc(100vw - 3rem));
   max-height: 80vh;
-  background: rgba(255,255,255,0.08);
-  backdrop-filter: blur(30px) saturate(1.4) invert(1) hue-rotate(180deg);
-  -webkit-backdrop-filter: blur(30px) saturate(1.4) invert(1) hue-rotate(180deg);
+  background: rgba(245,245,245,0.92);
+  backdrop-filter: blur(30px) saturate(1.2);
+  -webkit-backdrop-filter: blur(30px) saturate(1.2);
   border-radius: 0;
   padding: 2.2rem 2rem 2rem;
   color: #000;
@@ -232,9 +232,7 @@ body.cur-hover #cur svg {
 .info-section .info-body a:hover { opacity: 0.6; }
 
 /* Hero bio — larger type with a wandering fairy-light highlight.
-   The info panel is inverted, so we paint the text in black with a moving
-   translucent zone that — after inversion — reads as a soft white glow
-   drifting around the text. JS controls the position via CSS variables. */
+   On a bright panel, dark text with a subtle brighter zone that drifts around. */
 .info-bio {
   font-size: 1.55rem;
   line-height: 1.35;
@@ -244,9 +242,10 @@ body.cur-hover #cur svg {
   --fy: 50%;
   background: radial-gradient(
     circle at var(--fx) var(--fy),
-    rgba(0,0,0,0.05) 0%,
-    rgba(0,0,0,0.35) 10%,
-    #000 28%,
+    rgba(120,120,120,1) 0%,
+    rgba(60,60,60,1) 14%,
+    rgba(10,10,10,1) 30%,
+    #000 45%,
     #000 100%
   );
   -webkit-background-clip: text;
