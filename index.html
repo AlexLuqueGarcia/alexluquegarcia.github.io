@@ -410,20 +410,8 @@ nav.hide {
 /* Mobile press behavior — JS adds/removes .strip-pressing on #strip-area and .pressed on the targeted thumb */
 #strip-area.strip-pressing .thumb::after { opacity: 1; }
 #strip-area.strip-pressing .thumb.pressed::after { opacity: 0; }
-#strip-area.strip-pressing .thumb.active .thumb-corners,
-#strip-area.strip-pressing .thumb.active .thumb-marker {
-  z-index: 25;
-  transition: border-color 0.25s ease, background 0.25s ease;
-}
-#strip-area.strip-pressing .thumb.active:not(.pressed) .thumb-corners::before,
-#strip-area.strip-pressing .thumb.active:not(.pressed) .thumb-corners::after,
-#strip-area.strip-pressing .thumb.active:not(.pressed) .thumb-corners .tc-rc::before,
-#strip-area.strip-pressing .thumb.active:not(.pressed) .thumb-corners .tc-rc::after {
-  border-color: #000;
-}
-#strip-area.strip-pressing .thumb.active:not(.pressed) .thumb-marker {
-  background: #000;
-}
+/* Don't overlay the active thumb on mobile — would add GPU load during scrubbing */
+#strip-area.strip-pressing .thumb.active::after { opacity: 0; }
 .thumb-bg {
   width:100%; height:100%;
   display:flex; /* slices sit side by side */
@@ -1398,7 +1386,6 @@ function buildStrip() {
     t.addEventListener('touchstart', (e) => {
       // Show the inverted overlay on all other thumbs, clear on this one
       stripEl.classList.add('strip-pressing');
-      allThumbs().forEach(x => x.classList.remove('pressed'));
       t.classList.add('pressed');
       if (detailOpen || thumbIndex !== cur) return;
       scrubStart(e.touches[0].clientX, t);
@@ -1412,12 +1399,12 @@ function buildStrip() {
       // Keep overlay visible briefly after release, then fade out
       setTimeout(() => {
         stripEl.classList.remove('strip-pressing');
-        allThumbs().forEach(x => x.classList.remove('pressed'));
+        t.classList.remove('pressed');
       }, 250);
     }, { passive: true });
     t.addEventListener('touchcancel', () => {
       stripEl.classList.remove('strip-pressing');
-      allThumbs().forEach(x => x.classList.remove('pressed'));
+      t.classList.remove('pressed');
     }, { passive: true });
 
     stripEl.appendChild(t);
