@@ -1447,6 +1447,11 @@ async function scrubEnd() {
     return;
   }
 
+  // Mobile uses a dedicated HLS-aware bulletproof path; desktop keeps the existing logic
+  if (isTouch) {
+    return scrubEndMobile(vid, finalPct, wasPlaying);
+  }
+
   const targetTime = finalPct * vid.duration;
 
   // Wait for any in-flight preview seeks to settle
@@ -1486,6 +1491,117 @@ async function scrubEnd() {
   vid.currentTime = targetTime;
 
   if (wasPlaying) setPlaying(true);
+}
+
+// ── MOBILE-SPECIFIC BULLETPROOF SCRUB RESOLUTION ──
+// The mobile path addresses HLS segment-loading issues where:
+//  - `vid.seeking` can stay true indefinitely on unbuffered segments
+//  - `currentTime` assignments silently get swallowed
+//  - Browser can "snap back" to a buffered range after playback starts
+async function scrubEndMobile(vid, finalPct, wasPlaying) {
+  const targetTime = finalPct * vid.duration;
+
+  // Lock UI state to target immediately so user sees correct marker
+  localProgress = finalPct;
+  setProgress(finalPct);
+
+  // Full pause to stop any in-flight playback/seek work
+  if (!vid.paused) vid.pause();
+
+  // Wait 3 frames for preview seeks and pause to settle
+  for (let k = 0; k < 3; k++) await new Promise(r => requestAnimationFrame(r));
+
+  // Helper: is a given time inside any buffered range?
+  const isBuffered = (t) => {
+    try {
+      for (let i = 0; i < vid.buffered.length; i++) {
+        if (t >= vid.buffered.start(i) && t <= vid.buffered.end(i)) return true;
+      }
+    } catch {}
+    return false;
+  };
+
+  // Helper: tell HLS to start loading the segment we need
+  const requestHlsLoad = (t) => {
+    try {
+      if (_hlsInstance) {
+        _hlsInstance.startLoad(t);
+      }
+    } catch {}
+  };
+
+  // If HLS, tell it to start loading around our target
+  requestHlsLoad(targetTime);
+
+  // ─── PHASE 1: Wait up to 3s for target to become buffered and seek to complete ───
+  const PHASE1_TIMEOUT = 3000;
+  const POLL = 40;
+  const start = performance.now();
+  vid.currentTime = targetTime;
+
+  while (performance.now() - start < PHASE1_TIMEOUT) {
+    await new Promise(r => setTimeout(r, POLL));
+
+    // If seek completed and we're close to target, we're done
+    if (!vid.seeking && Math.abs(vid.currentTime - targetTime) < 0.2) {
+      break;
+    }
+
+    // If not seeking but we're somewhere else entirely, try seeking again
+    // (segment might have just finished loading)
+    if (!vid.seeking) {
+      if (isBuffered(targetTime)) {
+        // Target is buffered but we're at the wrong spot — force seek
+        vid.currentTime = targetTime;
+      } else {
+        // Target not yet buffered — ask HLS to load it, keep polling
+        requestHlsLoad(targetTime);
+      }
+    }
+    // If vid.seeking is true, let it work
+  }
+
+  // ─── PHASE 2: Whatever state we're in, lock to target before play ───
+  // Even if the segment isn't buffered, setting currentTime here means when
+  // playback begins the browser will start from here (or pause until buffered)
+  vid.currentTime = targetTime;
+  localProgress = finalPct;
+  setProgress(finalPct);
+
+  // Settle — let the decoder catch up
+  await new Promise(r => setTimeout(r, 120));
+
+  // Re-check: if the browser moved us during settle, reassert
+  if (Math.abs(vid.currentTime - targetTime) > 0.2) {
+    vid.currentTime = targetTime;
+    await new Promise(r => setTimeout(r, 80));
+  }
+
+  // ─── PHASE 3: Guard against post-play drift ───
+  // On HLS + mobile Safari, calling play() after a seek to an unbuffered area
+  // can cause the browser to jump to the nearest buffered frame. We watch for
+  // this and correct it in the first few hundred ms of playback.
+  if (wasPlaying) {
+    setPlaying(true);
+
+    // Monitor for 600ms post-play: if playback is far from where we seeked, reassert
+    const monitorStart = performance.now();
+    const monitorDuration = 600;
+    let corrections = 0;
+    const MAX_CORRECTIONS = 2;
+
+    while (performance.now() - monitorStart < monitorDuration) {
+      await new Promise(r => setTimeout(r, 60));
+      // Rough expected time: target + elapsed since play started (×1 playback rate)
+      const elapsed = (performance.now() - monitorStart) / 1000;
+      const expected = targetTime + elapsed;
+      // If we're more than 1s off AND we haven't exhausted corrections, snap back
+      if (Math.abs(vid.currentTime - expected) > 1.0 && corrections < MAX_CORRECTIONS) {
+        vid.currentTime = targetTime + (performance.now() - monitorStart) / 1000;
+        corrections++;
+      }
+    }
+  }
 }
 // Cosmetic preview seek during drag — may be superseded
 function previewSeek(pct) {
