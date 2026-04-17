@@ -131,18 +131,19 @@ body.cur-hover #cur svg {
 
 /* ── NAV — fixed, always on top ── */
 nav {
+  --nav-pad-t: 1.4rem;
   position:fixed;
   top:0; left:0; right:0;
   z-index:100;
   display:flex; justify-content:space-between; align-items:flex-start;
-  padding:1.4rem 1.6rem;
+  padding: var(--nav-pad-t) 1.6rem;
   transition: opacity 0.5s ease, transform 0.6s var(--ease-smooth);
 }
 /* Brand is absolutely centered — doesn't care about side column widths */
 .nav-brand {
   position: absolute;
   left: 50%;
-  top: 1.4rem;
+  top: var(--nav-pad-t);
   transform: translateX(-50%);
   text-align: center;
 }
@@ -743,7 +744,7 @@ body.is-fullscreen .win-resize { display: none !important; }
   #cur { display: none !important; }
 
   /* Nav */
-  nav { padding: 0.9rem 1rem; }
+  nav { --nav-pad-t: 0.9rem; padding: var(--nav-pad-t) 1rem; }
   .nav-links { gap: 1.2rem; }
   .nav-links a, #nav-year { font-size: 0.85rem; }
   .nav-brand .name, .nav-brand .tagline { font-size: 0.85rem; }
