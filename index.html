@@ -829,9 +829,10 @@ async function loadProjects() {
 
   // Load each project's info.txt
   const results = await Promise.all(manifest.map(async (folder, idx) => {
-    const base = `${ASSETS_BASE}/${folder}`;
+    const mediaBase = `${ASSETS_BASE}/${folder}`;  // Bunny — videos, images, thumbs
+    const infoBase  = `projects/${folder}`;         // GitHub — info.txt
     try {
-      const res = await fetch(`${base}/info.txt`);
+      const res = await fetch(`${infoBase}/info.txt`);
       if (!res.ok) throw new Error('info.txt missing');
       const txt  = await res.text();
       const info = parseInfo(txt);
@@ -844,23 +845,25 @@ async function loadProjects() {
           studio:   info.studio   || '',
           type:     info.type     || '',
           duration: parseInt(info.duration) || 60,
-          src:      fixDropbox(info.video) || `${base}/video.mp4`,
+          src:      fixDropbox(info.video) || `${mediaBase}/video.mp4`,
         },
         detail: {
           about:       info.about   || '',
           team:        info.team    || '',
           credits:     info.credits || '',
-          imagesHint:  info.images  || '', // used later by background loader
+          imagesHint:  info.images  || '',
           images:      [],
           thumbFrames: info.frames
-            ? info.frames.split(',').map(f => `${base}/thumbnail/${f.trim()}`)
+            ? info.frames.split(',').map(f => `${mediaBase}/thumbnail/${f.trim()}`)
             : [],
           get thumb()  { return this.images[0] || null; }
         }
       };
     } catch(e) {
+      console.warn(`Failed to load info.txt for ${folder}:`, e);
+      const fb = FALLBACK_PROJECTS.find(p => p.folder === folder);
       return {
-        proj:   { folder, tc: colors[idx % colors.length], name: folder, client:'', studio:'', type:'', duration:60, src:`${base}/video.mp4` },
+        proj:   fb || { folder, tc: colors[idx % colors.length], name: folder, client:'', studio:'', type:'', duration:60, src:`${mediaBase}/video.mp4` },
         detail: { about:'', team:'', credits:'', images:[], thumbFrames:[], thumb:null }
       };
     }
@@ -1669,6 +1672,7 @@ window.addEventListener('load', async () => {
   }
 
   // 3. Build strip with color fallbacks, start playing
+  console.log('projectData[0]:', JSON.stringify(projectData[0]));
   buildStrip();
   setBg(0); setActiveThumb(0); updateMeta(0); setPlaying(true);
 
