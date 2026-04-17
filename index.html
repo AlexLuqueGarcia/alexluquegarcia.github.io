@@ -1444,27 +1444,49 @@ function scrubEnd() {
   scrubState.pendingPct = null;
 
   const vid = document.getElementById('video-bg-inner');
-  // Authoritative seek to exactly where the finger released
-  if (vid && finalPct != null && vid.duration && !isNaN(vid.duration)) {
-    vid.currentTime = finalPct * vid.duration;
-    localProgress = finalPct;
-    setProgress(finalPct);
+  if (!vid || finalPct == null || !vid.duration || isNaN(vid.duration)) {
+    if (wasPlaying) setPlaying(true);
+    return;
   }
 
-  const resume = () => { if (wasPlaying) setPlaying(true); };
-  if (vid && vid.seeking) {
-    const onSeeked = () => {
-      vid.removeEventListener('seeked', onSeeked);
-      resume();
-    };
-    vid.addEventListener('seeked', onSeeked);
+  const targetTime = finalPct * vid.duration;
+  localProgress = finalPct;
+  setProgress(finalPct);
+
+  const resume = () => {
+    // Settling delay lets the decoder display the seeked frame before playback starts
     setTimeout(() => {
+      if (wasPlaying) setPlaying(true);
+    }, 100);
+  };
+
+  // Check if we're already at the target (within 50ms) — no need to wait
+  if (Math.abs(vid.currentTime - targetTime) < 0.05 && !vid.seeking) {
+    resume();
+    return;
+  }
+
+  // Seek to authoritative position, wait for it specifically to complete
+  let done = false;
+  const onSeeked = () => {
+    // Only resume if we've actually reached the target (not some intermediate seek)
+    if (Math.abs(vid.currentTime - targetTime) < 0.1) {
+      if (done) return;
+      done = true;
       vid.removeEventListener('seeked', onSeeked);
       resume();
-    }, 700);
-  } else {
+    }
+  };
+  vid.addEventListener('seeked', onSeeked);
+  vid.currentTime = targetTime;
+
+  // Fallback — force resume after 900ms even if seeked never fires
+  setTimeout(() => {
+    if (done) return;
+    done = true;
+    vid.removeEventListener('seeked', onSeeked);
     resume();
-  }
+  }, 900);
 }
 // Cosmetic preview seek during drag — can be interrupted without consequence
 function previewSeek(pct) {
