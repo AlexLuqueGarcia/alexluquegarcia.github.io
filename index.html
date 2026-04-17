@@ -1425,6 +1425,26 @@ function seekVideo(pct) {
   }
 }
 
+// Briefly highlight the current (active) thumb using the same inverted overlay
+// system as the press behavior — used after TikTok-style mobile swipe to show
+// which thumb the user has landed on.
+let _flashTimer = null;
+function flashActiveThumb() {
+  const thumbs = allThumbs();
+  const active = thumbs[cur];
+  if (!active) return;
+  // Clear any previous flash
+  if (_flashTimer) clearTimeout(_flashTimer);
+  thumbs.forEach(x => x.classList.remove('pressed'));
+  stripEl.classList.add('strip-pressing');
+  active.classList.add('pressed');
+  _flashTimer = setTimeout(() => {
+    stripEl.classList.remove('strip-pressing');
+    active.classList.remove('pressed');
+    _flashTimer = null;
+  }, 600);
+}
+
 function buildThumbSlices(frames, fallbackTc, sliceCount) {
   const N = sliceCount || 12;
   if (!frames || frames.length === 0) {
@@ -2678,6 +2698,8 @@ window.addEventListener('touchend', e => {
             peekEl.style.transform = '';
           });
         });
+        // Briefly highlight the new active thumb on the strip
+        flashActiveThumb();
       }, 350);
     } else {
       // Snap back
