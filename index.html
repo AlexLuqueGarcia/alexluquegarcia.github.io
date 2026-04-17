@@ -435,6 +435,20 @@ nav.hide {
 .thumb-corners::after         { top:0;    right:0; border-width:2.25px 2.25px 0 0; }
 .thumb-corners .tc-rc::before { bottom:0; left:0;  border-width:0 0 2.25px 2.25px; }
 .thumb-corners .tc-rc::after  { bottom:0; right:0; border-width:0 2.25px 2.25px 0; }
+
+/* Thinner corners on mobile */
+@media (max-width: 768px) {
+  .thumb-corners::before,
+  .thumb-corners::after,
+  .thumb-corners .tc-rc::before,
+  .thumb-corners .tc-rc::after {
+    width: 14px; height: 14px;
+  }
+  .thumb-corners::before        { border-width: 1.25px 0 0 1.25px; }
+  .thumb-corners::after         { border-width: 1.25px 1.25px 0 0; }
+  .thumb-corners .tc-rc::before { border-width: 0 0 1.25px 1.25px; }
+  .thumb-corners .tc-rc::after  { border-width: 0 1.25px 1.25px 0; }
+}
 .thumb-black {
   position:absolute; inset:0;
   backdrop-filter: blur(4px);
