@@ -4,7 +4,7 @@ studio: x
 type: CG Artist
 duration: 90
 color: tc-0
-video: https://vz-114da70f-2b3.b-cdn.net/96deae81-d239-448c-835f-45abc515adcc/playlist.m3u8
+video: https://vz-114da70f-2b3.b-cdn.net/96deae81-d239-448c-835f-45abc515adcc/play_1080p.mp4
 about: CG work for Black MIDI's Welcome To Hell music video.
 team: Alex Luque Garcia — CG Artist
 credits: Studio: x
