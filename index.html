@@ -2395,42 +2395,92 @@ const workInner = document.getElementById('work-inner');
 
 function buildWork() {
   workInner.innerHTML = '';
-  projectData.forEach((p, i) => {
-    const pd     = projectDetails[i];
-    const frames = pd?.thumbFrames || [];
-    const sc     = pd?.sliceCount  || 20;
+  // Build the rows 3x so we can do infinite scroll: [copy-1][middle][copy+1]
+  // User sits in the middle; when they scroll into copy-1 or copy+1, we silently
+  // jump them back to the middle copy at the same visual position.
+  for (let rep = 0; rep < 3; rep++) {
+    projectData.forEach((p, i) => {
+      const pd     = projectDetails[i];
+      const frames = pd?.thumbFrames || [];
+      const sc     = pd?.sliceCount  || 20;
 
-    const row = document.createElement('div');
-    row.className = 'work-row';
+      const row = document.createElement('div');
+      row.className = 'work-row';
+      row.dataset.projectIdx = i;
+      row.dataset.rep = rep;
 
-    const bg = document.createElement('div');
-    bg.className = 'work-bg';
+      const bg = document.createElement('div');
+      bg.className = 'work-bg';
 
-    const picked = Array.from({length: sc}, (_, j) => {
-      if (!frames.length) return null;
-      const idx = sc === 1 ? 0 : Math.round(j * (frames.length - 1) / (sc - 1));
-      return frames[Math.min(idx, frames.length - 1)];
+      const picked = Array.from({length: sc}, (_, j) => {
+        if (!frames.length) return null;
+        const idx = sc === 1 ? 0 : Math.round(j * (frames.length - 1) / (sc - 1));
+        return frames[Math.min(idx, frames.length - 1)];
+      });
+      picked.forEach(src => {
+        const s = document.createElement('div');
+        s.className = 'work-slice';
+        if (src) s.style.backgroundImage = `url('${src}')`;
+        bg.appendChild(s);
+      });
+
+      const studio = (p.studio && p.studio !== 'x') ? p.studio + ' — ' : '';
+      const overlay = document.createElement('div');
+      overlay.className = 'work-overlay';
+      overlay.innerHTML = `
+        <div>
+          <div class="work-title">${p.name}</div>
+          <div class="work-sub">${studio}${p.type}</div>
+        </div>`;
+
+      row.appendChild(bg);
+      row.appendChild(overlay);
+      row.addEventListener('click', () => { closeWork(); goTo(i); openDetail(); });
+      workInner.appendChild(row);
     });
-    picked.forEach(src => {
-      const s = document.createElement('div');
-      s.className = 'work-slice';
-      if (src) s.style.backgroundImage = `url('${src}')`;
-      bg.appendChild(s);
-    });
+  }
+}
 
-    const studio = (p.studio && p.studio !== 'x') ? p.studio + ' — ' : '';
-    const overlay = document.createElement('div');
-    overlay.className = 'work-overlay';
-    overlay.innerHTML = `
-      <div>
-        <div class="work-title">${p.name}</div>
-        <div class="work-sub">${studio}${p.type}</div>
-      </div>`;
+// Returns the rows belonging to the middle block (copy index 1) — used by FLIP
+// animations so the flying thumbs land on the visible, normally-scrolled copies.
+function middleWorkRows() {
+  return Array.from(workInner.querySelectorAll('.work-row[data-rep="1"]'));
+}
 
-    row.appendChild(bg);
-    row.appendChild(overlay);
-    row.addEventListener('click', () => { closeWork(); goTo(i); openDetail(); });
-    workInner.appendChild(row);
+// Infinite scroll wiring: set up once when work opens
+function setupInfiniteWorkScroll() {
+  // Remove any previous listener
+  workEl.onscroll = null;
+
+  // Wait a frame for layout so heights are correct
+  requestAnimationFrame(() => {
+    const n = projectData.length;
+    if (n === 0) return;
+    const rows = Array.from(workInner.querySelectorAll('.work-row'));
+    if (rows.length < n * 2 || !rows[n] || !rows[0]) return; // not ready
+
+    // Height of one "block" (one full set of projects)
+    const blockHeight = rows[n].offsetTop - rows[0].offsetTop;
+    if (blockHeight <= 0) return;
+
+    // Start scrolled to the middle block
+    workEl.scrollTop = blockHeight;
+
+    let snapping = false;
+    workEl.onscroll = () => {
+      if (snapping) return;
+      const st = workEl.scrollTop;
+      if (st < blockHeight * 0.5) {
+        snapping = true;
+        workEl.scrollTop = st + blockHeight;
+        requestAnimationFrame(() => { snapping = false; });
+      }
+      else if (st > blockHeight * 1.5) {
+        snapping = true;
+        workEl.scrollTop = st - blockHeight;
+        requestAnimationFrame(() => { snapping = false; });
+      }
+    };
   });
 }
 
@@ -2491,15 +2541,23 @@ function openWork() {
   workEl.style.visibility = 'visible';
   workEl.classList.add('open');
 
-  // 3. Measure where each row WILL BE in the work page
-  const rows = Array.from(workInner.querySelectorAll('.work-row'));
+  // Scroll to the middle block before measuring — flights will land on visible rows
+  const allRows = Array.from(workInner.querySelectorAll('.work-row'));
+  const n = projectData.length;
+  if (n > 0 && allRows.length >= n * 2 && allRows[n] && allRows[0]) {
+    const blockHeight = allRows[n].offsetTop - allRows[0].offsetTop;
+    if (blockHeight > 0) workEl.scrollTop = blockHeight;
+  }
+
+  // 3. Measure where each row WILL BE in the work page — use middle block
+  const rows = middleWorkRows();
   const endRects = rows.map(r => r.getBoundingClientRect());
 
   // 4. Hide the landing strip (instant, no slide animation) and work rows
   stripEl.style.visibility = 'hidden';
   metaEl.classList.add('hide');
   hintEl.classList.add('hide');
-  rows.forEach(r => r.style.visibility = 'hidden');
+  allRows.forEach(r => r.style.visibility = 'hidden');
 
   // 5. Create flying clones that animate from startRect to endRect
   const flies = projectData.map((p, i) => {
@@ -2511,9 +2569,11 @@ function openWork() {
 
   // 6. Once animation finishes, show the real rows and remove clones
   setTimeout(() => {
-    rows.forEach(r => r.style.visibility = '');
+    allRows.forEach(r => r.style.visibility = '');
     flies.forEach(f => f.remove());
     transitioning = false;
+    // Wire up the infinite scroll after everything is visible
+    setupInfiniteWorkScroll();
   }, 750);
 }
 
@@ -2522,19 +2582,23 @@ function closeWork() {
   workOpen = false;
   transitioning = true;
 
+  // Disable infinite scroll listener so closing animation isn't disturbed
+  workEl.onscroll = null;
+
   // Resume landing video if it was playing before
   if (workWasPlaying) setPlaying(true);
 
-  // 1. Measure current positions of work rows (start position)
-  const rows = Array.from(workInner.querySelectorAll('.work-row'));
+  // 1. Measure current positions of work rows — from middle block
+  const allRows = Array.from(workInner.querySelectorAll('.work-row'));
+  const rows = middleWorkRows();
   const startRects = rows.map(r => r.getBoundingClientRect());
 
   // 2. The strip is already at its correct position (just hidden via visibility)
   // Measure where each thumb will land
   const endRects = allThumbs().map(t => t.getBoundingClientRect());
 
-  // 3. Hide work rows so only clones are visible during animation
-  rows.forEach(r => r.style.visibility = 'hidden');
+  // 3. Hide all work rows (all 3 copies) so only clones are visible during animation
+  allRows.forEach(r => r.style.visibility = 'hidden');
 
   // 4. Create flying clones from row positions → strip positions
   const flies = projectData.map((p, i) => {
@@ -2553,7 +2617,7 @@ function closeWork() {
   setTimeout(() => {
     stripEl.style.visibility = '';
     flies.forEach(f => f.remove());
-    rows.forEach(r => r.style.visibility = '');
+    allRows.forEach(r => r.style.visibility = '');
     transitioning = false;
   }, 750);
 }
@@ -2881,7 +2945,7 @@ window.addEventListener('load', async () => {
       firstPd.thumbFrames = result.frames;
       firstPd.sliceCount  = result.sliceCount;
       buildStrip();
-      if (workOpen) buildWork();
+      if (workOpen) { buildWork(); setupInfiniteWorkScroll(); }
     }
   }
 
@@ -2895,7 +2959,7 @@ window.addEventListener('load', async () => {
         pd.thumbFrames = result.frames;
         pd.sliceCount  = result.sliceCount;
         buildStrip();
-        if (workOpen) buildWork();
+        if (workOpen) { buildWork(); setupInfiniteWorkScroll(); }
       }
     }
   }));
