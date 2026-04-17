@@ -1039,15 +1039,42 @@ function buildStrip() {
     t.addEventListener('click', (e) => {
       if (detailOpen) return;
       if (i === cur) {
-        // Click on active thumb — seek video to that position
-        const rect = t.getBoundingClientRect();
-        const pct  = (e.clientX - rect.left) / rect.width;
-        seekVideo(pct);
+        // Desktop: click on active thumb seeks the video
+        if (!isTouch) {
+          const rect = t.getBoundingClientRect();
+          const pct  = (e.clientX - rect.left) / rect.width;
+          seekVideo(pct);
+        }
       } else {
         // Click on different thumb — switch project
         goTo(i);
       }
     });
+
+    // Touch drag-to-scrub on active thumb
+    let scrubbing = false;
+    let wasPlaying = false;
+    t.addEventListener('touchstart', (e) => {
+      if (detailOpen || i !== cur) return;
+      scrubbing = true;
+      wasPlaying = playing;
+      setPlaying(false);
+      const rect = t.getBoundingClientRect();
+      const pct  = (e.touches[0].clientX - rect.left) / rect.width;
+      seekVideo(pct);
+    }, { passive: true });
+    t.addEventListener('touchmove', (e) => {
+      if (!scrubbing) return;
+      const rect = t.getBoundingClientRect();
+      const pct  = (e.touches[0].clientX - rect.left) / rect.width;
+      seekVideo(pct);
+    }, { passive: true });
+    t.addEventListener('touchend', () => {
+      if (!scrubbing) return;
+      scrubbing = false;
+      if (wasPlaying) setPlaying(true);
+    }, { passive: true });
+
     stripEl.appendChild(t);
   });
 
@@ -1087,6 +1114,7 @@ function buildThumbSlices(frames, fallbackTc, sliceCount) {
 // Refs
 const videoBgInner = document.getElementById('video-bg-inner');
 const videoBg      = document.getElementById('video-bg');
+const isTouch = window.matchMedia('(pointer: coarse)').matches;
 
 // When video ends, advance to next project
 videoBgInner.addEventListener('ended', () => {
@@ -1968,7 +1996,6 @@ window.addEventListener('resize', () => { if (projectData.length) buildStrip(); 
 // ── CUSTOM CURSOR ──
 const curEl = document.getElementById('cur');
 const hoverTargets = 'a, button, .thumb, .win, .win-resize-drag, #scroll-hint span, #scroll-hint .scroll-arrow, .df-values a';
-const isTouch = window.matchMedia('(pointer: coarse)').matches;
 
 if (!isTouch) {
   document.addEventListener('mousemove', e => {
