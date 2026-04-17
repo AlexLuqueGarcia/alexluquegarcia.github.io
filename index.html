@@ -2373,11 +2373,15 @@ function openInfo() {
   if (infoOpen) return;
   infoOpen = true;
   infoEl.classList.add('open');
+  const ind = document.getElementById('mob-play-indicator');
+  if (ind) ind.classList.remove('visible');
 }
 function closeInfo() {
   if (!infoOpen) return;
   infoOpen = false;
   infoEl.classList.remove('open');
+  const ind = document.getElementById('mob-play-indicator');
+  if (ind && !playing && !workOpen && !detailOpen) ind.classList.add('visible');
 }
 infoBackdrop.addEventListener('click', closeInfo);
 
@@ -2559,6 +2563,10 @@ function openDetail() {
   metaEl.classList.add('hide');
   hintEl.classList.add('hide');
 
+  // Hide mobile play indicator
+  const ind = document.getElementById('mob-play-indicator');
+  if (ind) ind.classList.remove('visible');
+
   // pause ticker and landing video
   cancelAnimationFrame(raf);
   if (isLndVideo) {
@@ -2590,6 +2598,9 @@ function closeDetail() {
     lndVideo.play();
   }
   if (playing) { lastTs = null; schedTick(); }
+  // If video was paused, restore the mobile play indicator
+  const ind = document.getElementById('mob-play-indicator');
+  if (ind && !playing) ind.classList.add('visible');
 
   // 2. strip comes back up after detail is gone
   setTimeout(() => {
