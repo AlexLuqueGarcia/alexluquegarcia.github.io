@@ -1449,40 +1449,42 @@ async function scrubEnd() {
 
   const targetTime = finalPct * vid.duration;
 
-  // Step 1: wait one frame so any in-flight preview seek from touchmove
-  // can finish/cancel cleanly before we issue our authoritative seek
+  // Wait for any in-flight preview seeks to settle
   await new Promise(r => requestAnimationFrame(r));
   await new Promise(r => requestAnimationFrame(r));
 
-  // Step 2: pause the video and issue the authoritative seek
+  // Pause and lock state
   if (!vid.paused) vid.pause();
-  vid.currentTime = targetTime;
 
-  // Step 3: POLL until currentTime is actually at target AND not seeking
-  // This is bomb-proof because it doesn't rely on events — it checks the actual state
-  const TIMEOUT = 1500;
+  // Reassert target every poll, until video confirms currentTime matches
+  const TIMEOUT = 2500;
   const POLL_INTERVAL = 30;
   const start = performance.now();
+  vid.currentTime = targetTime;
   while (performance.now() - start < TIMEOUT) {
     await new Promise(r => setTimeout(r, POLL_INTERVAL));
-    // Reached target?
+    // If not seeking and position is close enough, we're done
     if (!vid.seeking && Math.abs(vid.currentTime - targetTime) < 0.15) {
       break;
     }
-    // Maybe the browser moved elsewhere due to a late preview seek — re-assert target
-    if (!vid.seeking && Math.abs(vid.currentTime - targetTime) > 0.3) {
+    // Otherwise, keep forcing the target position
+    if (!vid.seeking) {
       vid.currentTime = targetTime;
     }
   }
 
-  // Step 4: Final state check & settle
+  // Final reassertion right before play — nothing can drift past this point
+  vid.currentTime = targetTime;
   localProgress = finalPct;
   setProgress(finalPct);
 
-  // Settling delay — let the decoder render the frame
+  // Brief settle then resume
   await new Promise(r => setTimeout(r, 80));
 
-  // Step 5: Resume playback
+  // One MORE reassertion to handle the edge case of the video element
+  // snapping back during play() invocation
+  vid.currentTime = targetTime;
+
   if (wasPlaying) setPlaying(true);
 }
 // Cosmetic preview seek during drag — may be superseded
