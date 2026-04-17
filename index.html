@@ -587,16 +587,23 @@ body.is-fullscreen .win-resize { display: none !important; }
 .tc-6{background:linear-gradient(160deg,#401018,#280810);}
 .tc-7{background:linear-gradient(160deg,#282828,#141414);}
 
-/* Mobile-only center play indicator — shown when paused on mobile */
+/* Mobile-only center play indicator — blurred triangle of video underneath */
 #mob-play-indicator {
   display: none;
   position: fixed;
   top: 50%; left: 50%;
+  width: 90px;
+  height: 90px;
   transform: translate(-50%, -50%);
   z-index: 101;
   pointer-events: none;
   opacity: 0;
   transition: opacity 0.2s;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  background: rgba(255,255,255,0.1);
+  clip-path: polygon(18% 10%, 18% 90%, 88% 50%);
+  -webkit-clip-path: polygon(18% 10%, 18% 90%, 88% 50%);
 }
 #mob-play-indicator.visible { opacity: 1; }
 #mobile-controls {
@@ -716,12 +723,8 @@ body.is-fullscreen .win-resize { display: none !important; }
 </div>
 
 <!-- Mobile-only play/mute — TikTok style right center -->
-<!-- Mobile center play indicator — shown only when paused -->
-<div id="mob-play-indicator">
-  <svg width="80" height="80" viewBox="0 0 13 13" fill="none">
-    <path d="M2 1.5L11 6.5L2 11.5V1.5Z" fill="white" opacity="0.85"/>
-  </svg>
-</div>
+<!-- Mobile center play indicator — blurred triangle of video underneath -->
+<div id="mob-play-indicator"></div>
 
 <!-- Work page -->
 <div id="work">
