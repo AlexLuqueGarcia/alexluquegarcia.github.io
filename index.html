@@ -50,6 +50,19 @@ html, body {
   touch-action: pan-y;
   overscroll-behavior: contain;
 }
+/* Hide scrollbars everywhere while keeping scroll functional */
+#work, #canvas, body, html {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+#work::-webkit-scrollbar,
+#canvas::-webkit-scrollbar,
+body::-webkit-scrollbar,
+html::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
 * { cursor:none !important; }
 /* Disable user-select on UI chrome */
 nav, #meta, #scroll-hint, #strip-area, .work-row, #detail-footer,
