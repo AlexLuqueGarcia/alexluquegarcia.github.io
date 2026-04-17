@@ -2468,45 +2468,65 @@ function setupInfiniteWorkScroll() {
     const copies = parseInt(workInner.dataset.copies) || 5;
     if (rows.length < n * copies || !rows[n] || !rows[0]) return;
 
-    // Height of one "block" (one full set of projects)
     const blockHeight = rows[n].offsetTop - rows[0].offsetTop;
     if (blockHeight <= 0) return;
 
     const middle = parseInt(workInner.dataset.middle) || 2;
-    const middleOffset = blockHeight * middle;
-    workEl.scrollTop = middleOffset;
+    workEl.scrollTop = blockHeight * middle;
 
-    const topThreshold    = blockHeight * 2;
-    const bottomThreshold = blockHeight * (copies - 3);
-    const snapTargetTop    = blockHeight * middle;            // recentered top target
-    const snapTargetBottom = blockHeight * middle;            // recentered bottom target
+    if (isTouch) {
+      // ── MOBILE: debounced snap after scroll settles ──
+      // iOS momentum is fragile — any scrollTop change mid-scroll cancels it.
+      // Wait until user has stopped scrolling for 150ms, then reposition.
+      const topThreshold    = blockHeight * 2;
+      const bottomThreshold = blockHeight * (copies - 3);
 
-    let snapping = false;
-    const checkAndSnap = () => {
-      if (snapping) return;
-      const st = workEl.scrollTop;
-      if (st < topThreshold) {
-        snapping = true;
-        // Preserve the offset from the nearest project row so the user stays at the same
-        // visual position within the currently-visible project
-        const offsetInBlock = st % blockHeight;
-        workEl.scrollTop = snapTargetTop + offsetInBlock;
-        requestAnimationFrame(() => { snapping = false; });
-      }
-      else if (st > bottomThreshold) {
-        snapping = true;
-        const offsetInBlock = st % blockHeight;
-        workEl.scrollTop = snapTargetBottom + offsetInBlock;
-        requestAnimationFrame(() => { snapping = false; });
-      }
-    };
+      let snapping = false;
+      const checkAndSnap = () => {
+        if (snapping) return;
+        const st = workEl.scrollTop;
+        if (st < topThreshold) {
+          snapping = true;
+          const offsetInBlock = st % blockHeight;
+          workEl.scrollTop = blockHeight * middle + offsetInBlock;
+          requestAnimationFrame(() => { snapping = false; });
+        }
+        else if (st > bottomThreshold) {
+          snapping = true;
+          const offsetInBlock = st % blockHeight;
+          workEl.scrollTop = blockHeight * middle + offsetInBlock;
+          requestAnimationFrame(() => { snapping = false; });
+        }
+      };
+      workEl.onscroll = () => {
+        if (workEl._scrollEndTimer) clearTimeout(workEl._scrollEndTimer);
+        workEl._scrollEndTimer = setTimeout(checkAndSnap, 150);
+      };
+    } else {
+      // ── DESKTOP: snap immediately when deep in edge copies ──
+      // Desktop wheel/trackpad scroll doesn't have iOS-style momentum, and
+      // inline `scrollTop =` works seamlessly without breaking scroll velocity.
+      // Using small buffer so the snap happens consistently.
+      const topThreshold    = blockHeight * 0.8;
+      const bottomThreshold = blockHeight * (copies - 1.8);
+      const snapAmount      = blockHeight * (copies - 3);
 
-    workEl.onscroll = () => {
-      // Debounce: only snap once scrolling has paused (no scroll event for 150ms)
-      // This avoids cancelling iOS momentum mid-flick.
-      if (workEl._scrollEndTimer) clearTimeout(workEl._scrollEndTimer);
-      workEl._scrollEndTimer = setTimeout(checkAndSnap, 150);
-    };
+      let snapping = false;
+      workEl.onscroll = () => {
+        if (snapping) return;
+        const st = workEl.scrollTop;
+        if (st < topThreshold) {
+          snapping = true;
+          workEl.scrollTop = st + snapAmount;
+          requestAnimationFrame(() => { snapping = false; });
+        }
+        else if (st > bottomThreshold) {
+          snapping = true;
+          workEl.scrollTop = st - snapAmount;
+          requestAnimationFrame(() => { snapping = false; });
+        }
+      };
+    }
   });
 }
 
