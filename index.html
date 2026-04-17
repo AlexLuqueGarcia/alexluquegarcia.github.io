@@ -1810,7 +1810,7 @@ function closeDetail() {
 // Wheel
 let wCool = false;
 window.addEventListener('wheel', e => {
-  if (wCool) return;
+  if (wCool || workOpen) return;
   wCool = true; setTimeout(() => wCool = false, 900);
   if (!detailOpen && e.deltaY > 15) openDetail();
   else if (detailOpen && e.deltaY < -15) closeDetail();
@@ -1820,6 +1820,7 @@ window.addEventListener('wheel', e => {
 let ty0 = 0;
 window.addEventListener('touchstart', e => { ty0 = e.touches[0].clientY; }, { passive:true });
 window.addEventListener('touchend', e => {
+  if (workOpen) return;
   const dy = ty0 - e.changedTouches[0].clientY;
   if (!detailOpen && dy > 40) openDetail();
   else if (detailOpen && dy < -40) closeDetail();
@@ -1827,6 +1828,10 @@ window.addEventListener('touchend', e => {
 
 // Keys
 document.addEventListener('keydown', e => {
+  if (workOpen) {
+    if (e.key === 'Escape') closeWork();
+    return;
+  }
   if (e.key==='ArrowRight' && !detailOpen) goTo((cur+1) % projectData.length);
   if (e.key==='ArrowLeft'  && !detailOpen) goTo((cur-1+projectData.length) % projectData.length);
   if (e.key==='Escape' && detailOpen) closeDetail();
