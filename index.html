@@ -811,8 +811,14 @@ async function loadProjects() {
     manifest = await res.json();
   } catch(e) {
     console.warn('projects.json not found — using fallback projects');
-    projectData    = FALLBACK_PROJECTS;
-    projectDetails = FALLBACK_DETAILS;
+    projectData    = [...FALLBACK_PROJECTS].sort((a, b) => {
+      const ya = parseInt(a.folder.match(/^(\d{4})/)?.[1] || '0');
+      const yb = parseInt(b.folder.match(/^(\d{4})/)?.[1] || '0');
+      return yb - ya;
+    });
+    projectDetails = projectData.map(p =>
+      FALLBACK_DETAILS[FALLBACK_PROJECTS.indexOf(FALLBACK_PROJECTS.find(f => f.folder === p.folder))] || FALLBACK_DETAILS[0]
+    );
     return;
   }
 
@@ -857,6 +863,17 @@ async function loadProjects() {
 
   projectData    = results.map(r => r.proj);
   projectDetails = results.map(r => r.detail);
+
+  // Sort newest first — extract leading year from folder name (e.g. "2025-bold" → 2025)
+  const combined = projectData.map((p, i) => ({ p, d: projectDetails[i] }));
+  combined.sort((a, b) => {
+    const yearA = parseInt(a.p.folder.match(/^(\d{4})/)?.[1] || '0');
+    const yearB = parseInt(b.p.folder.match(/^(\d{4})/)?.[1] || '0');
+    return yearB - yearA; // descending — newest left
+  });
+  projectData    = combined.map(x => x.p);
+  projectDetails = combined.map(x => x.d);
+
   console.log('Projects loaded:', projectData.map(p => `${p.name} → ${p.src}`));
 }
 const SPEED = 6;
