@@ -554,7 +554,7 @@ body.is-fullscreen .win-resize { display: none !important; }
 
 <!-- Always-fixed video background -->
 <!-- Always-fixed video background -->
-<div id="video-bg"><video id="video-bg-inner" autoplay muted loop playsinline crossorigin="anonymous" style="width:100%;height:100%;object-fit:cover;display:block;"><source src="EDIT_black_midi_-WelcomeToHell.mp4" type="video/mp4"></video></div>
+<div id="video-bg"><video id="video-bg-inner" autoplay muted loop playsinline crossorigin="anonymous" style="width:100%;height:100%;object-fit:cover;display:block;"></video></div>
 
 <!-- Custom cursor -->
 <div id="cur">
@@ -965,36 +965,33 @@ let _hlsInstance = null;
 function setBg(i) {
   const vid    = document.getElementById('video-bg-inner');
   if (!vid || vid.tagName !== 'VIDEO') return;
-  const newSrc = projectData[i]?.src || '';
+  const newSrc = (projectData[i]?.src || '').trim();
+  if (!newSrc) return;
 
-  const isHLS = newSrc.includes('.m3u8') || newSrc.includes('bunnycdn.com') || newSrc.includes('b-cdn.net');
+  const isHLS = newSrc.includes('.m3u8') || newSrc.includes('mediadelivery.net') || newSrc.includes('bunnycdn.com') || newSrc.includes('b-cdn.net');
+
+  // Remove any leftover <source> children — they interfere with hls.js
+  while (vid.firstChild) vid.removeChild(vid.firstChild);
 
   if (isHLS) {
-    // Destroy previous HLS instance
     if (_hlsInstance) { _hlsInstance.destroy(); _hlsInstance = null; }
 
-    if (Hls && Hls.isSupported()) {
+    if (typeof Hls !== 'undefined' && Hls.isSupported()) {
       _hlsInstance = new Hls({ autoStartLoad: true, startLevel: -1 });
       _hlsInstance.loadSource(newSrc);
       _hlsInstance.attachMedia(vid);
-      _hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => { vid.play().catch(() => {}); });
+      _hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => { vid.play().catch(e => console.warn('play:', e)); });
+      _hlsInstance.on(Hls.Events.ERROR, (e, d) => console.warn('hls error', d));
     } else if (vid.canPlayType('application/vnd.apple.mpegurl')) {
-      // Safari — native HLS support
       vid.src = newSrc;
-      vid.play().catch(() => {});
+      vid.play().catch(e => console.warn('play:', e));
+    } else {
+      console.warn('HLS not supported in this browser');
     }
   } else {
-    // Plain MP4 fallback
     if (_hlsInstance) { _hlsInstance.destroy(); _hlsInstance = null; }
-    const srcEl = vid.querySelector('source');
-    if (srcEl && srcEl.src !== newSrc) {
-      srcEl.src = newSrc;
-      vid.load();
-      vid.play().catch(() => {});
-    } else {
-      vid.currentTime = 0;
-      vid.play().catch(() => {});
-    }
+    vid.src = newSrc;
+    vid.play().catch(e => console.warn('play:', e));
   }
 }
 
