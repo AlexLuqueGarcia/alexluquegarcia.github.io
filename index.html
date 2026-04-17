@@ -167,45 +167,15 @@ body.cur-hover #cur svg {
   opacity: 0;
   transition: opacity 0.4s var(--ease-out), transform 0.5s var(--ease-spring);
   box-shadow: 0 20px 60px rgba(0,0,0,0.4);
-  overflow-y: auto;
+  overflow: hidden;
 }
 #info-sheet.open #info-panel {
   opacity: 1;
   transform: translate(-50%, -50%) scale(1);
 }
-
-/* iOS 17-style rainbow pulse — only plays on open */
-#info-panel::before {
-  content: '';
-  position: absolute;
-  inset: -4px;
-  background: conic-gradient(
-    from 0deg,
-    rgba(255, 100, 150, 0.9),
-    rgba(255, 200, 100, 0.9),
-    rgba(150, 255, 180, 0.9),
-    rgba(100, 200, 255, 0.9),
-    rgba(180, 120, 255, 0.9),
-    rgba(255, 100, 200, 0.9),
-    rgba(255, 100, 150, 0.9)
-  );
-  filter: blur(18px);
-  opacity: 0;
-  z-index: -1;
-  pointer-events: none;
-}
-#info-sheet.open #info-panel::before {
-  animation: holoPulse 1.8s var(--ease-out) forwards,
-             holoSpin 8s linear infinite;
-}
-@keyframes holoPulse {
-  0%   { opacity: 0; transform: scale(0.95); }
-  30%  { opacity: 1; transform: scale(1.02); }
-  100% { opacity: 0; transform: scale(1); }
-}
-@keyframes holoSpin {
-  from { transform: rotate(0deg); }
-  to   { transform: rotate(360deg); }
+#info-sheet.open #info-panel {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
 }
 
 #info-close {
