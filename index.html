@@ -1972,6 +1972,7 @@ window.addEventListener('load', async () => {
       firstPd.thumbFrames = result.frames;
       firstPd.sliceCount  = result.sliceCount;
       buildStrip();
+      if (workOpen) buildWork();
     }
   }
 
@@ -1985,6 +1986,7 @@ window.addEventListener('load', async () => {
         pd.thumbFrames = result.frames;
         pd.sliceCount  = result.sliceCount;
         buildStrip();
+        if (workOpen) buildWork();
       }
     }
   }));
