@@ -1651,7 +1651,7 @@ window.addEventListener('resize', () => { if (projectData.length) buildStrip(); 
 
 // ── CUSTOM CURSOR ──
 const curEl = document.getElementById('cur');
-const hoverTargets = 'a, button, [onclick], .thumb, .win, .win-resize-drag, #scroll-hint span, #scroll-hint .scroll-arrow, .df-values a';
+const hoverTargets = 'a, button, .thumb, .win, .win-resize-drag, #scroll-hint span, #scroll-hint .scroll-arrow, .df-values a';
 const isTouch = window.matchMedia('(pointer: coarse)').matches;
 
 if (!isTouch) {
