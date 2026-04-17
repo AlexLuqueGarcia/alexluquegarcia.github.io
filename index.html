@@ -242,15 +242,17 @@ nav.hide {
 /* ── WORK PAGE ── */
 #work {
   position:fixed;
-  top:100vh; left:0; right:0;
+  top:0; left:0; right:0;
   height:100vh;
   z-index:91;
   overflow-y:auto;
   overflow-x:hidden;
   background:#000;
-  transition: top 0.72s cubic-bezier(0.76,0,0.24,1);
+  opacity:0;
+  pointer-events:none;
+  transition: opacity 0.4s;
 }
-#work.open { top:0; }
+#work.open { opacity:1; pointer-events:auto; }
 #work-inner {
   min-height:100vh;
   display:flex;
@@ -297,6 +299,24 @@ nav.hide {
   text-shadow: 0 1px 6px rgba(0,0,0,0.7);
 }
 .work-row:hover .work-bg { filter:brightness(1.1); }
+.work-row .work-overlay { opacity:0; transition: opacity 0.4s 0.5s; }
+#work.open .work-row .work-overlay { opacity:1; }
+
+/* Flying thumb clones during open/close transition */
+.fly-thumb {
+  position:fixed;
+  z-index:95;
+  pointer-events:none;
+  transition: transform 0.7s cubic-bezier(0.76,0,0.24,1), width 0.7s cubic-bezier(0.76,0,0.24,1), height 0.7s cubic-bezier(0.76,0,0.24,1);
+  overflow:hidden;
+}
+.fly-thumb .fly-bg {
+  display:flex; width:100%; height:100%;
+}
+.fly-thumb .fly-slice {
+  flex:1; height:100%;
+  background-size:cover; background-position:center;
+}
 /* Nav blur gradient — blur only, no darkening */
 #work-blur-header {
   position:fixed;
@@ -1617,25 +1637,120 @@ function buildWork() {
   });
 }
 
+function createFlyThumb(startRect, endRect, frames, sc, fallbackTc) {
+  const fly = document.createElement('div');
+  fly.className = 'fly-thumb';
+  fly.style.left   = startRect.left + 'px';
+  fly.style.top    = startRect.top  + 'px';
+  fly.style.width  = startRect.width  + 'px';
+  fly.style.height = startRect.height + 'px';
+
+  const bg = document.createElement('div');
+  bg.className = 'fly-bg';
+  const picked = Array.from({length: sc}, (_, j) => {
+    if (!frames.length) return null;
+    const idx = sc === 1 ? 0 : Math.round(j * (frames.length - 1) / (sc - 1));
+    return frames[Math.min(idx, frames.length - 1)];
+  });
+  picked.forEach(src => {
+    const s = document.createElement('div');
+    s.className = 'fly-slice';
+    if (src) s.style.backgroundImage = `url('${src}')`;
+    else s.classList.add(fallbackTc);
+    bg.appendChild(s);
+  });
+  fly.appendChild(bg);
+  document.body.appendChild(fly);
+
+  // Force reflow, then animate to end position
+  fly.getBoundingClientRect();
+  requestAnimationFrame(() => {
+    fly.style.transform = `translate(${endRect.left - startRect.left}px, ${endRect.top - startRect.top}px)`;
+    fly.style.width  = endRect.width  + 'px';
+    fly.style.height = endRect.height + 'px';
+  });
+  return fly;
+}
+
 function openWork() {
   if (workOpen || transitioning) return;
   workOpen = true;
+  transitioning = true;
+
+  // 1. Measure where each thumbnail is NOW in the strip
+  const startRects = allThumbs().map(t => t.getBoundingClientRect());
+
+  // 2. Build the work page (hidden - opacity 0)
   buildWork();
+  workEl.style.visibility = 'visible';
   workEl.classList.add('open');
+
+  // 3. Measure where each row WILL BE in the work page
+  const rows = Array.from(workInner.querySelectorAll('.work-row'));
+  const endRects = rows.map(r => r.getBoundingClientRect());
+
+  // 4. Hide the landing strip and work rows (we'll show flying clones instead)
   stripEl.classList.add('hide');
   metaEl.classList.add('hide');
   hintEl.classList.add('hide');
   if (mobControls) mobControls.classList.add('hide');
+  rows.forEach(r => r.style.visibility = 'hidden');
+
+  // 5. Create flying clones that animate from startRect to endRect
+  const flies = projectData.map((p, i) => {
+    const pd     = projectDetails[i];
+    const frames = pd?.thumbFrames || [];
+    const sc     = pd?.sliceCount  || 20;
+    return createFlyThumb(startRects[i], endRects[i], frames, sc, p.tc);
+  });
+
+  // 6. Once animation finishes, show the real rows and remove clones
+  setTimeout(() => {
+    rows.forEach(r => r.style.visibility = '');
+    flies.forEach(f => f.remove());
+    transitioning = false;
+  }, 750);
 }
 
 function closeWork() {
-  if (!workOpen) return;
+  if (!workOpen || transitioning) return;
   workOpen = false;
-  workEl.classList.remove('open');
+  transitioning = true;
+
+  // 1. Measure current positions of work rows
+  const rows = Array.from(workInner.querySelectorAll('.work-row'));
+  const startRects = rows.map(r => r.getBoundingClientRect());
+
+  // 2. Temporarily restore strip to measure end positions
   stripEl.classList.remove('hide');
-  metaEl.classList.remove('hide');
-  hintEl.classList.remove('hide');
-  if (mobControls) mobControls.classList.remove('hide');
+  // Let strip render to measure
+  const endRects = allThumbs().map(t => t.getBoundingClientRect());
+
+  // 3. Hide work rows and create flying clones from row -> strip thumb positions
+  rows.forEach(r => r.style.visibility = 'hidden');
+  const flies = projectData.map((p, i) => {
+    const pd     = projectDetails[i];
+    const frames = pd?.thumbFrames || [];
+    const sc     = pd?.sliceCount  || 20;
+    return createFlyThumb(startRects[i], endRects[i], frames, sc, p.tc);
+  });
+
+  // Hide the strip thumbs during animation (they'll reappear when clones finish)
+  stripEl.style.visibility = 'hidden';
+
+  // 4. Fade out work page
+  workEl.classList.remove('open');
+
+  // 5. Restore landing UI after animation
+  setTimeout(() => {
+    stripEl.style.visibility = '';
+    metaEl.classList.remove('hide');
+    hintEl.classList.remove('hide');
+    if (mobControls) mobControls.classList.remove('hide');
+    flies.forEach(f => f.remove());
+    rows.forEach(r => r.style.visibility = '');
+    transitioning = false;
+  }, 750);
 }
 
 function openDetail() {
