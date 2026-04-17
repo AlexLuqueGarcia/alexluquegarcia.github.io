@@ -231,36 +231,13 @@ body.cur-hover #cur svg {
 }
 .info-section .info-body a:hover { opacity: 0.6; }
 
-/* Hero bio — dark letters on the inverted panel, with a wandering "fairy"
-   highlight dot that floats behind the glyphs and lightens them where it passes */
+/* Hero bio — medium weight for stronger presence */
 .info-bio {
-  position: relative;
   font-size: 1.55rem;
   line-height: 1.35;
-  font-weight: 300;
+  font-weight: 500;
   letter-spacing: -0.01em;
   color: #000;
-  isolation: isolate;
-}
-.info-bio .fairy {
-  position: absolute;
-  top: 0; left: 0;
-  width: 160px;
-  height: 160px;
-  border-radius: 50%;
-  pointer-events: none;
-  background: radial-gradient(
-    circle,
-    rgba(255,255,255,0.9) 0%,
-    rgba(255,255,255,0.5) 25%,
-    rgba(255,255,255,0.15) 50%,
-    rgba(255,255,255,0) 70%
-  );
-  mix-blend-mode: screen;
-  transform: translate(-50%, -50%);
-  filter: blur(8px);
-  z-index: 1;
-  will-change: transform;
 }
 
 @media (max-width: 768px) {
@@ -1075,7 +1052,7 @@ body.is-fullscreen .win-resize { display: none !important; }
     <span class="corner-br"></span>
     <div class="info-content">
       <div class="info-section">
-        <div class="info-body info-bio"><span class="fairy"></span>A Digital Wizard ready to serve your evil commercial/creative purposes</div>
+        <div class="info-body info-bio">A Digital Wizard ready to serve your evil commercial/creative purposes</div>
       </div>
       <div class="info-section">
         <div class="info-label">Contact</div>
@@ -2405,41 +2382,12 @@ let infoOpen = false;
 const infoEl       = document.getElementById('info-sheet');
 const infoBackdrop = document.getElementById('info-backdrop');
 
-// Fairy-light animation — a soft highlight wanders around the bio text
-// using a smooth Lissajous-style path (two sine waves at different frequencies)
-// so it never feels mechanical but also never truly stops or overlaps itself.
-let _fairyRaf = null;
-function startFairyLight() {
-  const bio = document.querySelector('.info-bio');
-  const fairy = bio?.querySelector('.fairy');
-  if (!bio || !fairy) return;
-  stopFairyLight();
-  const startTime = performance.now();
-  const tick = () => {
-    const t = (performance.now() - startTime) / 1000;
-    const rect = bio.getBoundingClientRect();
-    const w = rect.width;
-    const h = rect.height;
-    // Lissajous path — wanders across the text area without repeating
-    const x = w * 0.5 + w * 0.55 * Math.sin(t * 0.37);
-    const y = h * 0.5 + h * 0.70 * Math.sin(t * 0.53 + 1.3);
-    fairy.style.transform = `translate(${x}px, ${y}px) translate(-50%, -50%)`;
-    _fairyRaf = requestAnimationFrame(tick);
-  };
-  _fairyRaf = requestAnimationFrame(tick);
-}
-function stopFairyLight() {
-  if (_fairyRaf) cancelAnimationFrame(_fairyRaf);
-  _fairyRaf = null;
-}
-
 function openInfo() {
   if (infoOpen) return;
   infoOpen = true;
   infoEl.classList.add('open');
   const ind = document.getElementById('mob-play-indicator');
   if (ind) ind.classList.remove('visible');
-  startFairyLight();
 }
 function closeInfo() {
   if (!infoOpen) return;
@@ -2447,7 +2395,6 @@ function closeInfo() {
   infoEl.classList.remove('open');
   const ind = document.getElementById('mob-play-indicator');
   if (ind && !playing && !workOpen && !detailOpen) ind.classList.add('visible');
-  stopFairyLight();
 }
 infoBackdrop.addEventListener('click', closeInfo);
 
