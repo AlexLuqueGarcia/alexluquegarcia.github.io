@@ -1689,8 +1689,8 @@ function openWork() {
   const rows = Array.from(workInner.querySelectorAll('.work-row'));
   const endRects = rows.map(r => r.getBoundingClientRect());
 
-  // 4. Hide the landing strip and work rows (we'll show flying clones instead)
-  stripEl.classList.add('hide');
+  // 4. Hide the landing strip (instant, no slide animation) and work rows
+  stripEl.style.visibility = 'hidden';
   metaEl.classList.add('hide');
   hintEl.classList.add('hide');
   if (mobControls) mobControls.classList.add('hide');
@@ -1717,17 +1717,18 @@ function closeWork() {
   workOpen = false;
   transitioning = true;
 
-  // 1. Measure current positions of work rows
+  // 1. Measure current positions of work rows (start position)
   const rows = Array.from(workInner.querySelectorAll('.work-row'));
   const startRects = rows.map(r => r.getBoundingClientRect());
 
-  // 2. Temporarily restore strip to measure end positions
-  stripEl.classList.remove('hide');
-  // Let strip render to measure
+  // 2. The strip is already at its correct position (just hidden via visibility)
+  // Measure where each thumb will land
   const endRects = allThumbs().map(t => t.getBoundingClientRect());
 
-  // 3. Hide work rows and create flying clones from row -> strip thumb positions
+  // 3. Hide work rows so only clones are visible during animation
   rows.forEach(r => r.style.visibility = 'hidden');
+
+  // 4. Create flying clones from row positions → strip positions
   const flies = projectData.map((p, i) => {
     const pd     = projectDetails[i];
     const frames = pd?.thumbFrames || [];
@@ -1735,18 +1736,15 @@ function closeWork() {
     return createFlyThumb(startRects[i], endRects[i], frames, sc, p.tc);
   });
 
-  // Hide the strip thumbs during animation (they'll reappear when clones finish)
-  stripEl.style.visibility = 'hidden';
-
-  // 4. Fade out work page
+  // 5. Fade out work page, restore meta/hint immediately so they fade back in
   workEl.classList.remove('open');
+  metaEl.classList.remove('hide');
+  hintEl.classList.remove('hide');
+  if (mobControls) mobControls.classList.remove('hide');
 
-  // 5. Restore landing UI after animation
+  // 6. After animation finishes, restore strip visibility and remove clones
   setTimeout(() => {
     stripEl.style.visibility = '';
-    metaEl.classList.remove('hide');
-    hintEl.classList.remove('hide');
-    if (mobControls) mobControls.classList.remove('hide');
     flies.forEach(f => f.remove());
     rows.forEach(r => r.style.visibility = '');
     transitioning = false;
