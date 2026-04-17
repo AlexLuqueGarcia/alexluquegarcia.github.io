@@ -629,7 +629,7 @@ body.is-fullscreen .win-resize { display: none !important; }
   #meta .m-title  { font-size: 1.2rem; }
   #meta .m-role   { font-size: 0.75rem; }
 
-  /* Scroll hint — restore to bottom right, hide play/mute buttons from it */
+  /* Scroll hint — mute button only, in bottom right */
   #scroll-hint {
     right: 1rem;
     bottom: calc(var(--strip-h) + var(--pad-b) + 14px);
@@ -642,8 +642,11 @@ body.is-fullscreen .win-resize { display: none !important; }
     gap: 12px;
   }
   #scroll-hint.hide { transform: translateY(calc(var(--strip-h) + var(--pad-b) + 60px)); opacity: 0; }
-  #scroll-hint span { font-size: 1.1rem; }
-  #lnd-play, #lnd-mute { display: none; }
+  #scroll-hint span,
+  #scroll-hint .scroll-arrow { display: none; }
+  #lnd-play { display: none; }
+  #lnd-mute { display: inline-flex; }
+  #lnd-mute svg { width: 26px; height: 26px; }
   /* Show center play indicator on mobile when paused */
   #mob-play-indicator { display: block; }
 
@@ -2061,6 +2064,9 @@ const lndPlayIcon = document.getElementById('lnd-play-icon');
 const lndMuteBtn  = document.getElementById('lnd-mute');
 const lndWaves    = document.getElementById('lnd-waves');
 const isLndVideo  = lndVideo && lndVideo.tagName === 'VIDEO';
+
+// Video starts muted — reflect that in the icon
+if (lndWaves) lndWaves.style.opacity = '0.15';
 
 // Mobile center play indicator
 const mobIndicator = document.getElementById('mob-play-indicator');
