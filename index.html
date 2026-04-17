@@ -158,9 +158,9 @@ body.cur-hover #cur svg {
   transform: translate(-50%, -48%) scale(0.94);
   width: min(520px, calc(100vw - 3rem));
   max-height: 80vh;
-  background: rgba(245,245,245,0.92);
-  backdrop-filter: blur(30px) saturate(1.2);
-  -webkit-backdrop-filter: blur(30px) saturate(1.2);
+  background: rgba(255,255,255,0.08);
+  backdrop-filter: blur(30px) saturate(1.4) invert(1) hue-rotate(180deg);
+  -webkit-backdrop-filter: blur(30px) saturate(1.4) invert(1) hue-rotate(180deg);
   border-radius: 0;
   padding: 2.2rem 2rem 2rem;
   color: #000;
@@ -231,27 +231,36 @@ body.cur-hover #cur svg {
 }
 .info-section .info-body a:hover { opacity: 0.6; }
 
-/* Hero bio — larger type with a wandering fairy-light highlight.
-   On a bright panel, dark text with a subtle brighter zone that drifts around. */
+/* Hero bio — dark letters on the inverted panel, with a wandering "fairy"
+   highlight dot that floats behind the glyphs and lightens them where it passes */
 .info-bio {
+  position: relative;
   font-size: 1.55rem;
   line-height: 1.35;
   font-weight: 300;
   letter-spacing: -0.01em;
-  --fx: 50%;
-  --fy: 50%;
+  color: #000;
+  isolation: isolate;
+}
+.info-bio .fairy {
+  position: absolute;
+  top: 0; left: 0;
+  width: 160px;
+  height: 160px;
+  border-radius: 50%;
+  pointer-events: none;
   background: radial-gradient(
-    circle at var(--fx) var(--fy),
-    rgba(120,120,120,1) 0%,
-    rgba(60,60,60,1) 14%,
-    rgba(10,10,10,1) 30%,
-    #000 45%,
-    #000 100%
+    circle,
+    rgba(255,255,255,0.9) 0%,
+    rgba(255,255,255,0.5) 25%,
+    rgba(255,255,255,0.15) 50%,
+    rgba(255,255,255,0) 70%
   );
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  color: transparent;
+  mix-blend-mode: screen;
+  transform: translate(-50%, -50%);
+  filter: blur(8px);
+  z-index: 1;
+  will-change: transform;
 }
 
 @media (max-width: 768px) {
@@ -1066,7 +1075,7 @@ body.is-fullscreen .win-resize { display: none !important; }
     <span class="corner-br"></span>
     <div class="info-content">
       <div class="info-section">
-        <div class="info-body info-bio">A Digital Wizard ready to serve your evil commercial/creative purposes</div>
+        <div class="info-body info-bio"><span class="fairy"></span>A Digital Wizard ready to serve your evil commercial/creative purposes</div>
       </div>
       <div class="info-section">
         <div class="info-label">Contact</div>
@@ -2402,16 +2411,19 @@ const infoBackdrop = document.getElementById('info-backdrop');
 let _fairyRaf = null;
 function startFairyLight() {
   const bio = document.querySelector('.info-bio');
-  if (!bio) return;
+  const fairy = bio?.querySelector('.fairy');
+  if (!bio || !fairy) return;
   stopFairyLight();
   const startTime = performance.now();
   const tick = () => {
     const t = (performance.now() - startTime) / 1000;
-    // Two sine waves with irrational-ish ratios to prevent perfect loops
-    const x = 50 + 45 * Math.sin(t * 0.37);
-    const y = 50 + 55 * Math.sin(t * 0.53 + 1.3);
-    bio.style.setProperty('--fx', x + '%');
-    bio.style.setProperty('--fy', y + '%');
+    const rect = bio.getBoundingClientRect();
+    const w = rect.width;
+    const h = rect.height;
+    // Lissajous path — wanders across the text area without repeating
+    const x = w * 0.5 + w * 0.55 * Math.sin(t * 0.37);
+    const y = h * 0.5 + h * 0.70 * Math.sin(t * 0.53 + 1.3);
+    fairy.style.transform = `translate(${x}px, ${y}px) translate(-50%, -50%)`;
     _fairyRaf = requestAnimationFrame(tick);
   };
   _fairyRaf = requestAnimationFrame(tick);
