@@ -1282,6 +1282,12 @@ let totalDur = 0;
 
 // Build strip thumbs from loaded data
 function buildStrip() {
+  // Don't rebuild while user is actively scrubbing — it would nuke the DOM element
+  // under their finger and break the gesture. Try again shortly.
+  if (typeof scrubState !== 'undefined' && scrubState.active) {
+    setTimeout(buildStrip, 300);
+    return;
+  }
   totalDur = projectData.reduce((s,p) => s + p.duration, 0);
   const minDur = Math.min(...projectData.map(p => p.duration));
   stripEl.innerHTML = '';
@@ -1314,13 +1320,12 @@ function buildStrip() {
       <div class="thumb-corners"><span class="tc-rc"></span></div>
       <div class="thumb-label">${p.name}</div>`;
     // Unified scrubbing for both mouse and touch
-    let scrubbing = false;
-    let wasPlaying = false;
+    // State is on the module-level `scrubState` so strip rebuilds don't break scrubbing
     let didScrub = false;
 
     const scrubStart = (clientX) => {
-      scrubbing = true;
-      wasPlaying = playing;
+      scrubState.active = true;
+      scrubState.wasPlaying = playing;
       didScrub = false;
       setPlaying(false);
       const rect = t.getBoundingClientRect();
@@ -1328,16 +1333,34 @@ function buildStrip() {
       seekVideo(pct);
     };
     const scrubMove = (clientX) => {
-      if (!scrubbing) return;
+      if (!scrubState.active) return;
       didScrub = true;
       const rect = t.getBoundingClientRect();
       const pct  = (clientX - rect.left) / rect.width;
       seekVideo(pct);
     };
     const scrubEnd = () => {
-      if (!scrubbing) return;
-      scrubbing = false;
-      if (wasPlaying) setPlaying(true);
+      if (!scrubState.active) return;
+      scrubState.active = false;
+      const resumeIfNeeded = () => {
+        if (scrubState.wasPlaying) setPlaying(true);
+      };
+      // Wait for the last seek to actually complete before resuming playback
+      const vid = document.getElementById('video-bg-inner');
+      if (vid && vid.seeking) {
+        const onSeeked = () => {
+          vid.removeEventListener('seeked', onSeeked);
+          resumeIfNeeded();
+        };
+        vid.addEventListener('seeked', onSeeked);
+        // Fallback in case the event never fires
+        setTimeout(() => {
+          vid.removeEventListener('seeked', onSeeked);
+          resumeIfNeeded();
+        }, 500);
+      } else {
+        resumeIfNeeded();
+      }
     };
 
     // Desktop: mouse drag
@@ -1347,7 +1370,7 @@ function buildStrip() {
       e.preventDefault();
       scrubStart(e.clientX);
     });
-    window.addEventListener('mousemove', (e) => { if (scrubbing) scrubMove(e.clientX); });
+    window.addEventListener('mousemove', (e) => { if (scrubState.active) scrubMove(e.clientX); });
     window.addEventListener('mouseup', () => scrubEnd());
 
     // Click — only fires if mouse didn't drag. For inactive thumb, switch project.
@@ -1368,7 +1391,7 @@ function buildStrip() {
       scrubStart(e.touches[0].clientX);
     }, { passive: true });
     t.addEventListener('touchmove', (e) => {
-      if (!scrubbing) return;
+      if (!scrubState.active) return;
       scrubMove(e.touches[0].clientX);
     }, { passive: true });
     t.addEventListener('touchend', () => scrubEnd(), { passive: true });
@@ -1430,6 +1453,7 @@ const detailEl     = document.getElementById('detail');
 const stripEl      = document.getElementById('strip-area');
 
 let cur = 0, localProgress = 0, playing = true;
+let scrubState = { active: false, wasPlaying: false };
 let lastTs = null, raf = null;
 let detailOpen = false;
 let transitioning = false;
