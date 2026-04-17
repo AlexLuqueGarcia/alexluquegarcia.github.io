@@ -1403,30 +1403,54 @@ const detailEl     = document.getElementById('detail');
 const stripEl      = document.getElementById('strip-area');
 
 let cur = 0, localProgress = 0, playing = true;
-let scrubState = { active: false, wasPlaying: false, didScrub: false, targetEl: null };
+let scrubState = { active: false, wasPlaying: false, didScrub: false, targetEl: null, pendingPct: null, lastSeekAt: 0 };
 
 function scrubStart(clientX, el) {
   scrubState.active = true;
   scrubState.wasPlaying = playing;
   scrubState.didScrub = false;
   scrubState.targetEl = el;
+  scrubState.pendingPct = null;
+  scrubState.lastSeekAt = 0;
   setPlaying(false);
   const rect = el.getBoundingClientRect();
-  seekVideo((clientX - rect.left) / rect.width);
+  const pct = (clientX - rect.left) / rect.width;
+  scrubState.pendingPct = pct;
+  seekVideo(pct);
 }
 function scrubMove(clientX) {
   if (!scrubState.active || !scrubState.targetEl) return;
   scrubState.didScrub = true;
   const rect = scrubState.targetEl.getBoundingClientRect();
-  seekVideo((clientX - rect.left) / rect.width);
+  const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+  scrubState.pendingPct = pct;
+  // Always update the visual marker smoothly
+  localProgress = pct;
+  setProgress(pct);
+  // Throttle actual video seeks to ~60ms to avoid overwhelming the decoder on mobile
+  const now = performance.now();
+  if (now - scrubState.lastSeekAt > 60) {
+    scrubState.lastSeekAt = now;
+    seekVideoRaw(pct);
+  }
 }
 function scrubEnd() {
   if (!scrubState.active) return;
   scrubState.active = false;
   const wasPlaying = scrubState.wasPlaying;
+  const finalPct = scrubState.pendingPct;
   scrubState.targetEl = null;
-  const resume = () => { if (wasPlaying) setPlaying(true); };
+  scrubState.pendingPct = null;
+
+  // Always apply the final intended seek position on release
   const vid = document.getElementById('video-bg-inner');
+  if (vid && finalPct != null && vid.duration && !isNaN(vid.duration)) {
+    vid.currentTime = finalPct * vid.duration;
+    localProgress = finalPct;
+    setProgress(finalPct);
+  }
+
+  const resume = () => { if (wasPlaying) setPlaying(true); };
   if (vid && vid.seeking) {
     const onSeeked = () => {
       vid.removeEventListener('seeked', onSeeked);
@@ -1436,9 +1460,17 @@ function scrubEnd() {
     setTimeout(() => {
       vid.removeEventListener('seeked', onSeeked);
       resume();
-    }, 500);
+    }, 700);
   } else {
     resume();
+  }
+}
+// Raw seek (no throttle, no marker update) — used during scrubMove
+function seekVideoRaw(pct) {
+  const vid = document.getElementById('video-bg-inner');
+  pct = Math.max(0, Math.min(1, pct));
+  if (vid && vid.duration && !isNaN(vid.duration)) {
+    vid.currentTime = pct * vid.duration;
   }
 }
 // Global listeners for desktop mouse — registered ONCE
