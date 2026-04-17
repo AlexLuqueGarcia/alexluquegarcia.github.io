@@ -1403,20 +1403,21 @@ const detailEl     = document.getElementById('detail');
 const stripEl      = document.getElementById('strip-area');
 
 let cur = 0, localProgress = 0, playing = true;
-let scrubState = { active: false, wasPlaying: false, didScrub: false, targetEl: null, pendingPct: null };
+let scrubState = { active: false, wasPlaying: false, didScrub: false, targetEl: null, pendingPct: null, lastPreviewAt: 0 };
 
 function scrubStart(clientX, el) {
   scrubState.active = true;
   scrubState.wasPlaying = playing;
   scrubState.didScrub = false;
   scrubState.targetEl = el;
+  scrubState.lastPreviewAt = 0;
   setPlaying(false);
   const rect = el.getBoundingClientRect();
   const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
   scrubState.pendingPct = pct;
-  // Show the marker at finger position immediately, but don't seek yet
   localProgress = pct;
   setProgress(pct);
+  previewSeek(pct);
 }
 function scrubMove(clientX) {
   if (!scrubState.active || !scrubState.targetEl) return;
@@ -1424,9 +1425,15 @@ function scrubMove(clientX) {
   const rect = scrubState.targetEl.getBoundingClientRect();
   const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
   scrubState.pendingPct = pct;
-  // Only update the visual marker — don't seek the video during drag
+  // Marker always moves smoothly
   localProgress = pct;
   setProgress(pct);
+  // Throttle preview seeks — these are cosmetic only, not the authoritative position
+  const now = performance.now();
+  if (now - scrubState.lastPreviewAt > 80) {
+    scrubState.lastPreviewAt = now;
+    previewSeek(pct);
+  }
 }
 function scrubEnd() {
   if (!scrubState.active) return;
@@ -1437,7 +1444,7 @@ function scrubEnd() {
   scrubState.pendingPct = null;
 
   const vid = document.getElementById('video-bg-inner');
-  // Apply the single, final seek on release
+  // Authoritative seek to exactly where the finger released
   if (vid && finalPct != null && vid.duration && !isNaN(vid.duration)) {
     vid.currentTime = finalPct * vid.duration;
     localProgress = finalPct;
@@ -1457,6 +1464,13 @@ function scrubEnd() {
     }, 700);
   } else {
     resume();
+  }
+}
+// Cosmetic preview seek during drag — can be interrupted without consequence
+function previewSeek(pct) {
+  const vid = document.getElementById('video-bg-inner');
+  if (vid && vid.duration && !isNaN(vid.duration)) {
+    vid.currentTime = pct * vid.duration;
   }
 }
 // Global listeners for desktop mouse — registered ONCE
