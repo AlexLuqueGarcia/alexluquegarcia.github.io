@@ -38,11 +38,19 @@ html, body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
+  font-feature-settings: "kern", "liga", "calt";
+  font-kerning: normal;
   -webkit-touch-callout: none;
   overscroll-behavior: none;
   position: fixed;
   top: 0; left: 0; right: 0; bottom: 0;
 }
+/* Initial fade-in on page load — nothing pops in abruptly */
+body {
+  opacity: 0;
+  transition: opacity 0.8s var(--ease-out);
+}
+body.loaded { opacity: 1; }
 /* Block pull-to-refresh on landing elements — only scrollable areas allow pan-y */
 #video-bg, #video-bg-peek, #strip-area, nav, #meta, #scroll-hint, #mob-play-indicator {
   touch-action: none;
@@ -65,7 +73,18 @@ html::-webkit-scrollbar {
   width: 0;
   height: 0;
 }
-* { cursor:none !important; }
+@media (hover: hover) and (pointer: fine) {
+  * { cursor: none !important; }
+}
+
+/* Keyboard focus ring — hidden for mouse clicks, visible for Tab navigation.
+   Clean subtle outline that respects the design language. */
+*:focus { outline: none; }
+a:focus-visible, button:focus-visible {
+  outline: 1px solid rgba(255,255,255,0.7);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
 /* Disable user-select on UI chrome */
 nav, #meta, #scroll-hint, #strip-area, .work-row, #detail-footer,
 #mob-play-indicator, #cur, .vid-btn, .thumb-label {
@@ -114,7 +133,7 @@ body.cur-hover #cur svg {
 #video-bg-inner {
   width:100%; height:100%;
   background:transparent;
-  transition: opacity 0.3s ease;
+  transition: opacity 0.45s var(--ease-smooth);
 }
 #video-bg-inner.switching { opacity: 0; }
 /* Peek layer — shows next/prev project thumbnail during swipe */
@@ -155,7 +174,7 @@ body.cur-hover #cur svg {
   position: absolute;
   left: 50%;
   top: 50%;
-  transform: translate(-50%, -48%) scale(0.94);
+  transform: translate(-50%, -46%) scale(0.92);
   width: min(520px, calc(100vw - 3rem));
   max-height: 80vh;
   background: rgba(255,255,255,0.08);
@@ -166,8 +185,8 @@ body.cur-hover #cur svg {
   color: #000;
   font-family: 'NM', sans-serif;
   opacity: 0;
-  transition: opacity 0.4s var(--ease-out), transform 0.5s var(--ease-spring);
-  box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+  transition: opacity 0.45s var(--ease-out), transform 0.55s var(--ease-spring);
+  box-shadow: 0 30px 80px rgba(0,0,0,0.45), 0 8px 24px rgba(0,0,0,0.3);
   overflow: hidden;
 }
 /* White corner brackets */
@@ -275,20 +294,26 @@ nav.hide {
 .nav-links a {
   font-size:1.23rem;
   color:#fff; text-decoration:none;
-  transition: opacity 0.25s ease;
+  letter-spacing: -0.005em;
+  transition: opacity 0.35s var(--ease-out), transform 0.35s var(--ease-out);
+  display: inline-block;
 }
 .nav-links a:hover { opacity:0.55; }
+.nav-links a:active { opacity: 0.4; transform: scale(0.96); }
 #nav-year {
   font-size:1.23rem;
   color:#fff;
+  font-variant-numeric: tabular-nums;
 }
 .nav-brand .name {
   font-size:1.23rem; color:#fff;
   display:block; font-weight:500; line-height:1.4;
+  letter-spacing: -0.01em;
 }
 .nav-brand .tagline {
   font-size:1.23rem; color:#fff;
   display:block; margin-top:1px; line-height:1.4;
+  letter-spacing: -0.005em;
 }
 
 /* ── META — fixed above strip ── */
@@ -344,11 +369,11 @@ nav.hide {
 #scroll-hint span { cursor:pointer; transition: opacity 0.25s ease; }
 #scroll-hint span:hover { opacity:0.55; }
 #scroll-hint span { font-size:1.8rem; color:#fff; cursor:pointer; font-weight:300; }
-#scroll-hint .scroll-arrow { animation:bob 1.8s ease-in-out infinite; cursor:pointer; transition: opacity 0.25s ease; }
+#scroll-hint .scroll-arrow { animation:bob 2.4s ease-in-out infinite; cursor:pointer; transition: opacity 0.25s ease; }
 #scroll-hint .scroll-arrow:hover { opacity:0.55; }
 @keyframes bob {
-  0%,100%{transform:translateY(0);}
-  50%{transform:translateY(3px);}
+  0%,100% { transform: translateY(0); }
+  50%     { transform: translateY(4px); }
 }
 
 /* ── STRIP — fixed, slides down to hide ── */
@@ -488,7 +513,7 @@ nav.hide {
   background:#000;
   opacity:0;
   pointer-events:none;
-  transition: opacity 0.4s;
+  transition: opacity 0.5s var(--ease-out);
   -webkit-overflow-scrolling: touch;
 }
 #work.open { opacity:1; pointer-events:auto; }
@@ -812,7 +837,7 @@ body.is-fullscreen .win-resize { display: none !important; }
   backdrop-filter: blur(30px) saturate(1.4);
   -webkit-backdrop-filter: blur(30px) saturate(1.4);
   border: 1px solid rgba(255,255,255,0.12);
-  box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+  box-shadow: 0 30px 80px rgba(0,0,0,0.45), 0 8px 24px rgba(0,0,0,0.3);
   font-family:'NM',sans-serif;
   overflow:hidden;
 }
@@ -930,7 +955,10 @@ body.is-fullscreen .win-resize { display: none !important; }
   clip-path: polygon(18% 10%, 18% 90%, 88% 50%);
   -webkit-clip-path: polygon(18% 10%, 18% 90%, 88% 50%);
 }
-#mob-play-indicator.visible { opacity: 1; }
+#mob-play-indicator.visible {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
 #mobile-controls {
   display: none;
 }
@@ -987,6 +1015,20 @@ body.is-fullscreen .win-resize { display: none !important; }
   .df-copy { font-size: 0.75rem; }
   .df-labels, .df-values { font-size: 0.75rem; gap: 2px; }
   .df-contact { gap: 1rem; }
+}
+
+/* Respect user's reduced-motion preference: shorten long transitions and
+   disable non-essential decorative animations. Keeps the site usable for
+   people sensitive to motion while still providing subtle feedback. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.15s !important;
+  }
+  .thumb-bg, .win, .work-row .work-bg {
+    transition: opacity 0.2s ease, filter 0.2s ease !important;
+  }
 }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.7/hls.min.js"></script>
@@ -1353,7 +1395,7 @@ async function loadProjects() {
   projectData    = combined.map(x => x.p);
   projectDetails = combined.map(x => x.d);
 
-  console.log('Projects loaded:', projectData.map(p => `${p.name} → ${p.src}`));
+  console.log('Projects loaded:', projectData.length);
 }
 const SPEED = 6;
 let totalDur = 0;
@@ -1513,6 +1555,7 @@ const hintEl       = document.getElementById('scroll-hint');
 const navEl        = document.querySelector('nav');
 const detailEl     = document.getElementById('detail');
 const stripEl      = document.getElementById('strip-area');
+const mobIndicator = document.getElementById('mob-play-indicator');
 
 let cur = 0, localProgress = 0, playing = true;
 let scrubState = { active: false, wasPlaying: false, didScrub: false, targetEl: null, pendingPct: null, lastPreviewAt: 0, token: 0 };
@@ -1728,6 +1771,10 @@ function setBg(i) {
   if (!vid || vid.tagName !== 'VIDEO') return;
   const newSrc = (projectData[i]?.src || '').trim();
   if (!newSrc) return;
+  // Bail if this exact source is already the current one — prevents
+  // re-loading HLS stream on accidental re-triggers (keyboard spam, etc.)
+  if (vid._currentSrc === newSrc) return;
+  vid._currentSrc = newSrc;
 
   // Use first thumbnail frame as background placeholder — shows instantly, behind video
   const firstThumb = projectDetails[i]?.thumbFrames?.[0];
@@ -1816,13 +1863,13 @@ function setPlaying(val) {
     schedTick();
     if (isLndVideo && lndVideo.paused) lndVideo.play();
     if (lndPlayIcon) lndPlayIcon.innerHTML = '<rect x="1" y="1" width="4" height="12" fill="currentColor"/><rect x="9" y="1" width="4" height="12" fill="currentColor"/>';
-    const ind = document.getElementById('mob-play-indicator');
+    const ind = mobIndicator;
     if (ind) ind.classList.remove('visible');
   } else {
     cancelAnimationFrame(raf);
     if (isLndVideo && !lndVideo.paused) lndVideo.pause();
     if (lndPlayIcon) lndPlayIcon.innerHTML = '<path d="M1 1L13 7L1 13V1Z" fill="currentColor"/>';
-    const ind = document.getElementById('mob-play-indicator');
+    const ind = mobIndicator;
     // Only show on landing (not on work or detail)
     if (ind && !workOpen && !detailOpen) ind.classList.add('visible');
   }
@@ -2399,14 +2446,14 @@ function openInfo() {
   if (infoOpen) return;
   infoOpen = true;
   infoEl.classList.add('open');
-  const ind = document.getElementById('mob-play-indicator');
+  const ind = mobIndicator;
   if (ind) ind.classList.remove('visible');
 }
 function closeInfo() {
   if (!infoOpen) return;
   infoOpen = false;
   infoEl.classList.remove('open');
-  const ind = document.getElementById('mob-play-indicator');
+  const ind = mobIndicator;
   if (ind && !playing && !workOpen && !detailOpen) ind.classList.add('visible');
 }
 infoBackdrop.addEventListener('click', closeInfo);
@@ -2598,7 +2645,7 @@ function openWork() {
   setPlaying(false);
 
   // Hide the mobile play indicator (which shows when paused)
-  const ind = document.getElementById('mob-play-indicator');
+  const ind = mobIndicator;
   if (ind) ind.classList.remove('visible');
 
   // 1. Measure where each thumbnail is NOW in the strip
@@ -2710,7 +2757,7 @@ function openDetail() {
   hintEl.classList.add('hide');
 
   // Hide mobile play indicator
-  const ind = document.getElementById('mob-play-indicator');
+  const ind = mobIndicator;
   if (ind) ind.classList.remove('visible');
 
   // pause ticker and landing video
@@ -2745,7 +2792,7 @@ function closeDetail() {
   }
   if (playing) { lastTs = null; schedTick(); }
   // If video was paused, restore the mobile play indicator
-  const ind = document.getElementById('mob-play-indicator');
+  const ind = mobIndicator;
   if (ind && !playing) ind.classList.add('visible');
 
   // 2. strip comes back up after detail is gone
@@ -2922,9 +2969,6 @@ const isLndVideo  = lndVideo && lndVideo.tagName === 'VIDEO';
 // Video starts muted — reflect that in the icon
 if (lndWaves) lndWaves.style.opacity = '0.15';
 
-// Mobile center play indicator
-const mobIndicator = document.getElementById('mob-play-indicator');
-
 lndPlayBtn.addEventListener('click', (e) => {
   e.stopPropagation();
   e.currentTarget.blur();
@@ -2971,12 +3015,23 @@ if (window.visualViewport) {
   window.visualViewport.addEventListener('resize', () => {
     const scale = window.visualViewport.scale;
     if (Math.abs(scale - 1) > 0.05) resetViewport();
-    if (projectData.length) buildStrip();
+    scheduleResizeRebuild();
   });
 }
 
+// Debounced resize rebuild — prevents thrashing when mobile browser chrome
+// shows/hides or during window drags on desktop
+let _resizeTimer = null;
+function scheduleResizeRebuild() {
+  if (_resizeTimer) clearTimeout(_resizeTimer);
+  _resizeTimer = setTimeout(() => {
+    _resizeTimer = null;
+    if (projectData.length) buildStrip();
+    if (workOpen) { buildWork(); setupInfiniteWorkScroll(); }
+  }, 150);
+}
 window.addEventListener('orientationchange', resetViewport);
-window.addEventListener('resize', () => { if (projectData.length) buildStrip(); });
+window.addEventListener('resize', scheduleResizeRebuild);
 
 // ── CUSTOM CURSOR ──
 const curEl = document.getElementById('cur');
@@ -2998,7 +3053,6 @@ if (!isTouch) {
 }
 
 // ── INIT ──
-window.addEventListener('resize', () => { if (projectData.length) buildStrip(); });
 window.addEventListener('load', async () => {
   // 1. Load project metadata
   await loadProjects();
@@ -3014,6 +3068,11 @@ window.addEventListener('load', async () => {
   // 3. Build strip with color fallbacks, start playing
   buildStrip();
   setBg(0); setActiveThumb(0); updateMeta(0); setPlaying(true);
+
+  // Fade the page in once the initial frame is ready
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => document.body.classList.add('loaded'));
+  });
 
   // 4. First project thumbnails — await so strip fills in immediately
   const firstPd = projectDetails[0];
