@@ -37,6 +37,18 @@ html, body {
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
   -webkit-touch-callout: none;
+  overscroll-behavior: none;
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+}
+/* Block pull-to-refresh on landing elements — only scrollable areas allow pan-y */
+#video-bg, #video-bg-peek, #strip-area, nav, #meta, #scroll-hint, #mob-play-indicator {
+  touch-action: none;
+}
+/* Work and detail canvas need to scroll vertically */
+#work, #canvas {
+  touch-action: pan-y;
+  overscroll-behavior: contain;
 }
 * { cursor:none !important; }
 /* Disable user-select on UI chrome */
