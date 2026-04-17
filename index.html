@@ -1053,44 +1053,65 @@ function buildStrip() {
       <div class="thumb-marker"></div>
       <div class="thumb-corners"><span class="tc-rc"></span></div>
       <div class="thumb-label">${p.name}</div>`;
-    t.addEventListener('click', (e) => {
-      if (detailOpen) return;
-      if (i === cur) {
-        // Desktop: click on active thumb seeks the video
-        if (!isTouch) {
-          const rect = t.getBoundingClientRect();
-          const pct  = (e.clientX - rect.left) / rect.width;
-          seekVideo(pct);
-        }
-      } else {
-        // Click on different thumb — switch project
-        goTo(i);
-      }
-    });
-
-    // Touch drag-to-scrub on active thumb
+    // Unified scrubbing for both mouse and touch
     let scrubbing = false;
     let wasPlaying = false;
-    t.addEventListener('touchstart', (e) => {
-      if (detailOpen || i !== cur) return;
+    let didScrub = false;
+
+    const scrubStart = (clientX) => {
       scrubbing = true;
       wasPlaying = playing;
+      didScrub = false;
       setPlaying(false);
       const rect = t.getBoundingClientRect();
-      const pct  = (e.touches[0].clientX - rect.left) / rect.width;
+      const pct  = (clientX - rect.left) / rect.width;
       seekVideo(pct);
-    }, { passive: true });
-    t.addEventListener('touchmove', (e) => {
+    };
+    const scrubMove = (clientX) => {
       if (!scrubbing) return;
+      didScrub = true;
       const rect = t.getBoundingClientRect();
-      const pct  = (e.touches[0].clientX - rect.left) / rect.width;
+      const pct  = (clientX - rect.left) / rect.width;
       seekVideo(pct);
-    }, { passive: true });
-    t.addEventListener('touchend', () => {
+    };
+    const scrubEnd = () => {
       if (!scrubbing) return;
       scrubbing = false;
       if (wasPlaying) setPlaying(true);
+    };
+
+    // Desktop: mouse drag
+    t.addEventListener('mousedown', (e) => {
+      if (detailOpen) return;
+      if (i !== cur) return; // inactive thumb: let click handler switch project
+      e.preventDefault();
+      scrubStart(e.clientX);
+    });
+    window.addEventListener('mousemove', (e) => { if (scrubbing) scrubMove(e.clientX); });
+    window.addEventListener('mouseup', () => scrubEnd());
+
+    // Click — only fires if mouse didn't drag. For inactive thumb, switch project.
+    t.addEventListener('click', (e) => {
+      if (detailOpen) return;
+      if (i !== cur) { goTo(i); return; }
+      // For active thumb on desktop: if user didn't drag, treat as a simple seek click
+      if (!isTouch && !didScrub) {
+        const rect = t.getBoundingClientRect();
+        const pct  = (e.clientX - rect.left) / rect.width;
+        seekVideo(pct);
+      }
+    });
+
+    // Mobile: touch drag
+    t.addEventListener('touchstart', (e) => {
+      if (detailOpen || i !== cur) return;
+      scrubStart(e.touches[0].clientX);
     }, { passive: true });
+    t.addEventListener('touchmove', (e) => {
+      if (!scrubbing) return;
+      scrubMove(e.touches[0].clientX);
+    }, { passive: true });
+    t.addEventListener('touchend', () => scrubEnd(), { passive: true });
 
     stripEl.appendChild(t);
   });
