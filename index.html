@@ -1403,9 +1403,12 @@ const detailEl     = document.getElementById('detail');
 const stripEl      = document.getElementById('strip-area');
 
 let cur = 0, localProgress = 0, playing = true;
-let scrubState = { active: false, wasPlaying: false, didScrub: false, targetEl: null, pendingPct: null, lastPreviewAt: 0 };
+let scrubState = { active: false, wasPlaying: false, didScrub: false, targetEl: null, pendingPct: null, lastPreviewAt: 0, token: 0 };
+let scrubToken = 0; // Global counter; increments on: scrubStart, project switch, scrubEnd start
 
 function scrubStart(clientX, el) {
+  scrubToken++; // Invalidates any in-flight scrubEnd
+  scrubState.token = scrubToken; // This scrub owns this token
   scrubState.active = true;
   scrubState.wasPlaying = playing;
   scrubState.didScrub = false;
@@ -1438,18 +1441,21 @@ async function scrubEnd() {
   scrubState.active = false;
   const wasPlaying = scrubState.wasPlaying;
   const finalPct = scrubState.pendingPct;
+  const myToken = scrubState.token; // Token assigned at scrubStart — captured here
   scrubState.targetEl = null;
   scrubState.pendingPct = null;
 
+  const aborted = () => myToken !== scrubToken;
+
   const vid = document.getElementById('video-bg-inner');
   if (!vid || finalPct == null || !vid.duration || isNaN(vid.duration)) {
-    if (wasPlaying) setPlaying(true);
+    if (wasPlaying && !aborted()) setPlaying(true);
     return;
   }
 
   // Mobile uses a dedicated HLS-aware bulletproof path; desktop keeps the existing logic
   if (isTouch) {
-    return scrubEndMobile(vid, finalPct, wasPlaying);
+    return scrubEndMobile(vid, finalPct, wasPlaying, myToken);
   }
 
   const targetTime = finalPct * vid.duration;
@@ -1457,6 +1463,7 @@ async function scrubEnd() {
   // Wait for any in-flight preview seeks to settle
   await new Promise(r => requestAnimationFrame(r));
   await new Promise(r => requestAnimationFrame(r));
+  if (aborted()) return;
 
   // Pause and lock state
   if (!vid.paused) vid.pause();
@@ -1465,53 +1472,49 @@ async function scrubEnd() {
   const TIMEOUT = 2500;
   const POLL_INTERVAL = 30;
   const start = performance.now();
+  if (aborted()) return;
   vid.currentTime = targetTime;
   while (performance.now() - start < TIMEOUT) {
     await new Promise(r => setTimeout(r, POLL_INTERVAL));
-    // If not seeking and position is close enough, we're done
+    if (aborted()) return;
     if (!vid.seeking && Math.abs(vid.currentTime - targetTime) < 0.15) {
       break;
     }
-    // Otherwise, keep forcing the target position
     if (!vid.seeking) {
+      if (aborted()) return;
       vid.currentTime = targetTime;
     }
   }
+  if (aborted()) return;
 
-  // Final reassertion right before play — nothing can drift past this point
   vid.currentTime = targetTime;
   localProgress = finalPct;
   setProgress(finalPct);
 
-  // Brief settle then resume
   await new Promise(r => setTimeout(r, 80));
+  if (aborted()) return;
 
-  // One MORE reassertion to handle the edge case of the video element
-  // snapping back during play() invocation
   vid.currentTime = targetTime;
 
-  if (wasPlaying) setPlaying(true);
+  if (wasPlaying && !aborted()) setPlaying(true);
 }
 
 // ── MOBILE-SPECIFIC BULLETPROOF SCRUB RESOLUTION ──
-// The mobile path addresses HLS segment-loading issues where:
-//  - `vid.seeking` can stay true indefinitely on unbuffered segments
-//  - `currentTime` assignments silently get swallowed
-//  - Browser can "snap back" to a buffered range after playback starts
-async function scrubEndMobile(vid, finalPct, wasPlaying) {
+async function scrubEndMobile(vid, finalPct, wasPlaying, myToken) {
+  const aborted = () => myToken !== scrubToken;
   const targetTime = finalPct * vid.duration;
 
-  // Lock UI state to target immediately so user sees correct marker
+  if (aborted()) return;
   localProgress = finalPct;
   setProgress(finalPct);
 
-  // Full pause to stop any in-flight playback/seek work
   if (!vid.paused) vid.pause();
 
-  // Wait 3 frames for preview seeks and pause to settle
-  for (let k = 0; k < 3; k++) await new Promise(r => requestAnimationFrame(r));
+  for (let k = 0; k < 3; k++) {
+    await new Promise(r => requestAnimationFrame(r));
+    if (aborted()) return;
+  }
 
-  // Helper: is a given time inside any buffered range?
   const isBuffered = (t) => {
     try {
       for (let i = 0; i < vid.buffered.length; i++) {
@@ -1521,70 +1524,56 @@ async function scrubEndMobile(vid, finalPct, wasPlaying) {
     return false;
   };
 
-  // Helper: tell HLS to start loading the segment we need
   const requestHlsLoad = (t) => {
     try {
-      if (_hlsInstance) {
-        _hlsInstance.startLoad(t);
-      }
+      if (_hlsInstance) _hlsInstance.startLoad(t);
     } catch {}
   };
 
-  // If HLS, tell it to start loading around our target
+  if (aborted()) return;
   requestHlsLoad(targetTime);
 
-  // ─── PHASE 1: Wait up to 3s for target to become buffered and seek to complete ───
   const PHASE1_TIMEOUT = 3000;
   const POLL = 40;
   const start = performance.now();
+  if (aborted()) return;
   vid.currentTime = targetTime;
 
   while (performance.now() - start < PHASE1_TIMEOUT) {
     await new Promise(r => setTimeout(r, POLL));
+    if (aborted()) return;
 
-    // If seek completed and we're close to target, we're done
     if (!vid.seeking && Math.abs(vid.currentTime - targetTime) < 0.2) {
       break;
     }
 
-    // If not seeking but we're somewhere else entirely, try seeking again
-    // (segment might have just finished loading)
     if (!vid.seeking) {
+      if (aborted()) return;
       if (isBuffered(targetTime)) {
-        // Target is buffered but we're at the wrong spot — force seek
         vid.currentTime = targetTime;
       } else {
-        // Target not yet buffered — ask HLS to load it, keep polling
         requestHlsLoad(targetTime);
       }
     }
-    // If vid.seeking is true, let it work
   }
+  if (aborted()) return;
 
-  // ─── PHASE 2: Whatever state we're in, lock to target before play ───
-  // Even if the segment isn't buffered, setting currentTime here means when
-  // playback begins the browser will start from here (or pause until buffered)
   vid.currentTime = targetTime;
   localProgress = finalPct;
   setProgress(finalPct);
 
-  // Settle — let the decoder catch up
   await new Promise(r => setTimeout(r, 120));
+  if (aborted()) return;
 
-  // Re-check: if the browser moved us during settle, reassert
   if (Math.abs(vid.currentTime - targetTime) > 0.2) {
     vid.currentTime = targetTime;
     await new Promise(r => setTimeout(r, 80));
+    if (aborted()) return;
   }
 
-  // ─── PHASE 3: Guard against post-play drift ───
-  // On HLS + mobile Safari, calling play() after a seek to an unbuffered area
-  // can cause the browser to jump to the nearest buffered frame. We watch for
-  // this and correct it in the first few hundred ms of playback.
-  if (wasPlaying) {
+  if (wasPlaying && !aborted()) {
     setPlaying(true);
 
-    // Monitor for 600ms post-play: if playback is far from where we seeked, reassert
     const monitorStart = performance.now();
     const monitorDuration = 600;
     let corrections = 0;
@@ -1592,11 +1581,11 @@ async function scrubEndMobile(vid, finalPct, wasPlaying) {
 
     while (performance.now() - monitorStart < monitorDuration) {
       await new Promise(r => setTimeout(r, 60));
-      // Rough expected time: target + elapsed since play started (×1 playback rate)
+      if (aborted()) return;
       const elapsed = (performance.now() - monitorStart) / 1000;
       const expected = targetTime + elapsed;
-      // If we're more than 1s off AND we haven't exhausted corrections, snap back
       if (Math.abs(vid.currentTime - expected) > 1.0 && corrections < MAX_CORRECTIONS) {
+        if (aborted()) return;
         vid.currentTime = targetTime + (performance.now() - monitorStart) / 1000;
         corrections++;
       }
@@ -1728,6 +1717,7 @@ function setPlaying(val) {
 }
 
 function goTo(i) {
+  scrubToken++; // Abort any in-flight scrubEnd — project is changing
   cancelAnimationFrame(raf);
   lastTs = null;
   resetThumb(cur);
