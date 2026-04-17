@@ -1403,20 +1403,20 @@ const detailEl     = document.getElementById('detail');
 const stripEl      = document.getElementById('strip-area');
 
 let cur = 0, localProgress = 0, playing = true;
-let scrubState = { active: false, wasPlaying: false, didScrub: false, targetEl: null, pendingPct: null, lastSeekAt: 0 };
+let scrubState = { active: false, wasPlaying: false, didScrub: false, targetEl: null, pendingPct: null };
 
 function scrubStart(clientX, el) {
   scrubState.active = true;
   scrubState.wasPlaying = playing;
   scrubState.didScrub = false;
   scrubState.targetEl = el;
-  scrubState.pendingPct = null;
-  scrubState.lastSeekAt = 0;
   setPlaying(false);
   const rect = el.getBoundingClientRect();
-  const pct = (clientX - rect.left) / rect.width;
+  const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
   scrubState.pendingPct = pct;
-  seekVideo(pct);
+  // Show the marker at finger position immediately, but don't seek yet
+  localProgress = pct;
+  setProgress(pct);
 }
 function scrubMove(clientX) {
   if (!scrubState.active || !scrubState.targetEl) return;
@@ -1424,15 +1424,9 @@ function scrubMove(clientX) {
   const rect = scrubState.targetEl.getBoundingClientRect();
   const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
   scrubState.pendingPct = pct;
-  // Always update the visual marker smoothly
+  // Only update the visual marker — don't seek the video during drag
   localProgress = pct;
   setProgress(pct);
-  // Throttle actual video seeks to ~60ms to avoid overwhelming the decoder on mobile
-  const now = performance.now();
-  if (now - scrubState.lastSeekAt > 60) {
-    scrubState.lastSeekAt = now;
-    seekVideoRaw(pct);
-  }
 }
 function scrubEnd() {
   if (!scrubState.active) return;
@@ -1442,8 +1436,8 @@ function scrubEnd() {
   scrubState.targetEl = null;
   scrubState.pendingPct = null;
 
-  // Always apply the final intended seek position on release
   const vid = document.getElementById('video-bg-inner');
+  // Apply the single, final seek on release
   if (vid && finalPct != null && vid.duration && !isNaN(vid.duration)) {
     vid.currentTime = finalPct * vid.duration;
     localProgress = finalPct;
@@ -1463,14 +1457,6 @@ function scrubEnd() {
     }, 700);
   } else {
     resume();
-  }
-}
-// Raw seek (no throttle, no marker update) — used during scrubMove
-function seekVideoRaw(pct) {
-  const vid = document.getElementById('video-bg-inner');
-  pct = Math.max(0, Math.min(1, pct));
-  if (vid && vid.duration && !isNaN(vid.duration)) {
-    vid.currentTime = pct * vid.duration;
   }
 }
 // Global listeners for desktop mouse — registered ONCE
