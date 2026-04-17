@@ -1,0 +1,9 @@
+name: No es la mia
+client: Paul Thin
+studio: Groove
+type: Art Director & CG Lead
+about: Place Holder
+team: Alex Luque Garcia — CG Artist
+credits: Studio: Groove
+Direction: Páraic Mc Gloughlin
+Animation: Black MIDI
