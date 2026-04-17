@@ -231,36 +231,28 @@ body.cur-hover #cur svg {
 }
 .info-section .info-body a:hover { opacity: 0.6; }
 
-/* Hero bio — larger type with an Apple-style subtle shimmer.
-   The info panel is inverted, so we use a black-based gradient that inverts
-   to a moving white highlight on the viewer's end. */
+/* Hero bio — larger type with a wandering fairy-light highlight.
+   The info panel is inverted, so we paint the text in black with a moving
+   translucent zone that — after inversion — reads as a soft white glow
+   drifting around the text. JS controls the position via CSS variables. */
 .info-bio {
   font-size: 1.55rem;
   line-height: 1.35;
   font-weight: 300;
   letter-spacing: -0.01em;
-  background: linear-gradient(
-    110deg,
-    #000 0%,
-    #000 35%,
-    rgba(0,0,0,0.35) 48%,
-    rgba(0,0,0,0.15) 50%,
-    rgba(0,0,0,0.35) 52%,
-    #000 65%,
+  --fx: 50%;
+  --fy: 50%;
+  background: radial-gradient(
+    circle at var(--fx) var(--fy),
+    rgba(0,0,0,0.05) 0%,
+    rgba(0,0,0,0.35) 10%,
+    #000 28%,
     #000 100%
   );
-  background-size: 250% 100%;
-  background-position: 100% 0;
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
   color: transparent;
-  animation: infoShimmer 5.5s ease-in-out infinite;
-}
-@keyframes infoShimmer {
-  0%   { background-position: 150% 0; }
-  50%  { background-position: -50% 0; }
-  100% { background-position: 150% 0; }
 }
 
 @media (max-width: 768px) {
@@ -2405,12 +2397,38 @@ let infoOpen = false;
 const infoEl       = document.getElementById('info-sheet');
 const infoBackdrop = document.getElementById('info-backdrop');
 
+// Fairy-light animation — a soft highlight wanders around the bio text
+// using a smooth Lissajous-style path (two sine waves at different frequencies)
+// so it never feels mechanical but also never truly stops or overlaps itself.
+let _fairyRaf = null;
+function startFairyLight() {
+  const bio = document.querySelector('.info-bio');
+  if (!bio) return;
+  stopFairyLight();
+  const startTime = performance.now();
+  const tick = () => {
+    const t = (performance.now() - startTime) / 1000;
+    // Two sine waves with irrational-ish ratios to prevent perfect loops
+    const x = 50 + 45 * Math.sin(t * 0.37);
+    const y = 50 + 55 * Math.sin(t * 0.53 + 1.3);
+    bio.style.setProperty('--fx', x + '%');
+    bio.style.setProperty('--fy', y + '%');
+    _fairyRaf = requestAnimationFrame(tick);
+  };
+  _fairyRaf = requestAnimationFrame(tick);
+}
+function stopFairyLight() {
+  if (_fairyRaf) cancelAnimationFrame(_fairyRaf);
+  _fairyRaf = null;
+}
+
 function openInfo() {
   if (infoOpen) return;
   infoOpen = true;
   infoEl.classList.add('open');
   const ind = document.getElementById('mob-play-indicator');
   if (ind) ind.classList.remove('visible');
+  startFairyLight();
 }
 function closeInfo() {
   if (!infoOpen) return;
@@ -2418,6 +2436,7 @@ function closeInfo() {
   infoEl.classList.remove('open');
   const ind = document.getElementById('mob-play-indicator');
   if (ind && !playing && !workOpen && !detailOpen) ind.classList.add('visible');
+  stopFairyLight();
 }
 infoBackdrop.addEventListener('click', closeInfo);
 
