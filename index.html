@@ -699,7 +699,11 @@ let projectDetails = [];
 // ── ASSET BASE URL ──
 // Local dev:  'projects'
 // Bunny CDN:  'https://YOUR-ZONE.b-cdn.net'
-const ASSETS_BASE = 'projects';
+const ASSETS_BASE = 'https://alexluquegarcia-portfolio.b-cdn.net';
+
+// projects.json always lives next to index.html (GitHub)
+// Only media assets (thumbnails, videos, images) come from ASSETS_BASE
+const PROJECTS_JSON = 'projects/projects.json';
 
 // Fallback projects used when projects.json can't be fetched (e.g. local preview)
 const FALLBACK_PROJECTS = [
@@ -806,7 +810,7 @@ async function loadProjects() {
   // Try to load projects.json manifest
   let manifest;
   try {
-    const res = await fetch(`${ASSETS_BASE}/projects.json`);
+    const res = await fetch(PROJECTS_JSON);
     if (!res.ok) throw new Error('projects.json not found');
     manifest = await res.json();
   } catch(e) {
