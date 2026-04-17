@@ -424,13 +424,11 @@ nav.hide {
 .mobile-detail-video {
   width:100%;
   background:#000;
-  border-radius:4px;
   overflow:hidden;
 }
 .mobile-detail-img {
   width:100%;
   background:#000;
-  border-radius:4px;
   overflow:hidden;
 }
 .mobile-detail-img img { object-fit: cover; }
@@ -1325,7 +1323,8 @@ function setPlaying(val) {
     if (isLndVideo && !lndVideo.paused) lndVideo.pause();
     if (lndPlayIcon) lndPlayIcon.innerHTML = '<path d="M1 1L13 7L1 13V1Z" fill="currentColor"/>';
     const ind = document.getElementById('mob-play-indicator');
-    if (ind) ind.classList.add('visible');
+    // Only show on landing (not on work or detail)
+    if (ind && !workOpen && !detailOpen) ind.classList.add('visible');
   }
 }
 
@@ -1368,6 +1367,30 @@ function tick(ts) {
 // ── DETAIL — freeform canvas ──
 const canvasInner = document.getElementById('canvas-inner');
 const canvasEl    = document.getElementById('canvas');
+
+// Mobile detail: pull-down at top closes detail
+if (isTouch) {
+  let dtlTy0 = 0, dtlOvershoot = 0;
+  canvasEl.addEventListener('touchstart', e => {
+    dtlTy0 = e.touches[0].clientY;
+    dtlOvershoot = 0;
+  }, { passive: true });
+  canvasEl.addEventListener('touchmove', e => {
+    if (!detailOpen) return;
+    const dy = e.touches[0].clientY - dtlTy0;
+    // Only track downward drags when already at scroll top
+    if (canvasEl.scrollTop <= 0 && dy > 0) {
+      dtlOvershoot = dy;
+    } else {
+      dtlOvershoot = 0;
+    }
+  }, { passive: true });
+  canvasEl.addEventListener('touchend', () => {
+    if (!detailOpen) return;
+    if (dtlOvershoot > 80) closeDetail();
+    dtlOvershoot = 0;
+  }, { passive: true });
+}
 
 // Fixed aspect ratios per window type
 const RATIOS = { video: 16/9, img: 16/9, text: null };
@@ -1917,6 +1940,10 @@ function openWork() {
   // Pause landing video while on work page
   workWasPlaying = playing;
   setPlaying(false);
+
+  // Hide the mobile play indicator (which shows when paused)
+  const ind = document.getElementById('mob-play-indicator');
+  if (ind) ind.classList.remove('visible');
 
   // 1. Measure where each thumbnail is NOW in the strip
   const startRects = allThumbs().map(t => t.getBoundingClientRect());
