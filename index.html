@@ -792,17 +792,22 @@ async function loadImages(base, infoImages) {
     return infoImages.split(',').map(f => `${base}/${f.trim()}`);
   }
   const exts = ['jpg','png','jpeg','webp'];
-  const frames = [];
-  for (let n = 1; n <= 9; n++) {
+  // Probe all candidates in parallel — much faster than sequential
+  const candidates = [];
+  for (let n = 1; n <= 20; n++) {
     const pad = String(n).padStart(2,'0');
-    for (const ext of exts) {
-      try {
-        const r = await fetch(`${base}/${pad}.${ext}`, { method:'HEAD' });
-        if (r.ok) { frames.push(`${base}/${pad}.${ext}`); break; }
-      } catch {}
-    }
+    for (const ext of exts) candidates.push({ pad, ext, url: `${base}/${pad}.${ext}` });
   }
-  return frames;
+  const results = await Promise.all(candidates.map(async c => {
+    try {
+      const r = await fetch(c.url, { method:'HEAD' });
+      return r.ok ? c : null;
+    } catch { return null; }
+  }));
+  // Deduplicate — keep first matching ext per number, in order
+  const found = {};
+  results.filter(Boolean).forEach(c => { if (!found[c.pad]) found[c.pad] = c.url; });
+  return Object.keys(found).sort().map(k => found[k]);
 }
 
 async function loadProjects() {
