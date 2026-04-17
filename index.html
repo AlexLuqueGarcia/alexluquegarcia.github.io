@@ -129,6 +129,105 @@ body.cur-hover #cur svg {
 #video-bg-peek.visible { opacity:1; }
 #video-bg-peek.swiping { transition: none; }
 
+/* ── INFO SHEET — iPhone-style modal ── */
+#info-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  pointer-events: none;
+}
+#info-sheet.open { pointer-events: auto; }
+
+#info-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  backdrop-filter: blur(12px) saturate(1.2);
+  -webkit-backdrop-filter: blur(12px) saturate(1.2);
+  opacity: 0;
+  transition: opacity 0.5s var(--ease-out);
+}
+#info-sheet.open #info-backdrop { opacity: 1; }
+
+#info-panel {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -48%) scale(0.94);
+  width: min(520px, calc(100vw - 3rem));
+  max-height: 80vh;
+  background: rgba(255,255,255,0.08);
+  backdrop-filter: blur(30px) saturate(1.4);
+  -webkit-backdrop-filter: blur(30px) saturate(1.4);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 20px;
+  padding: 2.2rem 2rem 2rem;
+  color: #fff;
+  font-family: 'NM', sans-serif;
+  opacity: 0;
+  transition: opacity 0.4s var(--ease-out), transform 0.5s var(--ease-spring);
+  box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+  overflow-y: auto;
+}
+#info-sheet.open #info-panel {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
+
+#info-close {
+  position: absolute;
+  top: 1rem; right: 1rem;
+  width: 32px; height: 32px;
+  background: rgba(255,255,255,0.1);
+  border: none; border-radius: 50%;
+  color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  transition: background 0.25s ease, transform 0.2s ease;
+  outline: none;
+}
+#info-close:hover { background: rgba(255,255,255,0.18); }
+#info-close:active { transform: scale(0.9); }
+
+.info-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1.8rem;
+  padding-top: 0.5rem;
+}
+.info-section .info-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: rgba(255,255,255,0.55);
+  margin-bottom: 0.6rem;
+  font-weight: 500;
+}
+.info-section .info-body {
+  font-size: 1.1rem;
+  line-height: 1.5;
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.info-section .info-body a {
+  color: #fff;
+  text-decoration: none;
+  transition: opacity 0.25s ease;
+  width: fit-content;
+}
+.info-section .info-body a:hover { opacity: 0.6; }
+
+@media (max-width: 768px) {
+  #info-panel {
+    width: calc(100vw - 2rem);
+    padding: 1.8rem 1.5rem 1.5rem;
+    border-radius: 16px;
+  }
+  .info-section .info-body { font-size: 1rem; }
+}
+
 /* ── NAV — fixed, always on top ── */
 nav {
   --nav-pad-t: 1.4rem;
@@ -813,7 +912,7 @@ body.is-fullscreen .win-resize { display: none !important; }
 <!-- Nav -->
 <nav>
   <div class="nav-links">
-    <a href="#" onclick="goHome();return false;">Feed</a><a href="#" onclick="openWork();return false;">Work</a><a href="#">Info</a>
+    <a href="#" onclick="goHome();return false;">Feed</a><a href="#" onclick="openWork();return false;">Work</a><a href="#" onclick="openInfo();return false;">Info</a>
   </div>
   <div class="nav-brand" onclick="goHome()" style="cursor:pointer;">
     <span class="name">Alex Luque Garcia</span>
@@ -858,6 +957,31 @@ body.is-fullscreen .win-resize { display: none !important; }
 <!-- Work page -->
 <div id="work">
   <div id="work-inner"></div>
+</div>
+
+<!-- Info sheet — iPhone-style modal -->
+<div id="info-sheet">
+  <div id="info-backdrop"></div>
+  <div id="info-panel">
+    <button id="info-close" aria-label="Close">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+        <path d="M3 3L13 13M13 3L3 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+      </svg>
+    </button>
+    <div class="info-content">
+      <div class="info-section">
+        <div class="info-label">About</div>
+        <div class="info-body">Digital Wizard ready to serve your evil commercial/creative purposes</div>
+      </div>
+      <div class="info-section">
+        <div class="info-label">Contact</div>
+        <div class="info-body">
+          <a href="mailto:info@alexluquegarcia.com">info@alexluquegarcia.com</a>
+          <a href="https://instagram.com/alexluquegarcia" target="_blank" rel="noopener">@alexluquegarcia</a>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- Strip -->
@@ -1960,7 +2084,31 @@ function buildMobileDetail(p, pd) {
 function goHome() {
   if (detailOpen) closeDetail();
   if (workOpen) closeWork();
+  if (infoOpen) closeInfo();
 }
+
+// ── INFO SHEET ──
+let infoOpen = false;
+const infoEl       = document.getElementById('info-sheet');
+const infoBackdrop = document.getElementById('info-backdrop');
+const infoCloseBtn = document.getElementById('info-close');
+
+function openInfo() {
+  if (infoOpen) return;
+  infoOpen = true;
+  infoEl.classList.add('open');
+}
+function closeInfo() {
+  if (!infoOpen) return;
+  infoOpen = false;
+  infoEl.classList.remove('open');
+}
+infoBackdrop.addEventListener('click', closeInfo);
+infoCloseBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  e.currentTarget.blur();
+  closeInfo();
+});
 
 let workOpen = false;
 const workEl    = document.getElementById('work');
@@ -2318,6 +2466,10 @@ window.addEventListener('touchend', e => {
 
 // Keys
 document.addEventListener('keydown', e => {
+  if (infoOpen) {
+    if (e.key === 'Escape') closeInfo();
+    return;
+  }
   if (workOpen) {
     if (e.key === 'Escape') closeWork();
     return;
@@ -2325,7 +2477,7 @@ document.addEventListener('keydown', e => {
   if (e.key==='ArrowRight' && !detailOpen) goTo((cur+1) % projectData.length);
   if (e.key==='ArrowLeft'  && !detailOpen) goTo((cur-1+projectData.length) % projectData.length);
   if (e.key==='Escape' && detailOpen) closeDetail();
-  if (e.key===' ' && !detailOpen) {
+  if (e.key===' ' && !detailOpen && !infoOpen) {
     e.preventDefault();
     setPlaying(!playing);
   }
