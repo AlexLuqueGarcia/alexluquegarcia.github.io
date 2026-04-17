@@ -1083,6 +1083,10 @@ function setBg(i) {
   const newSrc = (projectData[i]?.src || '').trim();
   if (!newSrc) return;
 
+  // Use first thumbnail frame as poster so background shows instantly
+  const firstThumb = projectDetails[i]?.thumbFrames?.[0];
+  if (firstThumb) vid.poster = firstThumb;
+
   const isHLS = newSrc.includes('.m3u8');
 
   // Remove any leftover <source> children — they interfere with hls.js
