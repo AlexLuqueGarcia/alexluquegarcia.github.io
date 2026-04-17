@@ -1319,76 +1319,26 @@ function buildStrip() {
       <div class="thumb-marker"></div>
       <div class="thumb-corners"><span class="tc-rc"></span></div>
       <div class="thumb-label">${p.name}</div>`;
-    // Unified scrubbing for both mouse and touch
-    // State is on the module-level `scrubState` so strip rebuilds don't break scrubbing
-    let didScrub = false;
 
-    const scrubStart = (clientX) => {
-      scrubState.active = true;
-      scrubState.wasPlaying = playing;
-      didScrub = false;
-      setPlaying(false);
-      const rect = t.getBoundingClientRect();
-      const pct  = (clientX - rect.left) / rect.width;
-      seekVideo(pct);
-    };
-    const scrubMove = (clientX) => {
-      if (!scrubState.active) return;
-      didScrub = true;
-      const rect = t.getBoundingClientRect();
-      const pct  = (clientX - rect.left) / rect.width;
-      seekVideo(pct);
-    };
-    const scrubEnd = () => {
-      if (!scrubState.active) return;
-      scrubState.active = false;
-      const resumeIfNeeded = () => {
-        if (scrubState.wasPlaying) setPlaying(true);
-      };
-      // Wait for the last seek to actually complete before resuming playback
-      const vid = document.getElementById('video-bg-inner');
-      if (vid && vid.seeking) {
-        const onSeeked = () => {
-          vid.removeEventListener('seeked', onSeeked);
-          resumeIfNeeded();
-        };
-        vid.addEventListener('seeked', onSeeked);
-        // Fallback in case the event never fires
-        setTimeout(() => {
-          vid.removeEventListener('seeked', onSeeked);
-          resumeIfNeeded();
-        }, 500);
-      } else {
-        resumeIfNeeded();
-      }
-    };
-
-    // Desktop: mouse drag
+    // Per-thumb start handlers — window-level move/end listeners are registered once (below)
+    const thumbIndex = i;
     t.addEventListener('mousedown', (e) => {
       if (detailOpen) return;
-      if (i !== cur) return; // inactive thumb: let click handler switch project
+      if (thumbIndex !== cur) return;
       e.preventDefault();
-      scrubStart(e.clientX);
+      scrubStart(e.clientX, t);
     });
-    window.addEventListener('mousemove', (e) => { if (scrubState.active) scrubMove(e.clientX); });
-    window.addEventListener('mouseup', () => scrubEnd());
-
-    // Click — only fires if mouse didn't drag. For inactive thumb, switch project.
     t.addEventListener('click', (e) => {
       if (detailOpen) return;
-      if (i !== cur) { goTo(i); return; }
-      // For active thumb on desktop: if user didn't drag, treat as a simple seek click
-      if (!isTouch && !didScrub) {
+      if (thumbIndex !== cur) { goTo(thumbIndex); return; }
+      if (!isTouch && !scrubState.didScrub) {
         const rect = t.getBoundingClientRect();
-        const pct  = (e.clientX - rect.left) / rect.width;
-        seekVideo(pct);
+        seekVideo((e.clientX - rect.left) / rect.width);
       }
     });
-
-    // Mobile: touch drag
     t.addEventListener('touchstart', (e) => {
-      if (detailOpen || i !== cur) return;
-      scrubStart(e.touches[0].clientX);
+      if (detailOpen || thumbIndex !== cur) return;
+      scrubStart(e.touches[0].clientX, t);
     }, { passive: true });
     t.addEventListener('touchmove', (e) => {
       if (!scrubState.active) return;
@@ -1453,7 +1403,47 @@ const detailEl     = document.getElementById('detail');
 const stripEl      = document.getElementById('strip-area');
 
 let cur = 0, localProgress = 0, playing = true;
-let scrubState = { active: false, wasPlaying: false };
+let scrubState = { active: false, wasPlaying: false, didScrub: false, targetEl: null };
+
+function scrubStart(clientX, el) {
+  scrubState.active = true;
+  scrubState.wasPlaying = playing;
+  scrubState.didScrub = false;
+  scrubState.targetEl = el;
+  setPlaying(false);
+  const rect = el.getBoundingClientRect();
+  seekVideo((clientX - rect.left) / rect.width);
+}
+function scrubMove(clientX) {
+  if (!scrubState.active || !scrubState.targetEl) return;
+  scrubState.didScrub = true;
+  const rect = scrubState.targetEl.getBoundingClientRect();
+  seekVideo((clientX - rect.left) / rect.width);
+}
+function scrubEnd() {
+  if (!scrubState.active) return;
+  scrubState.active = false;
+  const wasPlaying = scrubState.wasPlaying;
+  scrubState.targetEl = null;
+  const resume = () => { if (wasPlaying) setPlaying(true); };
+  const vid = document.getElementById('video-bg-inner');
+  if (vid && vid.seeking) {
+    const onSeeked = () => {
+      vid.removeEventListener('seeked', onSeeked);
+      resume();
+    };
+    vid.addEventListener('seeked', onSeeked);
+    setTimeout(() => {
+      vid.removeEventListener('seeked', onSeeked);
+      resume();
+    }, 500);
+  } else {
+    resume();
+  }
+}
+// Global listeners for desktop mouse — registered ONCE
+window.addEventListener('mousemove', (e) => { if (scrubState.active) scrubMove(e.clientX); });
+window.addEventListener('mouseup',   () => { if (scrubState.active) scrubEnd(); });
 let lastTs = null, raf = null;
 let detailOpen = false;
 let transitioning = false;
@@ -1584,6 +1574,8 @@ function schedTick() { raf = requestAnimationFrame(tick); }
 function tick(ts) {
   if (!playing) return;
   const vid = document.getElementById('video-bg-inner');
+  // While seeking, don't read currentTime — it's stale until the seek completes
+  if (vid && vid.seeking) { schedTick(); return; }
   if (vid && vid.duration && !isNaN(vid.duration) && vid.duration > 0) {
     // Drive progress from actual video time
     localProgress = vid.currentTime / vid.duration;
