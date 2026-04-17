@@ -363,8 +363,24 @@ nav.hide {
   overflow:hidden;
 }
 .thumb:last-child { border-right:none; }
-#strip-area:hover .thumb .thumb-bg { filter:brightness(0.4); }
-#strip-area:hover .thumb:hover .thumb-bg { filter:brightness(1); }
+
+/* Frosted inverted overlay on non-hovered thumbs when strip is hovered */
+.thumb::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 7;
+  pointer-events: none;
+  opacity: 0;
+  backdrop-filter: blur(10px) saturate(1.4) invert(1) hue-rotate(180deg);
+  -webkit-backdrop-filter: blur(10px) saturate(1.4) invert(1) hue-rotate(180deg);
+  background: rgba(255,255,255,0.05);
+  transition: opacity 0.25s ease;
+}
+#strip-area:hover .thumb::after { opacity: 1; }
+#strip-area:hover .thumb:hover::after { opacity: 0; }
+/* Hide the overlay on the active thumb — its own progress indicators take priority */
+.thumb.active::after { display: none; }
 .thumb-bg {
   width:100%; height:100%;
   display:flex; /* slices sit side by side */
