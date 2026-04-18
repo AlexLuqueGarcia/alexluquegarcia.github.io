@@ -374,6 +374,16 @@ nav.hide {
 }
 #meta.clickable { pointer-events: auto; cursor: pointer; transition: opacity 0.5s ease, transform 0.6s var(--ease-smooth); }
 #meta.clickable:active { opacity: 0.7; }
+#meta .m-year {
+  font-size: 0.75rem;
+  color: rgba(255,255,255,0.7);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 10px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+#meta .m-year:empty { display: none; }
 #meta .m-studio {
   font-size:1.08rem; color:#fff;
   margin-bottom:6px; line-height:1.4;
@@ -821,6 +831,23 @@ nav.hide {
   color:#fff;
   font-family:'NM',sans-serif;
 }
+.mobile-detail-text .md-header {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: rgba(255,255,255,0.65);
+  margin-bottom: 0.6rem;
+  font-weight: 500;
+}
+.mobile-detail-text .md-year {
+  font-variant-numeric: tabular-nums;
+  color: rgba(255,255,255,0.9);
+}
+.mobile-detail-text .md-sep {
+  display: inline-block;
+  margin: 0 0.55em;
+  opacity: 0.6;
+}
 .mobile-detail-text .md-studio {
   font-size:0.85rem; text-transform:uppercase;
   color:#fff; letter-spacing:0.07em;
@@ -1022,6 +1049,15 @@ body.is-fullscreen .win-resize { display: none !important; }
   margin-bottom: 0.6rem;
   font-weight: 500;
 }
+.win-text .wlabel-year {
+  font-variant-numeric: tabular-nums;
+  color: rgba(255,255,255,0.75);
+}
+.win-text .wlabel-sep {
+  display: inline-block;
+  margin: 0 0.55em;
+  opacity: 0.6;
+}
 .win-text .wtitle {
   font-size: 2.2rem; font-weight:500;
   color:#fff; line-height:1.15;
@@ -1148,6 +1184,7 @@ body.is-fullscreen .win-resize { display: none !important; }
   #meta .m-studio { font-size: 0.75rem; }
   #meta .m-title  { font-size: 1.2rem; }
   #meta .m-role   { font-size: 0.75rem; }
+  #meta .m-year   { font-size: 0.65rem; margin-bottom: 6px; }
 
   /* Scroll hint — mute button only, in bottom right */
   #scroll-hint {
@@ -1234,6 +1271,7 @@ body.is-fullscreen .win-resize { display: none !important; }
 
 <!-- Meta -->
 <div id="meta">
+  <div class="m-year" id="m-year"></div>
   <div class="m-studio" id="m-studio"></div>
   <div class="m-title" id="m-title"></div>
   <div class="m-role" id="m-role"></div>
@@ -2051,6 +2089,7 @@ function updateMeta(i) {
   const client = (p.client && p.client !== 'x') ? p.client : '';
   const role   = p.type || '';
   const title  = client ? `${p.name} — ${client}` : p.name;
+  document.getElementById('m-year').textContent   = p.year || '';
   document.getElementById('m-studio').textContent = studio;
   document.getElementById('m-title').textContent  = title;
   document.getElementById('m-role').textContent   = role;
@@ -2445,9 +2484,12 @@ function buildWindows(p, pd) {
       win.classList.add('win-text');
       const teamLines   = spec.pd.team.replace(/\n/g,'<br>');
       const creditLines = spec.pd.credits.replace(/\n/g,'<br>');
+      const yearStr     = spec.p.year ? `<span class="wlabel-year">${spec.p.year}</span>` : '';
+      const studioStr   = spec.p.studio && spec.p.studio !== 'x' ? spec.p.studio : '';
+      const labelParts  = [yearStr, studioStr].filter(Boolean).join('<span class="wlabel-sep">·</span>');
       win.innerHTML = `
         <div class="win-text-inner">
-          <div class="wlabel">${spec.p.studio}</div>
+          <div class="wlabel">${labelParts}</div>
           <div class="wtitle">${spec.p.name}</div>
           <div class="wsub">${spec.p.client} — ${spec.p.type}</div>
           <div class="wbody">${spec.pd.about}</div>
@@ -2625,6 +2667,11 @@ function buildMobileDetail(p, pd) {
   const studio = (p.studio && p.studio !== 'x') ? p.studio : '';
   const client = (p.client && p.client !== 'x') ? p.client : '';
   const title  = client ? `${p.name} — ${client}` : p.name;
+  const yearStr = p.year || '';
+  // Build the small uppercase "year · studio" header similar to desktop window wlabel
+  const mdHeader = [yearStr, studio].filter(Boolean)
+    .map((s, i) => i === 0 ? `<span class="md-year">${s}</span>` : `<span class="md-studio-inline">${s}</span>`)
+    .join('<span class="md-sep">·</span>');
   const teamLines   = (pd?.team || '').replace(/\n/g, '<br>');
   const creditLines = (pd?.credits || '').replace(/\n/g, '<br>');
 
@@ -2632,7 +2679,7 @@ function buildMobileDetail(p, pd) {
   const textBlock = document.createElement('div');
   textBlock.className = 'mobile-detail-text';
   textBlock.innerHTML = `
-    ${studio ? `<div class="md-studio">${studio}</div>` : ''}
+    ${mdHeader ? `<div class="md-header">${mdHeader}</div>` : ''}
     <div class="md-title">${title}</div>
     ${p.type ? `<div class="md-role">${p.type}</div>` : ''}
     ${pd?.about ? `<div class="md-about">${pd.about}</div>` : ''}
