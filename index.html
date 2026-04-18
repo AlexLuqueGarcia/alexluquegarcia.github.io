@@ -464,6 +464,16 @@ body.cur-hover #cur svg {
   filter: blur(0);
   transition: none;
 }
+/* Resetting: transient state used by JS to force letters back to scattered
+   base state with no transition, so the next `.open` cleanly re-animates
+   from scattered → in place. Must come AFTER `.open` and `.closing` rules
+   to win cascade (same specificity). */
+#info-sheet.resetting .il {
+  transform: translate(var(--dx, 0), var(--dy, 0)) rotate(var(--dr, 0deg));
+  opacity: 0;
+  filter: blur(10px);
+  transition: none;
+}
 .info-section .info-label {
   font-size: 0.75rem;
   text-transform: uppercase;
@@ -488,8 +498,11 @@ body.cur-hover #cur svg {
 }
 .info-section .info-body a:hover { opacity: 0.6; }
 
-/* Hero bio — light weight */
+/* Hero bio — light weight. Explicitly `display: block` so when the bio IS
+   also an .info-body (flex-column), our word spans flow inline instead of
+   stacking vertically. */
 .info-bio {
+  display: block;
   font-size: 1.55rem;
   line-height: 1.35;
   font-weight: 300;
@@ -3148,11 +3161,20 @@ function openInfo(ev) {
   if (infoOpen) return;
   infoOpen = true;
   haptic('medium');
-  // Rescatter the letter offsets so this entrance has unique trajectories
+  // ── Reset sequence so the reveal works every time, including reopens ──
+  // 1. Clear both .open and .closing (cancels any in-progress state)
+  // 2. Rescatter letters with new random offsets
+  // 3. Add .resetting so letters snap to scattered position with no transition
+  // 4. Force a reflow so that scattered state is committed to the browser
+  // 5. Remove .resetting (re-enable transitions)
+  // 6. Add .open — letters now transition from scattered → into place
+  infoEl.classList.remove('open', 'closing');
   rescatterInfoLetters();
-  // The pulse originates from the viewport center — where the panel materializes.
-  // This makes the energy feel like it's coming FROM the panel appearing, not
-  // from where the user clicked.
+  infoEl.classList.add('resetting');
+  // Force reflow — commits the scattered state with transitions disabled
+  void infoEl.offsetWidth;
+  infoEl.classList.remove('resetting');
+  // Fire the energy pulse from the viewport center
   const px = window.innerWidth / 2;
   const py = window.innerHeight / 2;
   fireInfoPulse(px, py);
