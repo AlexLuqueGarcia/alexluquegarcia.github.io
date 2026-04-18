@@ -310,38 +310,47 @@ body.cur-hover #cur svg {
   );
 }
 #info-pulse .ip-core {
-  width: 200px; height: 200px;
+  width: 220px; height: 220px;
   background: radial-gradient(
     circle,
-    rgba(255,255,255,0.95) 0%,
-    rgba(255,250,240,0.75) 15%,
-    rgba(255,245,230,0.35) 35%,
-    rgba(255,240,220,0.08) 60%,
-    rgba(255,230,200,0) 80%
+    rgba(255,248,230,0.45) 0%,
+    rgba(255,220,200,0.28) 15%,
+    rgba(255,160,200,0.18) 30%,
+    rgba(200,130,255,0.12) 50%,
+    rgba(120,180,255,0.05) 70%,
+    rgba(120,180,255,0) 85%
   );
-  filter: blur(18px);
+  filter: blur(22px);
 }
 #info-pulse .ip-halo {
-  width: 700px; height: 700px;
+  width: 800px; height: 800px;
+  /* Prism-like chromatic bands — warm amber core, pink/magenta mid, violet,
+     cyan outer. Creates the "light through a crystal" effect. */
   background: radial-gradient(
     circle,
-    rgba(255,255,255,0.6) 0%,
-    rgba(255,250,240,0.4) 12%,
-    rgba(255,245,230,0.2) 30%,
-    rgba(255,240,220,0.08) 55%,
-    rgba(255,220,190,0) 75%
+    rgba(255,220,180,0.18) 0%,
+    rgba(255,180,160,0.22) 10%,
+    rgba(255,110,160,0.28) 22%,
+    rgba(220,90,230,0.22) 35%,
+    rgba(140,110,255,0.18) 50%,
+    rgba(90,180,255,0.12) 65%,
+    rgba(90,230,240,0.06) 78%,
+    rgba(90,230,240,0) 90%
   );
-  filter: blur(40px);
+  filter: blur(50px);
 }
 #info-pulse .ip-shimmer {
-  width: 1600px; height: 1600px;
+  width: 1800px; height: 1800px;
+  /* Huge diffuse halo — emphasizes the color dispersion with blue/magenta outer
+     hues. Very subtle, mostly just adds atmospheric glow. */
   background: radial-gradient(
     circle,
-    rgba(255,255,255,0.3) 0%,
-    rgba(255,248,238,0.18) 15%,
-    rgba(255,240,220,0.08) 35%,
-    rgba(255,235,210,0.03) 55%,
-    rgba(255,220,190,0) 75%
+    rgba(255,230,210,0.08) 0%,
+    rgba(255,180,220,0.12) 15%,
+    rgba(200,140,255,0.1) 35%,
+    rgba(120,180,255,0.08) 55%,
+    rgba(80,220,255,0.04) 72%,
+    rgba(80,220,255,0) 88%
   );
   filter: blur(80px);
 }
@@ -444,6 +453,15 @@ body.cur-hover #cur svg {
   transform: translate(-50%, -50%) scale(1);
   clip-path: circle(100% at 50% 50%);
   -webkit-clip-path: circle(100% at 50% 50%);
+}
+/* Closing state: keep the panel fully revealed (no reverse clip-path animation),
+   only fade opacity. Panel just disappears instead of shrinking back to a circle. */
+#info-sheet.closing #info-panel {
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(1);
+  clip-path: circle(100% at 50% 50%);
+  -webkit-clip-path: circle(100% at 50% 50%);
+  transition: opacity 0.35s var(--ease-out);
 }
 
 #info-close {
@@ -3102,7 +3120,13 @@ function fireInfoPulse(x, y) {
 function closeInfo() {
   if (!infoOpen) return;
   infoOpen = false;
+  // Add .closing to freeze clip-path at fully-revealed state so the panel
+  // just fades out without the reverse circle-shrink animation.
+  infoEl.classList.add('closing');
   infoEl.classList.remove('open');
+  // After the opacity fade completes, remove .closing so the panel's base
+  // state (clip-path circle(0%)) is restored for the next open animation.
+  setTimeout(() => infoEl.classList.remove('closing'), 400);
   const ind = mobIndicator;
   if (ind && !playing && !workOpen && !detailOpen) ind.classList.add('visible');
 }
