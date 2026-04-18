@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+ 
+# Sitemap location — tells search engines where to find all pages
+Sitemap: https://alexluquegarcia.com/sitemap.xml
+ 
