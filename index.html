@@ -93,6 +93,24 @@ nav, #meta, #scroll-hint, #strip-area, .work-row, #detail-footer,
   user-select:none;
 }
 
+/* iOS-style tap feedback — all tappable elements get a subtle scale-down
+   and brightness drop on active press. The sweet spot is a very small scale
+   change with a snappy curve — more than this feels cartoony. */
+.nav-links a:active,
+#scroll-hint span:active,
+#scroll-hint .scroll-arrow:active,
+#scroll-hint .vid-btn:active,
+.work-row:active,
+.df-values a:active,
+.info-section .info-body a:active,
+#mob-play-indicator:active {
+  transform: scale(0.97);
+  filter: brightness(0.88);
+  transition: transform 0.15s var(--ease-out), filter 0.15s var(--ease-out);
+}
+/* Windows in detail use a different target (the draggable area) */
+.win:active { transition: transform 0.15s var(--ease-out), filter 0.15s var(--ease-out); }
+
 /* ── CUSTOM CURSOR ── */
 #cur {
   position:fixed;
@@ -133,8 +151,17 @@ body.cur-hover #cur svg {
 #video-bg-inner {
   width:100%; height:100%;
   background:transparent;
-  transition: opacity 0.45s var(--ease-smooth);
+  transition: opacity 0.6s var(--ease-smooth);
+  animation: ambientBreath 24s ease-in-out infinite;
+  transform-origin: center center;
 }
+/* Very subtle ambient scale — 1% drift across 24s. Adds filmic aliveness
+   without being distracting. Pauses when detail is open (page blurred). */
+@keyframes ambientBreath {
+  0%,100% { transform: scale(1); }
+  50%     { transform: scale(1.01); }
+}
+#video-bg.blurred #video-bg-inner { animation: none; }
 #video-bg-inner.switching { opacity: 0; }
 /* Peek layer — shows next/prev project thumbnail during swipe */
 #video-bg-peek {
@@ -225,6 +252,20 @@ body.cur-hover #cur svg {
   flex-direction: column;
   gap: 1.8rem;
   padding-top: 0.5rem;
+}
+/* Each section starts slightly offset and faded, then cascades into place
+   after the panel itself has settled — classic Apple dialog entrance. */
+.info-section {
+  opacity: 0;
+  transform: translateY(14px);
+  transition: opacity 0.55s var(--ease-out), transform 0.55s var(--ease-out);
+}
+#info-sheet.open .info-section:nth-child(1) { transition-delay: 0.18s; }
+#info-sheet.open .info-section:nth-child(2) { transition-delay: 0.28s; }
+#info-sheet.open .info-section:nth-child(3) { transition-delay: 0.38s; }
+#info-sheet.open .info-section {
+  opacity: 1;
+  transform: translateY(0);
 }
 .info-section .info-label {
   font-size: 0.75rem;
@@ -398,6 +439,21 @@ nav.hide {
   overflow:hidden;
 }
 .thumb:last-child { border-right:none; }
+
+/* First-build entrance cascade — thumbs rise into place one after the other
+   with a gentle stagger. JS adds .thumb-enter immediately, then .thumb-entered
+   on the next frame to trigger the transition. The --enter-delay variable
+   carries each thumb's index-based stagger. */
+.thumb-enter {
+  opacity: 0;
+  transform: translateY(18px);
+  transition: opacity 0.7s var(--ease-out) var(--enter-delay, 0s),
+              transform 0.7s var(--ease-out) var(--enter-delay, 0s);
+}
+.thumb-entered {
+  opacity: 1;
+  transform: translateY(0);
+}
 
 /* Apple-style subtle prominence — the focused thumb gently lifts and brightens,
    others quietly recede */
@@ -1408,6 +1464,8 @@ function buildStrip() {
     setTimeout(buildStrip, 300);
     return;
   }
+  const firstBuild = !stripEl.dataset.built;
+  stripEl.dataset.built = '1';
   totalDur = projectData.reduce((s,p) => s + p.duration, 0);
   const minDur = Math.min(...projectData.map(p => p.duration));
   stripEl.innerHTML = '';
@@ -1481,11 +1539,25 @@ function buildStrip() {
     }, { passive: true });
 
     stripEl.appendChild(t);
+    if (firstBuild) {
+      t.classList.add('thumb-enter');
+      // Stagger each thumb's entrance by index * 60ms
+      t.style.setProperty('--enter-delay', (i * 0.06) + 's');
+    }
   });
 
   // Restore active state and marker after every rebuild
   setActiveThumb(cur);
   setProgress(localProgress);
+
+  // Trigger the enter animation on first build
+  if (firstBuild) {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        stripEl.querySelectorAll('.thumb-enter').forEach(el => el.classList.add('thumb-entered'));
+      });
+    });
+  }
 }
 
 function seekVideo(pct) {
@@ -1818,6 +1890,36 @@ function setBg(i) {
     vid.src = newSrc;
     vid.play().catch(e => console.warn('play:', e));
   }
+
+  // TikTok-style prefetch: after a short delay (letting the current video
+  // start playing first), kick off a tiny HEAD/fetch on the next and previous
+  // project manifests. Browser caches the m3u8 so when user swipes, HLS.js
+  // parses it instantly instead of waiting for the network round-trip.
+  clearTimeout(_prefetchTimer);
+  _prefetchTimer = setTimeout(() => prefetchAdjacentManifests(i), 1500);
+}
+
+let _prefetchTimer = null;
+const _prefetchedSrcs = new Set();
+function prefetchAdjacentManifests(currentIdx) {
+  const n = projectData.length;
+  if (n < 2) return;
+  const nextIdx = (currentIdx + 1) % n;
+  const prevIdx = (currentIdx - 1 + n) % n;
+  [nextIdx, prevIdx].forEach(i => {
+    const src = (projectData[i]?.src || '').trim();
+    if (!src || _prefetchedSrcs.has(src)) return;
+    _prefetchedSrcs.add(src);
+    // For HLS, fetching the manifest primes the cache. For MP4, we fetch
+    // a small Range to warm up connection + first bytes.
+    try {
+      if (src.includes('.m3u8')) {
+        fetch(src, { method: 'GET', mode: 'cors', credentials: 'omit' }).catch(() => {});
+      } else {
+        fetch(src, { method: 'GET', headers: { Range: 'bytes=0-524288' }, mode: 'cors', credentials: 'omit' }).catch(() => {});
+      }
+    } catch {}
+  });
 }
 
 function updateMeta(i) {
@@ -1886,6 +1988,21 @@ function goTo(i) {
   updateMeta(i);
   // always resume when switching project — keeps video + marker in sync
   setPlaying(true);
+  haptic('light');
+}
+
+// Haptic feedback — subtle tactile response for key interactions.
+// Uses the Vibration API, which works on Android/Chrome mobile.
+// iOS Safari ignores it (no API exposed) but it's a no-op there — no harm done.
+function haptic(kind = 'light') {
+  if (!navigator.vibrate) return;
+  const patterns = {
+    light:  [8],     // tiny tick — project change, tap
+    medium: [14],    // click / commit
+    heavy:  [22],    // swipe commit, bigger action
+    double: [8, 40, 8],  // special moments (e.g. opening work page)
+  };
+  try { navigator.vibrate(patterns[kind] || patterns.light); } catch {}
 }
 
 function schedTick() { raf = requestAnimationFrame(tick); }
@@ -2445,6 +2562,7 @@ const infoBackdrop = document.getElementById('info-backdrop');
 function openInfo() {
   if (infoOpen) return;
   infoOpen = true;
+  haptic('medium');
   infoEl.classList.add('open');
   const ind = mobIndicator;
   if (ind) ind.classList.remove('visible');
@@ -2639,6 +2757,7 @@ function openWork() {
   if (workOpen || transitioning) return;
   workOpen = true;
   transitioning = true;
+  haptic('medium');
 
   // Pause landing video while on work page
   workWasPlaying = playing;
@@ -2780,6 +2899,7 @@ function closeWork(skipAnim = false) {
 function openDetail() {
   transitioning = true;
   detailOpen = true;
+  haptic('medium');
   fillDetail(cur);
 
   stripEl.classList.add('hide');
@@ -2930,6 +3050,7 @@ window.addEventListener('touchend', e => {
 
     // Commit if swiped more than 20% of screen
     if (Math.abs(swipeDy) > h * 0.2) {
+      haptic('heavy');  // tactile confirmation of the gesture
       // Slide both all the way off — current moves fully off, peek moves fully in
       videoBg.style.transition = 'transform 0.35s cubic-bezier(0.33,1,0.68,1)';
       peekEl.style.transition  = 'transform 0.35s cubic-bezier(0.33,1,0.68,1)';
