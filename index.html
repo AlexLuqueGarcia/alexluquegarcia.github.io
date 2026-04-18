@@ -259,7 +259,10 @@ body.cur-hover #cur svg {
   position: absolute;
   left: 50%;
   top: 50%;
-  transform: translate(-50%, -50%) scale(0.88);
+  /* Classic Apple dialog entrance: start slightly smaller + faded out,
+     then bump to full size with a gentle spring overshoot + fade in.
+     No clip-path, no filter tricks — clean, confident, iOS-native feel. */
+  transform: translate(-50%, -50%) scale(0.96);
   width: min(680px, calc(100vw - 3rem));
   max-height: 80vh;
   background: rgba(255,255,255,0.08);
@@ -270,56 +273,21 @@ body.cur-hover #cur svg {
   color: #000;
   font-family: 'NM', sans-serif;
   opacity: 0;
-  /* Clip-path circle morphs from 0 to covering the rectangle.
-     During expansion, the visible portion IS circular (because circle < panel).
-     As the circle exceeds the panel bounds, the rectangular edges emerge.
-     Filter blur decays from 14px to 0 during the morph — softens the growing
-     circle edge so it doesn't look like a sharp cookie-cutter. */
-  clip-path: circle(0% at 50% 50%);
-  -webkit-clip-path: circle(0% at 50% 50%);
-  filter: blur(14px);
   transition:
-    opacity 0.4s var(--ease-out),
-    transform 0.65s var(--ease-spring),
-    clip-path 0.85s cubic-bezier(0.16, 1, 0.3, 1),
-    -webkit-clip-path 0.85s cubic-bezier(0.16, 1, 0.3, 1),
-    filter 0.85s cubic-bezier(0.16, 1, 0.3, 1);
+    opacity 0.38s var(--ease-out),
+    transform 0.55s var(--ease-spring);
   box-shadow: 0 30px 80px rgba(0,0,0,0.45), 0 8px 24px rgba(0,0,0,0.3);
   overflow: hidden;
 }
-/* White corner brackets */
-#info-panel::before,
-#info-panel::after,
-#info-panel .corner-br::before,
-#info-panel .corner-br::after {
-  content: '';
-  position: absolute;
-  width: 24px;
-  height: 24px;
-  border-color: #fff;
-  border-style: solid;
-  pointer-events: none;
-  z-index: 3;
-}
-#info-panel::before          { top:0;    left:0;  border-width: 2.5px 0 0 2.5px; }
-#info-panel::after           { top:0;    right:0; border-width: 2.5px 2.5px 0 0; }
-#info-panel .corner-br::before { bottom:0; left:0;  border-width: 0 0 2.5px 2.5px; }
-#info-panel .corner-br::after  { bottom:0; right:0; border-width: 0 2.5px 2.5px 0; }
 #info-sheet.open #info-panel {
   opacity: 1;
   transform: translate(-50%, -50%) scale(1);
-  clip-path: circle(100% at 50% 50%);
-  -webkit-clip-path: circle(100% at 50% 50%);
-  filter: blur(0);
 }
-/* Closing state: keep the panel fully revealed (no reverse clip-path animation),
-   only fade opacity. Panel just disappears instead of shrinking back to a circle. */
+/* Closing state: freeze transform at scale(1) so the panel doesn't shrink
+   down on close — just fade out cleanly. */
 #info-sheet.closing #info-panel {
   opacity: 0;
   transform: translate(-50%, -50%) scale(1);
-  clip-path: circle(100% at 50% 50%);
-  -webkit-clip-path: circle(100% at 50% 50%);
-  filter: blur(0);
   transition: opacity 0.35s var(--ease-out);
 }
 
@@ -1436,7 +1404,6 @@ body.is-fullscreen .win-resize { display: none !important; }
 <div id="info-sheet">
   <div id="info-backdrop"></div>
   <div id="info-panel">
-    <span class="corner-br"></span>
     <div class="info-content">
       <div class="info-section">
         <div class="info-body info-bio">A Digital Wizard ready to serve your evil commercial/creative purposes.</div>
@@ -3086,8 +3053,8 @@ function openInfo(ev) {
 function closeInfo() {
   if (!infoOpen) return;
   infoOpen = false;
-  // Add .closing to freeze clip-path at fully-revealed state so the panel
-  // just fades out without the reverse circle-shrink animation.
+  // Add .closing to freeze transform at scale(1) so the panel just fades
+  // out cleanly without shrinking back down.
   infoEl.classList.add('closing');
   infoEl.classList.remove('open');
   // After the opacity fade completes, remove .closing so the panel's base
