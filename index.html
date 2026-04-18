@@ -93,36 +93,35 @@ nav, #meta, #scroll-hint, #strip-area, .work-row, #detail-footer,
   user-select:none;
 }
 
-/* Touch ripple — a very subtle radial highlight that emanates from the
-   touch point on any tappable element. JS injects a `.ripple` span at the
-   touch coordinates; CSS handles the expand + fade. Cleaner and quieter than
-   Material Design — more like a soft pulse of light. */
-.ripple-host {
-  position: relative;
-  overflow: hidden;
-}
+/* Touch ripple — a very subtle radial glow that emanates from the
+   touch point on any tappable element. Appended to document.body with
+   position:fixed so it can spill past element edges (not clipped into a rect).
+   Blur filter + plus-lighter blend mode gives soft luminescent feel. */
 .ripple {
-  position: absolute;
+  position: fixed;
   pointer-events: none;
   border-radius: 50%;
   background: radial-gradient(
     circle,
-    rgba(255,255,255,0.35) 0%,
-    rgba(255,255,255,0.18) 30%,
-    rgba(255,255,255,0) 65%
+    rgba(255,255,255,0.55) 0%,
+    rgba(255,255,255,0.25) 28%,
+    rgba(255,255,255,0.08) 55%,
+    rgba(255,255,255,0) 75%
   );
   transform: translate(-50%, -50%) scale(0);
   opacity: 0;
+  filter: blur(12px);
   mix-blend-mode: plus-lighter;
+  z-index: 99998;
   will-change: transform, opacity;
 }
 .ripple.animate {
-  animation: rippleExpand 620ms cubic-bezier(0.25, 1, 0.4, 1) forwards;
+  animation: rippleExpand 700ms cubic-bezier(0.25, 1, 0.4, 1) forwards;
 }
 @keyframes rippleExpand {
-  0%   { transform: translate(-50%, -50%) scale(0); opacity: 0.9; }
-  25%  { opacity: 0.9; }
-  100% { transform: translate(-50%, -50%) scale(4); opacity: 0; }
+  0%   { transform: translate(-50%, -50%) scale(0.3); opacity: 0.9; }
+  20%  { opacity: 0.85; }
+  100% { transform: translate(-50%, -50%) scale(3.5); opacity: 0; }
 }
 
 /* Apple-style tap feedback — TWO-PART spring response:
@@ -2322,32 +2321,24 @@ function haptic(kind = 'light') {
 
 // ── TOUCH RIPPLE ──
 // On touch or click on a tappable element, spawns a `.ripple` span at the
-// touch/click coordinates. The CSS animation expands + fades it in ~620ms.
-// Elements that should show ripples get `.ripple-host` class (added to common
-// selectors via JS below so you don't have to mark up every button).
+// touch coordinates. Appended to document.body with position:fixed so it can
+// spill past the host's edges — creates a soft light-glow effect rather than
+// a rectangular cropped blob.
 function spawnRipple(hostEl, x, y) {
   if (!hostEl || hostEl._rippleBlocked) return;
   // Thumbs and work rows shouldn't ripple — they have their own focus system
   if (hostEl.classList.contains('thumb') || hostEl.classList.contains('work-row')) return;
   const rect = hostEl.getBoundingClientRect();
-  const size = Math.max(rect.width, rect.height) * 1.4;
+  // Size scales with element size — bigger element, bigger glow
+  const size = Math.max(60, Math.max(rect.width, rect.height) * 1.8);
   const ripple = document.createElement('span');
   ripple.className = 'ripple';
   ripple.style.width = ripple.style.height = size + 'px';
-  ripple.style.left = (x - rect.left) + 'px';
-  ripple.style.top  = (y - rect.top) + 'px';
-  // Ensure host is ripple-capable (positioning + overflow)
-  const currentPos = getComputedStyle(hostEl).position;
-  if (currentPos === 'static') hostEl._rippleTempRelative = true, hostEl.style.position = 'relative';
-  const prevOverflow = hostEl.style.overflow;
-  hostEl.style.overflow = 'hidden';
-  hostEl.appendChild(ripple);
+  ripple.style.left = x + 'px';
+  ripple.style.top  = y + 'px';
+  document.body.appendChild(ripple);
   requestAnimationFrame(() => ripple.classList.add('animate'));
-  setTimeout(() => {
-    ripple.remove();
-    if (hostEl._rippleTempRelative) { hostEl.style.position = ''; hostEl._rippleTempRelative = false; }
-    hostEl.style.overflow = prevOverflow;
-  }, 650);
+  setTimeout(() => ripple.remove(), 750);
 }
 
 // Selectors that should get ripple feedback
