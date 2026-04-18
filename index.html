@@ -432,16 +432,6 @@ nav.hide {
 }
 #meta.clickable { pointer-events: auto; cursor: pointer; transition: opacity 0.5s ease, transform 0.6s var(--ease-smooth); }
 #meta.clickable:active { opacity: 0.7; }
-#meta .m-year {
-  font-size: 0.75rem;
-  color: rgba(255,255,255,0.7);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  margin-bottom: 10px;
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
-}
-#meta .m-year:empty { display: none; }
 #meta .m-studio {
   font-size:1.08rem; color:#fff;
   margin-bottom:6px; line-height:1.4;
@@ -1242,7 +1232,6 @@ body.is-fullscreen .win-resize { display: none !important; }
   #meta .m-studio { font-size: 0.75rem; }
   #meta .m-title  { font-size: 1.2rem; }
   #meta .m-role   { font-size: 0.75rem; }
-  #meta .m-year   { font-size: 0.65rem; margin-bottom: 6px; }
 
   /* Scroll hint — mute button only, in bottom right */
   #scroll-hint {
@@ -1329,7 +1318,6 @@ body.is-fullscreen .win-resize { display: none !important; }
 
 <!-- Meta -->
 <div id="meta">
-  <div class="m-year" id="m-year"></div>
   <div class="m-studio" id="m-studio"></div>
   <div class="m-title" id="m-title"></div>
   <div class="m-role" id="m-role"></div>
@@ -2147,8 +2135,10 @@ function updateMeta(i) {
   const client = (p.client && p.client !== 'x') ? p.client : '';
   const role   = p.type || '';
   const title  = client ? `${p.name} — ${client}` : p.name;
-  document.getElementById('m-year').textContent   = p.year || '';
-  document.getElementById('m-studio').textContent = studio;
+  // Studio line combines studio name and year, separated by middle dot.
+  // Same size/weight — not a prefix header, just inline info.
+  const studioLine = [studio, p.year].filter(Boolean).join(' · ');
+  document.getElementById('m-studio').textContent = studioLine;
   document.getElementById('m-title').textContent  = title;
   document.getElementById('m-role').textContent   = role;
   metaEl.classList.add('visible');
@@ -2326,8 +2316,8 @@ function haptic(kind = 'light') {
 // a rectangular cropped blob.
 function spawnRipple(hostEl, x, y) {
   if (!hostEl || hostEl._rippleBlocked) return;
-  // Thumbs and work rows shouldn't ripple — they have their own focus system
-  if (hostEl.classList.contains('thumb') || hostEl.classList.contains('work-row')) return;
+  // Thumbs have their own press feedback (strip-pressing class) — skip them
+  if (hostEl.classList.contains('thumb')) return;
   const rect = hostEl.getBoundingClientRect();
   // Size scales with element size — bigger element, bigger glow
   const size = Math.max(60, Math.max(rect.width, rect.height) * 1.8);
@@ -2341,7 +2331,7 @@ function spawnRipple(hostEl, x, y) {
   setTimeout(() => ripple.remove(), 750);
 }
 
-// Selectors that should get ripple feedback
+// Selectors that should get ripple feedback (mobile only)
 const RIPPLE_SELECTORS = [
   '.nav-links a',
   '#scroll-hint span',
@@ -2351,16 +2341,21 @@ const RIPPLE_SELECTORS = [
   '.info-section .info-body a',
   '#mob-play-indicator',
   '.vid-btn',
+  '#meta.clickable',  // tapping landing meta opens detail on mobile
+  '.work-row',        // tapping work row opens detail
 ];
 function isRippleTarget(el) {
   return RIPPLE_SELECTORS.some(sel => el.matches?.(sel) || el.closest?.(sel));
 }
-// Attach one global listener — runs on every touch/mouse down
-window.addEventListener('pointerdown', (e) => {
-  if (!isRippleTarget(e.target)) return;
-  const host = e.target.closest(RIPPLE_SELECTORS.join(','));
-  if (host) spawnRipple(host, e.clientX, e.clientY);
-}, { passive: true });
+// Attach one global listener — ONLY on touch devices. On desktop, cursor +
+// hover feedback is enough; ripples would feel out of place there.
+if (isTouch) {
+  window.addEventListener('pointerdown', (e) => {
+    if (!isRippleTarget(e.target)) return;
+    const host = e.target.closest(RIPPLE_SELECTORS.join(','));
+    if (host) spawnRipple(host, e.clientX, e.clientY);
+  }, { passive: true });
+}
 
 function schedTick() { raf = requestAnimationFrame(tick); }
 function tick(ts) {
