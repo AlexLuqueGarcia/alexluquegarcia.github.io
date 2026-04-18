@@ -278,7 +278,7 @@ body.cur-hover #cur svg {
 #info-pulse .ip-core,
 #info-pulse .ip-halo,
 #info-pulse .ip-shimmer {
-  mix-blend-mode: plus-lighter;
+  mix-blend-mode: normal;
 }
 /* The warp ring — a thin circular band of backdrop-filter distortion.
    As it scales up, the ring passes through the background, briefly warping
@@ -309,50 +309,35 @@ body.cur-hover #cur svg {
     transparent 100%
   );
 }
+/* ── INVERSION-BASED PULSE LAYERS ──
+   Each layer uses backdrop-filter to distort what's behind it, NOT its own
+   colored gradient. The three layers produce a chromatic-dispersion illusion
+   by each distorting the background in a different way and at a different
+   radius:
+   - Core: pure color inversion with strong saturate/contrast
+   - Halo: inversion + large hue rotation (colors shift to opposite spectrum)
+   - Shimmer: inversion + opposite hue rotation + extra blur (ultra-wide ring)
+   Soft radial masks feather the edges so there's no hard circular cutoff. */
 #info-pulse .ip-core {
-  width: 220px; height: 220px;
-  background: radial-gradient(
-    circle,
-    rgba(255,248,230,0.45) 0%,
-    rgba(255,220,200,0.28) 15%,
-    rgba(255,160,200,0.18) 30%,
-    rgba(200,130,255,0.12) 50%,
-    rgba(120,180,255,0.05) 70%,
-    rgba(120,180,255,0) 85%
-  );
-  filter: blur(22px);
+  width: 280px; height: 280px;
+  backdrop-filter: invert(1) saturate(1.6) contrast(1.2) blur(14px);
+  -webkit-backdrop-filter: invert(1) saturate(1.6) contrast(1.2) blur(14px);
+  mask: radial-gradient(circle, black 0%, rgba(0,0,0,0.8) 45%, transparent 85%);
+  -webkit-mask: radial-gradient(circle, black 0%, rgba(0,0,0,0.8) 45%, transparent 85%);
 }
 #info-pulse .ip-halo {
-  width: 800px; height: 800px;
-  /* Prism-like chromatic bands — warm amber core, pink/magenta mid, violet,
-     cyan outer. Creates the "light through a crystal" effect. */
-  background: radial-gradient(
-    circle,
-    rgba(255,220,180,0.18) 0%,
-    rgba(255,180,160,0.22) 10%,
-    rgba(255,110,160,0.28) 22%,
-    rgba(220,90,230,0.22) 35%,
-    rgba(140,110,255,0.18) 50%,
-    rgba(90,180,255,0.12) 65%,
-    rgba(90,230,240,0.06) 78%,
-    rgba(90,230,240,0) 90%
-  );
-  filter: blur(50px);
+  width: 900px; height: 900px;
+  backdrop-filter: invert(1) hue-rotate(90deg) saturate(1.8) blur(22px);
+  -webkit-backdrop-filter: invert(1) hue-rotate(90deg) saturate(1.8) blur(22px);
+  mask: radial-gradient(circle, black 0%, rgba(0,0,0,0.65) 50%, transparent 90%);
+  -webkit-mask: radial-gradient(circle, black 0%, rgba(0,0,0,0.65) 50%, transparent 90%);
 }
 #info-pulse .ip-shimmer {
   width: 1800px; height: 1800px;
-  /* Huge diffuse halo — emphasizes the color dispersion with blue/magenta outer
-     hues. Very subtle, mostly just adds atmospheric glow. */
-  background: radial-gradient(
-    circle,
-    rgba(255,230,210,0.08) 0%,
-    rgba(255,180,220,0.12) 15%,
-    rgba(200,140,255,0.1) 35%,
-    rgba(120,180,255,0.08) 55%,
-    rgba(80,220,255,0.04) 72%,
-    rgba(80,220,255,0) 88%
-  );
-  filter: blur(80px);
+  backdrop-filter: invert(1) hue-rotate(-90deg) saturate(2) blur(40px);
+  -webkit-backdrop-filter: invert(1) hue-rotate(-90deg) saturate(2) blur(40px);
+  mask: radial-gradient(circle, black 0%, rgba(0,0,0,0.45) 55%, transparent 92%);
+  -webkit-mask: radial-gradient(circle, black 0%, rgba(0,0,0,0.45) 55%, transparent 92%);
 }
 /* Animations — staggered so the pulse feels like it's rippling outward
    in waves. Each layer has its own curve and duration. */
@@ -376,18 +361,18 @@ body.cur-hover #cur svg {
 }
 @keyframes ipCore {
   0%   { transform: translate(-50%, -50%) scale(0.2);  opacity: 0; }
-  12%  { transform: translate(-50%, -50%) scale(0.6);  opacity: 1; }
-  100% { transform: translate(-50%, -50%) scale(2.2);  opacity: 0; }
+  15%  { transform: translate(-50%, -50%) scale(0.6);  opacity: 0.85; }
+  100% { transform: translate(-50%, -50%) scale(2.4);  opacity: 0; }
 }
 @keyframes ipHalo {
   0%   { transform: translate(-50%, -50%) scale(0.3);  opacity: 0; }
-  15%  { opacity: 0.9; }
-  100% { transform: translate(-50%, -50%) scale(2.4);  opacity: 0; }
+  18%  { opacity: 0.75; }
+  100% { transform: translate(-50%, -50%) scale(2.5);  opacity: 0; }
 }
 @keyframes ipShimmer {
   0%   { transform: translate(-50%, -50%) scale(0.4);  opacity: 0; }
-  20%  { opacity: 0.8; }
-  100% { transform: translate(-50%, -50%) scale(2.0);  opacity: 0; }
+  22%  { opacity: 0.55; }
+  100% { transform: translate(-50%, -50%) scale(2.2);  opacity: 0; }
 }
 
 #info-backdrop {
@@ -419,14 +404,17 @@ body.cur-hover #cur svg {
   /* Clip-path circle morphs from 0 to covering the rectangle.
      During expansion, the visible portion IS circular (because circle < panel).
      As the circle exceeds the panel bounds, the rectangular edges emerge.
-     This creates a seamless circle-to-square transformation. */
+     Filter blur decays from 14px to 0 during the morph — softens the growing
+     circle edge so it doesn't look like a sharp cookie-cutter. */
   clip-path: circle(0% at 50% 50%);
   -webkit-clip-path: circle(0% at 50% 50%);
+  filter: blur(14px);
   transition:
     opacity 0.4s var(--ease-out),
     transform 0.65s var(--ease-spring),
     clip-path 0.85s cubic-bezier(0.16, 1, 0.3, 1),
-    -webkit-clip-path 0.85s cubic-bezier(0.16, 1, 0.3, 1);
+    -webkit-clip-path 0.85s cubic-bezier(0.16, 1, 0.3, 1),
+    filter 0.85s cubic-bezier(0.16, 1, 0.3, 1);
   box-shadow: 0 30px 80px rgba(0,0,0,0.45), 0 8px 24px rgba(0,0,0,0.3);
   overflow: hidden;
 }
@@ -453,6 +441,7 @@ body.cur-hover #cur svg {
   transform: translate(-50%, -50%) scale(1);
   clip-path: circle(100% at 50% 50%);
   -webkit-clip-path: circle(100% at 50% 50%);
+  filter: blur(0);
 }
 /* Closing state: keep the panel fully revealed (no reverse clip-path animation),
    only fade opacity. Panel just disappears instead of shrinking back to a circle. */
@@ -461,6 +450,7 @@ body.cur-hover #cur svg {
   transform: translate(-50%, -50%) scale(1);
   clip-path: circle(100% at 50% 50%);
   -webkit-clip-path: circle(100% at 50% 50%);
+  filter: blur(0);
   transition: opacity 0.35s var(--ease-out);
 }
 
