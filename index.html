@@ -244,15 +244,17 @@ body.cur-hover #cur svg {
 }
 #info-sheet.open { pointer-events: auto; }
 
-/* ── INFO PULSE — magical energy burst that radiates from the click point
-   when the Info tab opens. Three stacked layers:
-   - .ip-core: fast, bright, small (the "spark")
-   - .ip-halo: slower, larger, warm-white (the "wave")
-   - .ip-shimmer: slowest, huge, diffuse (the "afterglow")
-   All use plus-lighter blend mode for luminous feel — they add light to
-   whatever is beneath, never darken. The pulse sits at z-index 299, just
-   below the info-sheet, so it illuminates the video background and any
-   UI beneath before the panel materializes above it. */
+/* ── INFO PULSE — AirDrop-style ripple rings (iOS 17.4 aesthetic)
+   Thin expanding rings emanate from the viewport center when Info opens.
+   Three rings with staggered timing create the elegant "energy ripple" effect.
+   Each ring is a stroked circle (not filled), with a subtle chromatic fringe
+   via layered box-shadows — one pink inner, one cyan outer — giving the rings
+   a very faint prism edge without heavy color.
+   
+   Plus a tiny initial flash at the origin for the "ignition" moment.
+   
+   Sits at z-index 299, just below the info-sheet (300), so it ripples BEHIND
+   the panel as it materializes. */
 #info-pulse {
   position: fixed;
   top: 0; left: 0;
@@ -262,10 +264,8 @@ body.cur-hover #cur svg {
   --px: 50%;
   --py: 50%;
 }
-#info-pulse .ip-core,
-#info-pulse .ip-halo,
-#info-pulse .ip-shimmer,
-#info-pulse .ip-warp {
+#info-pulse .ip-ring,
+#info-pulse .ip-flash {
   position: fixed;
   left: var(--px);
   top: var(--py);
@@ -274,105 +274,60 @@ body.cur-hover #cur svg {
   opacity: 0;
   pointer-events: none;
   will-change: transform, opacity;
+  box-sizing: border-box;
 }
-#info-pulse .ip-core,
-#info-pulse .ip-halo,
-#info-pulse .ip-shimmer {
-  mix-blend-mode: normal;
+/* Rings — thin stroked circles. Start at 60px diameter, expand via scale
+   transform. Chromatic fringe via two offset color shadows that mimic
+   lens dispersion. Very subtle. */
+#info-pulse .ip-ring {
+  width: 60px;
+  height: 60px;
+  background: transparent;
+  border: 1.5px solid rgba(255, 255, 255, 0.55);
+  box-shadow:
+    0 0 0 0.5px rgba(255, 130, 200, 0.35),     /* magenta outer fringe */
+    inset 0 0 0 0.5px rgba(120, 200, 255, 0.3), /* cyan inner fringe */
+    0 0 12px rgba(255, 240, 220, 0.15);         /* soft ambient glow */
+  mix-blend-mode: plus-lighter;
 }
-/* The warp ring — a thin circular band of backdrop-filter distortion.
-   As it scales up, the ring passes through the background, briefly warping
-   a narrow band of the scene. Mask ensures the filter applies ONLY to the
-   ring shape (inner and outer edges feather into transparency). */
-#info-pulse .ip-warp {
-  width: 300px; height: 300px;
-  backdrop-filter: blur(5px) saturate(1.4) brightness(1.1) hue-rotate(5deg);
-  -webkit-backdrop-filter: blur(5px) saturate(1.4) brightness(1.1) hue-rotate(5deg);
-  mask: radial-gradient(
+/* Center flash — small soft glow that marks the origin of the ripple.
+   Very brief, acts like an "ignition spark". */
+#info-pulse .ip-flash {
+  width: 80px;
+  height: 80px;
+  background: radial-gradient(
     circle,
-    transparent 0%,
-    transparent 36%,
-    rgba(0,0,0,0.6) 44%,
-    rgba(0,0,0,1) 50%,
-    rgba(0,0,0,0.6) 56%,
-    transparent 64%,
-    transparent 100%
+    rgba(255, 245, 225, 0.35) 0%,
+    rgba(255, 220, 210, 0.2) 30%,
+    rgba(200, 180, 255, 0.08) 60%,
+    rgba(200, 180, 255, 0) 85%
   );
-  -webkit-mask: radial-gradient(
-    circle,
-    transparent 0%,
-    transparent 36%,
-    rgba(0,0,0,0.6) 44%,
-    rgba(0,0,0,1) 50%,
-    rgba(0,0,0,0.6) 56%,
-    transparent 64%,
-    transparent 100%
-  );
+  filter: blur(10px);
+  mix-blend-mode: plus-lighter;
 }
-/* ── INVERSION-BASED PULSE LAYERS ──
-   Each layer uses backdrop-filter to distort what's behind it, NOT its own
-   colored gradient. The three layers produce a chromatic-dispersion illusion
-   by each distorting the background in a different way and at a different
-   radius:
-   - Core: pure color inversion with strong saturate/contrast
-   - Halo: inversion + large hue rotation (colors shift to opposite spectrum)
-   - Shimmer: inversion + opposite hue rotation + extra blur (ultra-wide ring)
-   Soft radial masks feather the edges so there's no hard circular cutoff. */
-#info-pulse .ip-core {
-  width: 280px; height: 280px;
-  backdrop-filter: invert(1) saturate(1.6) contrast(1.2) blur(14px);
-  -webkit-backdrop-filter: invert(1) saturate(1.6) contrast(1.2) blur(14px);
-  mask: radial-gradient(circle, black 0%, rgba(0,0,0,0.8) 45%, transparent 85%);
-  -webkit-mask: radial-gradient(circle, black 0%, rgba(0,0,0,0.8) 45%, transparent 85%);
+/* Staggered ring animations — each ring starts slightly later than the
+   previous, creating the AirDrop-style rippling outward effect. */
+#info-pulse.animate .ip-flash {
+  animation: ipFlash 520ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
-#info-pulse .ip-halo {
-  width: 900px; height: 900px;
-  backdrop-filter: invert(1) hue-rotate(90deg) saturate(1.8) blur(22px);
-  -webkit-backdrop-filter: invert(1) hue-rotate(90deg) saturate(1.8) blur(22px);
-  mask: radial-gradient(circle, black 0%, rgba(0,0,0,0.65) 50%, transparent 90%);
-  -webkit-mask: radial-gradient(circle, black 0%, rgba(0,0,0,0.65) 50%, transparent 90%);
+#info-pulse.animate .ip-ring-1 {
+  animation: ipRingExpand 900ms 0ms cubic-bezier(0.22, 0.9, 0.3, 1) forwards;
 }
-#info-pulse .ip-shimmer {
-  width: 1800px; height: 1800px;
-  backdrop-filter: invert(1) hue-rotate(-90deg) saturate(2) blur(40px);
-  -webkit-backdrop-filter: invert(1) hue-rotate(-90deg) saturate(2) blur(40px);
-  mask: radial-gradient(circle, black 0%, rgba(0,0,0,0.45) 55%, transparent 92%);
-  -webkit-mask: radial-gradient(circle, black 0%, rgba(0,0,0,0.45) 55%, transparent 92%);
+#info-pulse.animate .ip-ring-2 {
+  animation: ipRingExpand 900ms 180ms cubic-bezier(0.22, 0.9, 0.3, 1) forwards;
 }
-/* Animations — staggered so the pulse feels like it's rippling outward
-   in waves. Each layer has its own curve and duration. */
-#info-pulse.animate .ip-warp {
-  animation: ipWarp 950ms cubic-bezier(0.2, 1, 0.3, 1) forwards;
+#info-pulse.animate .ip-ring-3 {
+  animation: ipRingExpand 900ms 360ms cubic-bezier(0.22, 0.9, 0.3, 1) forwards;
 }
-#info-pulse.animate .ip-core {
-  animation: ipCore 700ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+@keyframes ipFlash {
+  0%   { transform: translate(-50%, -50%) scale(0.4); opacity: 0; }
+  20%  { transform: translate(-50%, -50%) scale(1);   opacity: 0.6; }
+  100% { transform: translate(-50%, -50%) scale(1.6); opacity: 0; }
 }
-#info-pulse.animate .ip-halo {
-  animation: ipHalo 1100ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
-}
-#info-pulse.animate .ip-shimmer {
-  animation: ipShimmer 1500ms cubic-bezier(0.25, 1, 0.5, 1) forwards;
-}
-@keyframes ipWarp {
-  0%   { transform: translate(-50%, -50%) scale(0.1);  opacity: 0; }
-  10%  { opacity: 1; }
-  80%  { opacity: 0.85; }
-  100% { transform: translate(-50%, -50%) scale(7);    opacity: 0; }
-}
-@keyframes ipCore {
-  0%   { transform: translate(-50%, -50%) scale(0.2);  opacity: 0; }
-  15%  { transform: translate(-50%, -50%) scale(0.6);  opacity: 0.85; }
-  100% { transform: translate(-50%, -50%) scale(2.4);  opacity: 0; }
-}
-@keyframes ipHalo {
-  0%   { transform: translate(-50%, -50%) scale(0.3);  opacity: 0; }
-  18%  { opacity: 0.75; }
-  100% { transform: translate(-50%, -50%) scale(2.5);  opacity: 0; }
-}
-@keyframes ipShimmer {
-  0%   { transform: translate(-50%, -50%) scale(0.4);  opacity: 0; }
-  22%  { opacity: 0.55; }
-  100% { transform: translate(-50%, -50%) scale(2.2);  opacity: 0; }
+@keyframes ipRingExpand {
+  0%   { transform: translate(-50%, -50%) scale(0.4); opacity: 0; border-width: 1.5px; }
+  12%  { opacity: 0.55; }
+  100% { transform: translate(-50%, -50%) scale(10);  opacity: 0; border-width: 0.3px; }
 }
 
 #info-backdrop {
@@ -1516,12 +1471,14 @@ body.is-fullscreen .win-resize { display: none !important; }
 </div>
 
 <!-- Info sheet — iPhone-style modal -->
-<!-- Magical energy pulse — radiates from the center of the viewport when Info opens -->
+<!-- Magical energy pulse — AirDrop-style thin rings rippling outward from the
+     viewport center when Info opens. Staggered timing creates the elegant
+     "energy ripple" effect. Stroked rings with subtle chromatic fringe. -->
 <div id="info-pulse" aria-hidden="true">
-  <span class="ip-warp"></span>
-  <span class="ip-core"></span>
-  <span class="ip-halo"></span>
-  <span class="ip-shimmer"></span>
+  <span class="ip-flash"></span>
+  <span class="ip-ring ip-ring-1"></span>
+  <span class="ip-ring ip-ring-2"></span>
+  <span class="ip-ring ip-ring-3"></span>
 </div>
 <div id="info-sheet">
   <div id="info-backdrop"></div>
@@ -3107,8 +3064,8 @@ function fireInfoPulse(x, y) {
   // Force reflow so the animation can restart
   void p.offsetWidth;
   requestAnimationFrame(() => p.classList.add('animate'));
-  // Clear after the longest animation completes (shimmer = 1500ms)
-  setTimeout(() => p.classList.remove('animate'), 1550);
+  // Clear after the longest animation completes (ring-3 = 360ms delay + 900ms)
+  setTimeout(() => p.classList.remove('animate'), 1300);
 }
 function closeInfo() {
   if (!infoOpen) return;
