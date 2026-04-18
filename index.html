@@ -693,9 +693,22 @@ nav.hide {
   pointer-events:none;
   transition: transform 0.4s var(--ease-out);
 }
-/* Apple-style focus: dims only when a row is actually hovered */
+/* Apple-style focus: every row is subtly dimmed by default, and the row
+   at the viewport's vertical center (.is-focused) gets the bright treatment.
+   On desktop, hovering a specific row overrides the scroll-center focus so
+   the cursor always wins when actively used. */
+#work-inner:has(.work-row.is-focused) .work-row .work-bg,
+#work-inner:has(.work-row:hover) .work-row .work-bg {
+  opacity: 0.75;
+  filter: brightness(0.82) saturate(0.9);
+}
+#work-inner:has(.work-row.is-focused) .work-row.is-focused .work-bg {
+  opacity: 1;
+  filter: brightness(1.05) saturate(1.05);
+}
 @media (hover: hover) and (pointer: fine) {
-  #work-inner:has(.work-row:hover) .work-row .work-bg {
+  /* When cursor is over a row, it wins — dim the scroll-focused row if it's different */
+  #work-inner:has(.work-row:hover) .work-row.is-focused:not(:hover) .work-bg {
     opacity: 0.75;
     filter: brightness(0.82) saturate(0.9);
   }
@@ -704,7 +717,8 @@ nav.hide {
     filter: brightness(1.05) saturate(1.05);
   }
 }
-.work-row:hover .work-overlay { transform: translateX(8px); }
+.work-row:hover .work-overlay,
+.work-row.is-focused .work-overlay { transform: translateX(8px); }
 .work-row .work-title {
   font-family:'NM',sans-serif;
   font-size:1.4rem; font-weight:500;
@@ -2678,6 +2692,7 @@ const workInner = document.getElementById('work-inner');
 
 function buildWork() {
   workInner.innerHTML = '';
+  _focusedRow = null;  // old DOM is gone — clear stale reference
   const n = projectData.length;
   if (n === 0) return;
   // Each row height = viewport / projectCount so one block = one viewport.
@@ -2716,11 +2731,13 @@ function buildWork() {
       });
 
       const studio = (p.studio && p.studio !== 'x') ? p.studio + ' — ' : '';
+      const client = (p.client && p.client !== 'x') ? ` — ${p.client}` : '';
+      const title  = `${p.name}${client}`;
       const overlay = document.createElement('div');
       overlay.className = 'work-overlay';
       overlay.innerHTML = `
         <div>
-          <div class="work-title">${p.name}</div>
+          <div class="work-title">${title}</div>
           <div class="work-sub">${studio}${p.type}</div>
         </div>`;
 
@@ -2819,18 +2836,18 @@ function setupInfiniteWorkScroll() {
   });
 }
 
-// ── YEAR INDICATOR TRACKING ──
-// Finds which project row is closest to the viewport's vertical center and
-// updates the #work-year element. Uses two stacked spans so the transition
-// can slide + fade simultaneously in either direction (up when moving to a
-// newer project, down when moving to an older one).
+// ── YEAR INDICATOR TRACKING + FOCUSED ROW TRACKING ──
+// Finds which row is closest to the viewport's vertical center, then:
+//  1. Adds `.is-focused` to that row (for Apple-style emphasis)
+//  2. Updates the #work-year indicator if the project changed
+// Runs on every scroll event, throttled to one rAF.
 let _workYearState = { current: null, lastScrollTop: 0 };
+let _focusedRow = null;
 
-function getProjectIdxAtViewportCenter() {
+function getRowAtViewportCenter() {
   const rows = Array.from(workInner.querySelectorAll('.work-row'));
   if (!rows.length) return null;
   const centerY = window.innerHeight / 2;
-  // Find row whose bounding box contains centerY (or closest)
   let best = null, bestDist = Infinity;
   for (const r of rows) {
     const rect = r.getBoundingClientRect();
@@ -2838,13 +2855,26 @@ function getProjectIdxAtViewportCenter() {
     const dist = Math.abs(rowCenter - centerY);
     if (dist < bestDist) { bestDist = dist; best = r; }
   }
-  if (!best) return null;
-  return parseInt(best.dataset.projectIdx);
+  return best;
+}
+
+function getProjectIdxAtViewportCenter() {
+  const row = getRowAtViewportCenter();
+  return row ? parseInt(row.dataset.projectIdx) : null;
+}
+
+function updateFocusedRow() {
+  const row = getRowAtViewportCenter();
+  if (!row || row === _focusedRow) return;
+  if (_focusedRow) _focusedRow.classList.remove('is-focused');
+  row.classList.add('is-focused');
+  _focusedRow = row;
 }
 
 function initWorkYearForCenter() {
   const yearEl = document.getElementById('work-year');
   if (!yearEl) return;
+  updateFocusedRow();  // set initial focused row immediately
   const idx = getProjectIdxAtViewportCenter();
   if (idx == null) return;
   const year = projectData[idx]?.year || '';
@@ -2856,18 +2886,18 @@ function initWorkYearForCenter() {
   inc.textContent = year;
   _workYearState.current = idx;
   _workYearState.lastScrollTop = workEl.scrollTop;
-  // Next frame: remove no-anim so future changes animate
   requestAnimationFrame(() => {
     requestAnimationFrame(() => yearEl.classList.remove('no-anim'));
   });
 }
 
-// Throttled via rAF — only one check per frame even on fast scroll
+// Throttled via rAF — one check per frame even on fast scroll
 let _workYearRaf = null;
 function updateWorkYearOnScroll() {
   if (_workYearRaf) return;
   _workYearRaf = requestAnimationFrame(() => {
     _workYearRaf = null;
+    updateFocusedRow();
     const yearEl = document.getElementById('work-year');
     if (!yearEl) return;
     const idx = getProjectIdxAtViewportCenter();
@@ -2876,7 +2906,6 @@ function updateWorkYearOnScroll() {
       _workYearState.lastScrollTop = workEl.scrollTop;
       return;
     }
-    // Determine direction: scrolling down (forward) or up (backward)
     const direction = workEl.scrollTop > _workYearState.lastScrollTop ? 'forward' : 'backward';
     _workYearState.lastScrollTop = workEl.scrollTop;
     changeWorkYear(idx, direction);
