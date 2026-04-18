@@ -3,7 +3,80 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, shrink-to-fit=yes">
-<title>Alex Luque Garcia</title>
+
+<!-- ── PRIMARY ── -->
+<title>Alex Luque Garcia — Visual Artist & CG Generalist</title>
+<meta name="description" content="Alex Luque Garcia — visual artist and CG generalist based in Barcelona. VFX supervision and CG lead on music videos, fashion films and commercials. Selected work: Gentle Monster BOLD (Tilda Swinton), Black MIDI, Groove.">
+<meta name="author" content="Alex Luque Garcia">
+<meta name="keywords" content="Alex Luque Garcia, VFX supervisor, CG generalist, CG lead, 3D animation, visual artist, Barcelona, music video VFX, fashion film, Gentle Monster, Olimpic">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="googlebot" content="index, follow, max-image-preview:large">
+<link rel="canonical" href="https://alexluquegarcia.com/">
+
+<!-- ── FAVICON ── -->
+<link rel="icon" type="image/png" href="/favicon.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+
+<!-- ── OPEN GRAPH ── -->
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://alexluquegarcia.com/">
+<meta property="og:title" content="Alex Luque Garcia — Visual Artist & CG Generalist">
+<meta property="og:description" content="Visual artist and CG generalist. VFX supervision and CG lead on music videos, fashion films and commercials. Based in Barcelona.">
+<meta property="og:image" content="https://alexluquegarcia.com/og-image.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:locale" content="en_US">
+
+<!-- ── TWITTER CARD ── -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Alex Luque Garcia — Visual Artist & CG Generalist">
+<meta name="twitter:description" content="Visual artist and CG generalist. VFX supervision and CG lead on music videos, fashion films and commercials.">
+<meta name="twitter:image" content="https://alexluquegarcia.com/og-image.jpg">
+
+<!-- ── PERSON SCHEMA (JSON-LD) — Tells Google this is a specific person ── -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Person",
+  "name": "Alex Luque Garcia",
+  "alternateName": ["Alex Luque García", "Alex Luque"],
+  "url": "https://alexluquegarcia.com",
+  "email": "info@alexluquegarcia.com",
+  "jobTitle": "Visual Artist & CG Generalist",
+  "description": "Visual artist and CG generalist specializing in VFX supervision and CG lead work on music videos, fashion films and commercials.",
+  "address": {
+    "@type": "PostalAddress",
+    "addressLocality": "Barcelona",
+    "addressCountry": "ES"
+  },
+  "sameAs": [
+    "https://instagram.com/alexluquegarcia"
+  ],
+  "knowsAbout": [
+    "Visual Effects",
+    "Computer Graphics",
+    "3D Animation",
+    "VFX Supervision",
+    "CG Lead",
+    "Motion Design",
+    "Creative Direction"
+  ]
+}
+</script>
+<!-- ── WEBSITE SCHEMA ── -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  "name": "Alex Luque Garcia",
+  "url": "https://alexluquegarcia.com",
+  "author": {
+    "@type": "Person",
+    "name": "Alex Luque Garcia"
+  }
+}
+</script>
+
 <style>
 @font-face {
   font-family: 'NM';
@@ -19,6 +92,21 @@
 }
 
 * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color: transparent; }
+
+/* Visually hidden but accessible — used for SEO content + screen readers.
+   Takes up no visual space but is fully readable by Google and assistive tech. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0,0,0,0);
+  white-space: nowrap;
+  border: 0;
+}
+
 :root {
   --strip-h: 100px;
   --pad-b: 14px;
@@ -1327,7 +1415,17 @@ body.is-fullscreen .win-resize { display: none !important; }
 </head>
 <body>
 
-<!-- Always-fixed video background -->
+<!-- ── SEO CONTENT ── Visually hidden but indexable by search engines.
+     The site's main experience is JS-driven, so without this block Google
+     would see an empty page. Screen readers also benefit. -->
+<div class="sr-only">
+  <h1>Alex Luque Garcia — Visual Artist & CG Generalist</h1>
+  <h2>VFX Supervision, CG Lead and Creative Work</h2>
+  <p>Alex Luque Garcia is a visual artist and CG generalist based in Barcelona, Spain. Specializing in VFX supervision and CG lead work for music videos, fashion films, commercials, and art direction projects.</p>
+  <p>Selected projects include Gentle Monster's BOLD 2025 campaign starring Tilda Swinton (directed by Mau Morgó, with music by Amnesia Scanner), CG work for Black MIDI's Welcome To Hell music video, No es la mía for Paul Thin, and ongoing collaborations with studios like Olimpic and Groove.</p>
+  <p>For commercial, music video, or creative inquiries, contact info@alexluquegarcia.com or follow @alexluquegarcia on Instagram.</p>
+</div>
+
 <!-- Always-fixed video background -->
 <div id="video-bg-peek"></div>
 <div id="video-bg"><video id="video-bg-inner" autoplay muted playsinline crossorigin="anonymous" style="width:100%;height:100%;object-fit:cover;display:block;"></video></div>
