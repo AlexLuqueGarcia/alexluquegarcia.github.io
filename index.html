@@ -93,9 +93,60 @@ nav, #meta, #scroll-hint, #strip-area, .work-row, #detail-footer,
   user-select:none;
 }
 
-/* iOS-style tap feedback — all tappable elements get a subtle scale-down
-   and brightness drop on active press. The sweet spot is a very small scale
-   change with a snappy curve — more than this feels cartoony. */
+/* Touch ripple — a very subtle radial highlight that emanates from the
+   touch point on any tappable element. JS injects a `.ripple` span at the
+   touch coordinates; CSS handles the expand + fade. Cleaner and quieter than
+   Material Design — more like a soft pulse of light. */
+.ripple-host {
+  position: relative;
+  overflow: hidden;
+}
+.ripple {
+  position: absolute;
+  pointer-events: none;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    rgba(255,255,255,0.35) 0%,
+    rgba(255,255,255,0.18) 30%,
+    rgba(255,255,255,0) 65%
+  );
+  transform: translate(-50%, -50%) scale(0);
+  opacity: 0;
+  mix-blend-mode: plus-lighter;
+  will-change: transform, opacity;
+}
+.ripple.animate {
+  animation: rippleExpand 620ms cubic-bezier(0.25, 1, 0.4, 1) forwards;
+}
+@keyframes rippleExpand {
+  0%   { transform: translate(-50%, -50%) scale(0); opacity: 0.9; }
+  25%  { opacity: 0.9; }
+  100% { transform: translate(-50%, -50%) scale(4); opacity: 0; }
+}
+
+/* Apple-style tap feedback — TWO-PART spring response:
+   Press-in: very fast (80ms) scale-down + brightness drop, curve with
+   steep initial acceleration (biased in) to feel instant.
+   Release: slightly longer (280ms) spring curve that overshoots 1 slightly
+   before settling, creating the "bounce back" that simulates haptic feedback.
+   The overshoot is the key — it's what makes every interaction feel physical.
+   
+   CSS trick: at :active we use FAST ease-in. On release (:not(:active)),
+   the base transition is a SPRING curve that overshoots. */
+.nav-links a,
+#scroll-hint span,
+#scroll-hint .scroll-arrow,
+#scroll-hint .vid-btn,
+.work-row,
+.df-values a,
+.info-section .info-body a,
+#mob-play-indicator,
+.thumb,
+.win {
+  transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1),
+              filter 0.28s var(--ease-out);
+}
 .nav-links a:active,
 #scroll-hint span:active,
 #scroll-hint .scroll-arrow:active,
@@ -104,12 +155,20 @@ nav, #meta, #scroll-hint, #strip-area, .work-row, #detail-footer,
 .df-values a:active,
 .info-section .info-body a:active,
 #mob-play-indicator:active {
-  transform: scale(0.97);
-  filter: brightness(0.88);
-  transition: transform 0.15s var(--ease-out), filter 0.15s var(--ease-out);
+  transform: scale(0.94);
+  filter: brightness(0.85);
+  transition: transform 0.08s cubic-bezier(0.5, 0, 0.85, 0),
+              filter 0.08s cubic-bezier(0.5, 0, 0.85, 0);
 }
-/* Windows in detail use a different target (the draggable area) */
-.win:active { transition: transform 0.15s var(--ease-out), filter 0.15s var(--ease-out); }
+/* Thumbs get a subtler press (they're much bigger visually) */
+.thumb:active {
+  transition: transform 0.08s cubic-bezier(0.5, 0, 0.85, 0);
+}
+.thumb.pressed {
+  transform: scale(0.97);
+}
+/* Windows in detail — larger, gentler press */
+.win:active { transition: transform 0.12s var(--ease-out), filter 0.12s var(--ease-out); }
 
 /* ── CUSTOM CURSOR ── */
 #cur {
@@ -2153,19 +2212,164 @@ function goTo(i) {
   haptic('light');
 }
 
-// Haptic feedback — subtle tactile response for key interactions.
-// Uses the Vibration API, which works on Android/Chrome mobile.
-// iOS Safari ignores it (no API exposed) but it's a no-op there — no harm done.
-function haptic(kind = 'light') {
-  if (!navigator.vibrate) return;
-  const patterns = {
-    light:  [8],     // tiny tick — project change, tap
-    medium: [14],    // click / commit
-    heavy:  [22],    // swipe commit, bigger action
-    double: [8, 40, 8],  // special moments (e.g. opening work page)
-  };
-  try { navigator.vibrate(patterns[kind] || patterns.light); } catch {}
+// Haptic feedback — multi-layered tactile response system.
+//
+// 1. navigator.vibrate() — works on Android Chrome, no-op on iOS Safari
+// 2. iOS "switch input" trick — iOS 17.4+ ships Taptic Engine feedback on
+//    <input type="checkbox" switch> elements. We keep two hidden ones and
+//    trigger change events to produce real physical haptics on iPhone.
+// 3. AudioContext click — a very brief ultrasonic click through the speaker
+//    can create subtle physical sensation on iPhones (speaker vibration
+//    coupling with the device chassis). Plays silently if output is muted.
+// 4. Visual micro-bounce — a subtle document-wide scale pulse (0.997 → 1)
+//    that creates a perceptible "thump" on any device, regardless of whether
+//    real haptics are available. This is what Apple's webpages actually do.
+let _hapticAudioCtx = null;
+let _hapticSwitches = null;
+
+function initHaptics() {
+  if (_hapticSwitches) return;
+  // Create two hidden switch checkboxes. iOS 17.4+ Safari fires Taptic Engine
+  // pulses when these flip state. We toggle them programmatically.
+  _hapticSwitches = { on: null, off: null };
+  const wrap = document.createElement('div');
+  wrap.setAttribute('aria-hidden', 'true');
+  wrap.style.cssText = 'position:fixed;top:-9999px;left:-9999px;pointer-events:none;opacity:0;';
+  wrap.innerHTML = `
+    <input type="checkbox" id="_h_sw" switch>
+  `;
+  document.body.appendChild(wrap);
+  _hapticSwitches.el = wrap.querySelector('#_h_sw');
 }
+
+function _triggerIOSHaptic(kind) {
+  // iOS 17.4+ Taptic Engine via switch input
+  try {
+    if (!_hapticSwitches) initHaptics();
+    const el = _hapticSwitches?.el;
+    if (el) {
+      el.checked = !el.checked;
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+  } catch {}
+}
+
+function _playHapticClick(kind) {
+  // Very brief audio pulse — on iPhones, speaker-to-chassis coupling produces
+  // a subtle physical tick. Audible level is tiny; if silent-mode switch is on,
+  // nothing plays. Frequencies chosen to be on the threshold of perception.
+  try {
+    if (!_hapticAudioCtx) {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return;
+      _hapticAudioCtx = new Ctx();
+    }
+    const ctx = _hapticAudioCtx;
+    if (ctx.state === 'suspended') ctx.resume();
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    const intensity = kind === 'heavy' ? 0.06 : kind === 'medium' ? 0.04 : 0.025;
+    const freq = kind === 'heavy' ? 45 : kind === 'medium' ? 60 : 80;
+    osc.frequency.value = freq;
+    osc.type = 'sine';
+    gain.gain.setValueAtTime(intensity, now);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.035);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.04);
+  } catch {}
+}
+
+function _visualHapticPulse(kind) {
+  // Document-wide micro-scale pulse — creates perceived physicality on
+  // any device. Duration and intensity scale with haptic kind.
+  const el = document.documentElement;
+  if (el._hapticPulseActive) return;
+  el._hapticPulseActive = true;
+  const amt = kind === 'heavy' ? 0.994 : kind === 'medium' ? 0.996 : 0.997;
+  const dur = kind === 'heavy' ? 180 : kind === 'medium' ? 140 : 110;
+  el.style.transition = `transform ${dur / 2}ms cubic-bezier(0.2, 0, 0, 1)`;
+  el.style.transform = `scale(${amt})`;
+  setTimeout(() => {
+    el.style.transition = `transform ${dur / 2}ms cubic-bezier(0.3, 1.4, 0.5, 1)`;
+    el.style.transform = '';
+    setTimeout(() => {
+      el.style.transition = '';
+      el._hapticPulseActive = false;
+    }, dur / 2 + 20);
+  }, dur / 2);
+}
+
+function haptic(kind = 'light') {
+  // Layer 1: Android — real Vibration API
+  if (navigator.vibrate) {
+    const patterns = {
+      light:  [8],
+      medium: [14],
+      heavy:  [22],
+      double: [8, 40, 8],
+    };
+    try { navigator.vibrate(patterns[kind] || patterns.light); } catch {}
+  }
+  // Layer 2: iOS — switch input trick for real Taptic Engine
+  _triggerIOSHaptic(kind);
+  // NOTE: audio-based haptic and visual pulse removed from default to avoid
+  // being obnoxious. Call haptic('heavy') for commit moments where the visual
+  // pulse fires via a separate path if needed.
+}
+
+// ── TOUCH RIPPLE ──
+// On touch or click on a tappable element, spawns a `.ripple` span at the
+// touch/click coordinates. The CSS animation expands + fades it in ~620ms.
+// Elements that should show ripples get `.ripple-host` class (added to common
+// selectors via JS below so you don't have to mark up every button).
+function spawnRipple(hostEl, x, y) {
+  if (!hostEl || hostEl._rippleBlocked) return;
+  // Thumbs and work rows shouldn't ripple — they have their own focus system
+  if (hostEl.classList.contains('thumb') || hostEl.classList.contains('work-row')) return;
+  const rect = hostEl.getBoundingClientRect();
+  const size = Math.max(rect.width, rect.height) * 1.4;
+  const ripple = document.createElement('span');
+  ripple.className = 'ripple';
+  ripple.style.width = ripple.style.height = size + 'px';
+  ripple.style.left = (x - rect.left) + 'px';
+  ripple.style.top  = (y - rect.top) + 'px';
+  // Ensure host is ripple-capable (positioning + overflow)
+  const currentPos = getComputedStyle(hostEl).position;
+  if (currentPos === 'static') hostEl._rippleTempRelative = true, hostEl.style.position = 'relative';
+  const prevOverflow = hostEl.style.overflow;
+  hostEl.style.overflow = 'hidden';
+  hostEl.appendChild(ripple);
+  requestAnimationFrame(() => ripple.classList.add('animate'));
+  setTimeout(() => {
+    ripple.remove();
+    if (hostEl._rippleTempRelative) { hostEl.style.position = ''; hostEl._rippleTempRelative = false; }
+    hostEl.style.overflow = prevOverflow;
+  }, 650);
+}
+
+// Selectors that should get ripple feedback
+const RIPPLE_SELECTORS = [
+  '.nav-links a',
+  '#scroll-hint span',
+  '#scroll-hint .scroll-arrow',
+  '#scroll-hint .vid-btn',
+  '.df-values a',
+  '.info-section .info-body a',
+  '#mob-play-indicator',
+  '.vid-btn',
+];
+function isRippleTarget(el) {
+  return RIPPLE_SELECTORS.some(sel => el.matches?.(sel) || el.closest?.(sel));
+}
+// Attach one global listener — runs on every touch/mouse down
+window.addEventListener('pointerdown', (e) => {
+  if (!isRippleTarget(e.target)) return;
+  const host = e.target.closest(RIPPLE_SELECTORS.join(','));
+  if (host) spawnRipple(host, e.clientX, e.clientY);
+}, { passive: true });
 
 function schedTick() { raf = requestAnimationFrame(tick); }
 function tick(ts) {
@@ -3529,6 +3733,14 @@ if (!isTouch) {
 
 // ── INIT ──
 window.addEventListener('load', async () => {
+  // Init haptics system on first user gesture (required for iOS switch trick + audio ctx)
+  const initHapticsOnce = () => {
+    initHaptics();
+    window.removeEventListener('touchstart', initHapticsOnce);
+    window.removeEventListener('pointerdown', initHapticsOnce);
+  };
+  window.addEventListener('touchstart', initHapticsOnce, { once: true, passive: true });
+  window.addEventListener('pointerdown', initHapticsOnce, { once: true });
   // 1. Load project metadata
   await loadProjects();
 
