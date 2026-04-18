@@ -771,13 +771,18 @@ nav.hide {
   font-variant-numeric: tabular-nums;
   mix-blend-mode: difference;  /* always readable regardless of thumbnail color */
   opacity: 0;
-  transition: opacity 0.6s var(--ease-out);
+  transition: opacity 0.4s var(--ease-out);
   /* Two slots stacked on top of each other */
   width: 7ch;
   height: 1em;
   text-align: right;
 }
-#work.open #work-year { opacity: 1; transition-delay: 0.3s; }
+/* Only show the year once the FLIP animation has completed and the real
+   work rows have become visible. `.ready` is added 750ms after openWork()
+   fires — the exact moment the flying thumbnail clones are removed and the
+   true rows take their place. Keeps the year from being covered by moving
+   thumbs during the transition. */
+#work.open.ready #work-year { opacity: 1; }
 #work-year .wy-slot {
   position: absolute;
   right: 0;
@@ -3455,6 +3460,9 @@ function openWork() {
     allRows.forEach(r => r.style.visibility = '');
     flies.forEach(f => f.remove());
     transitioning = false;
+    // Mark work as "ready" — thumbnails have landed, so the year indicator
+    // (and any other transition-gated UI) can now appear without being covered
+    workEl.classList.add('ready');
     // Wire up the infinite scroll after everything is visible
     setupInfiniteWorkScroll();
   }, 750);
@@ -3464,6 +3472,9 @@ function closeWork(skipAnim = false) {
   if (!workOpen || transitioning) return;
   workOpen = false;
   transitioning = true;
+  // Clear the `.ready` state so the year indicator will be hidden by the
+  // .open class removal AND not come back until the next FLIP completes
+  workEl.classList.remove('ready');
 
   // Disable infinite scroll listener
   workEl.onscroll = null;
