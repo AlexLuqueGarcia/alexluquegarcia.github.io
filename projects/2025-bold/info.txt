@@ -1,19 +1,19 @@
 name: BOLD
 client: Gentle Monster
-studio: Olimpic TV
+studio: Olimpic
 type: VFX Supervisor & CG Lead
 duration: 90
 color: tc-6
 video: https://vz-114da70f-2b3.b-cdn.net/9899c30a-5e43-458f-8fdb-421995615b95/play_1080p.mp4
-about: BOLD — a cinematic short film for Gentle Monster directed by Mau Morgó, starring Tilda Swinton with music by Amnesia Scanner. VFX supervision and CG lead on the post-production work at Olimpic TV.
-team: Alex Luque Garcia — VFX Supervisor & CG Lead
-Cesar Rodrez — VFX Creative Director
-Lucia Serrano — Coordinator
-Noha Manfredi — Character Design
-Valeria Baret — Costume Designer
-Nacho Conesa — Lead Animator
-Juan Manuel Reyes, Nacho Hoyos — Compositors
-Daniel Benza, Javier Polo, Telmo Garai, Quim Gonzalez — CG
+about: CG and VFX supervision for Gentle Monster's 2025 BOLD campaign — a performance film starring Tilda Swinton, directed by Mau Morgó with music by Amnesia Scanner.
+team: VFX Supervisor & CG Lead — Alex Luque Garcia
+VFX Creative Director — Cesar Rodrez
+Coordinator — Lucia Serrano
+Character Design — Noha Manfredi
+Costume Designer — Valeria Baret
+Lead Animator — Nacho Conesa
+Compositors — Juan Manuel Reyes, Nacho Hoyos
+CG — Daniel Benza, Javier Polo, Telmo Garai, Quim Gonzalez
 credits: Client — Gentle Monster
 Starring — Tilda Swinton
 Music — Amnesia Scanner
