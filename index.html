@@ -2713,16 +2713,46 @@ function closeWork(skipAnim = false) {
     return;
   }
 
+  // Determine if user has scrolled far from the middle block — if so, the FLIP
+  // animation would cross the screen awkwardly. In that case, use a simple
+  // fade-out + strip-slides-up-from-bottom animation instead.
+  const n = projectData.length;
+  const copies = parseInt(workInner.dataset.copies) || 5;
+  const middleIdx = parseInt(workInner.dataset.middle) || 2;
+  const rows0 = Array.from(workInner.querySelectorAll('.work-row'));
+  const blockHeight = (rows0.length >= n * copies && rows0[n] && rows0[0])
+    ? rows0[n].offsetTop - rows0[0].offsetTop
+    : 0;
+  const middleOffset = blockHeight * middleIdx;
+  const scrolledAway = blockHeight > 0 && Math.abs(workEl.scrollTop - middleOffset) > blockHeight * 0.3;
+
+  if (scrolledAway) {
+    // Fade out work page while the strip slides up from the bottom of the landing
+    workEl.classList.remove('open');
+    metaEl.classList.remove('hide');
+    hintEl.classList.remove('hide');
+    // Start the strip below the viewport, then animate it up to its final position
+    stripEl.style.visibility = '';
+    stripEl.classList.add('hide');  // starts translated down
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        stripEl.classList.remove('hide');  // slides up (existing .hide transition handles it)
+      });
+    });
+    setTimeout(() => { transitioning = false; }, 700);
+    return;
+  }
+
+  // ── FLIP animation (used when rows are near their original position) ──
   // 1. Measure current positions of work rows — from middle block
-  const allRows = Array.from(workInner.querySelectorAll('.work-row'));
+  const allRows = rows0;
   const rows = middleWorkRows();
   const startRects = rows.map(r => r.getBoundingClientRect());
 
   // 2. The strip is already at its correct position (just hidden via visibility)
-  // Measure where each thumb will land
   const endRects = allThumbs().map(t => t.getBoundingClientRect());
 
-  // 3. Hide all work rows (all copies) so only clones are visible during animation
+  // 3. Hide all work rows so only clones are visible during animation
   allRows.forEach(r => r.style.visibility = 'hidden');
 
   // 4. Create flying clones from row positions → strip positions
@@ -2733,7 +2763,7 @@ function closeWork(skipAnim = false) {
     return createFlyThumb(startRects[i], endRects[i], frames, sc, p.tc);
   });
 
-  // 5. Fade out work page, restore meta/hint immediately so they fade back in
+  // 5. Fade out work page, restore meta/hint
   workEl.classList.remove('open');
   metaEl.classList.remove('hide');
   hintEl.classList.remove('hide');
