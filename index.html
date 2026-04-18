@@ -2815,10 +2815,23 @@ function closeDetail() {
   videoBg.classList.remove('blurred');
   canvasInner.classList.remove('mobile-detail');
 
-  // resume landing video and ticker from saved position
+  // Resume landing video. On HLS (mobile), segments around _savedTime may have
+  // been evicted while detail was open — we need to tell hls.js to reload
+  // at that position BEFORE calling play(), otherwise the video plays the
+  // last decoded frame briefly then freezes waiting for unloaded data.
   if (isLndVideo && playing) {
-    if (lndVideo._savedTime) lndVideo.currentTime = lndVideo._savedTime;
-    lndVideo.play();
+    const savedTime = lndVideo._savedTime || 0;
+    if (_hlsInstance) {
+      try { _hlsInstance.startLoad(savedTime); } catch {}
+      lndVideo.currentTime = savedTime;
+      // Small settle so hls.js can fetch the segment before we play
+      setTimeout(() => {
+        lndVideo.play().catch(() => {});
+      }, 80);
+    } else {
+      if (savedTime) lndVideo.currentTime = savedTime;
+      lndVideo.play().catch(() => {});
+    }
   }
   if (playing) { lastTs = null; schedTick(); }
   // If video was paused, restore the mobile play indicator
