@@ -264,7 +264,8 @@ body.cur-hover #cur svg {
 }
 #info-pulse .ip-core,
 #info-pulse .ip-halo,
-#info-pulse .ip-shimmer {
+#info-pulse .ip-shimmer,
+#info-pulse .ip-warp {
   position: fixed;
   left: var(--px);
   top: var(--py);
@@ -272,8 +273,41 @@ body.cur-hover #cur svg {
   transform: translate(-50%, -50%) scale(0);
   opacity: 0;
   pointer-events: none;
-  mix-blend-mode: plus-lighter;
   will-change: transform, opacity;
+}
+#info-pulse .ip-core,
+#info-pulse .ip-halo,
+#info-pulse .ip-shimmer {
+  mix-blend-mode: plus-lighter;
+}
+/* The warp ring — a thin circular band of backdrop-filter distortion.
+   As it scales up, the ring passes through the background, briefly warping
+   a narrow band of the scene. Mask ensures the filter applies ONLY to the
+   ring shape (inner and outer edges feather into transparency). */
+#info-pulse .ip-warp {
+  width: 300px; height: 300px;
+  backdrop-filter: blur(5px) saturate(1.4) brightness(1.1) hue-rotate(5deg);
+  -webkit-backdrop-filter: blur(5px) saturate(1.4) brightness(1.1) hue-rotate(5deg);
+  mask: radial-gradient(
+    circle,
+    transparent 0%,
+    transparent 36%,
+    rgba(0,0,0,0.6) 44%,
+    rgba(0,0,0,1) 50%,
+    rgba(0,0,0,0.6) 56%,
+    transparent 64%,
+    transparent 100%
+  );
+  -webkit-mask: radial-gradient(
+    circle,
+    transparent 0%,
+    transparent 36%,
+    rgba(0,0,0,0.6) 44%,
+    rgba(0,0,0,1) 50%,
+    rgba(0,0,0,0.6) 56%,
+    transparent 64%,
+    transparent 100%
+  );
 }
 #info-pulse .ip-core {
   width: 200px; height: 200px;
@@ -313,6 +347,9 @@ body.cur-hover #cur svg {
 }
 /* Animations — staggered so the pulse feels like it's rippling outward
    in waves. Each layer has its own curve and duration. */
+#info-pulse.animate .ip-warp {
+  animation: ipWarp 950ms cubic-bezier(0.2, 1, 0.3, 1) forwards;
+}
 #info-pulse.animate .ip-core {
   animation: ipCore 700ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
@@ -321,6 +358,12 @@ body.cur-hover #cur svg {
 }
 #info-pulse.animate .ip-shimmer {
   animation: ipShimmer 1500ms cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+@keyframes ipWarp {
+  0%   { transform: translate(-50%, -50%) scale(0.1);  opacity: 0; }
+  10%  { opacity: 1; }
+  80%  { opacity: 0.85; }
+  100% { transform: translate(-50%, -50%) scale(7);    opacity: 0; }
 }
 @keyframes ipCore {
   0%   { transform: translate(-50%, -50%) scale(0.2);  opacity: 0; }
@@ -1454,8 +1497,9 @@ body.is-fullscreen .win-resize { display: none !important; }
 </div>
 
 <!-- Info sheet — iPhone-style modal -->
-<!-- Magical energy pulse — radiates from the user's click point when Info opens -->
+<!-- Magical energy pulse — radiates from the center of the viewport when Info opens -->
 <div id="info-pulse" aria-hidden="true">
+  <span class="ip-warp"></span>
   <span class="ip-core"></span>
   <span class="ip-halo"></span>
   <span class="ip-shimmer"></span>
@@ -3023,24 +3067,11 @@ function openInfo(ev) {
   if (infoOpen) return;
   infoOpen = true;
   haptic('medium');
-  // Fire the magical energy pulse — origins from the click point if available,
-  // otherwise from the Info button's center as a fallback.
-  let px, py;
-  if (ev && ev.clientX != null) {
-    px = ev.clientX;
-    py = ev.clientY;
-  } else {
-    // Fallback: use the Info link's center
-    const infoBtn = document.querySelector('.nav-links a[onclick*="openInfo"]');
-    if (infoBtn) {
-      const r = infoBtn.getBoundingClientRect();
-      px = r.left + r.width / 2;
-      py = r.top + r.height / 2;
-    } else {
-      px = window.innerWidth / 2;
-      py = window.innerHeight / 2;
-    }
-  }
+  // The pulse originates from the viewport center — where the panel materializes.
+  // This makes the energy feel like it's coming FROM the panel appearing, not
+  // from where the user clicked.
+  const px = window.innerWidth / 2;
+  const py = window.innerHeight / 2;
   fireInfoPulse(px, py);
   infoEl.classList.add('open');
   const ind = mobIndicator;
