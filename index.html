@@ -308,18 +308,19 @@ body.cur-hover #cur svg {
 }
 /* Staggered ring animations — each ring starts slightly later than the
    previous, creating the AirDrop-style rippling outward effect.
-   Tuned short + subtle — the pulse is a hint of magic, not a fireworks show. */
+   Durations are tuned to run at the same rhythm as the letter reveal
+   cascade — the pulse feels like it's propelling the letters into place. */
 #info-pulse.animate .ip-flash {
-  animation: ipFlash 420ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation: ipFlash 650ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 #info-pulse.animate .ip-ring-1 {
-  animation: ipRingExpand 720ms 0ms cubic-bezier(0.22, 0.9, 0.3, 1) forwards;
+  animation: ipRingExpand 1200ms 0ms cubic-bezier(0.22, 0.9, 0.3, 1) forwards;
 }
 #info-pulse.animate .ip-ring-2 {
-  animation: ipRingExpand 720ms 130ms cubic-bezier(0.22, 0.9, 0.3, 1) forwards;
+  animation: ipRingExpand 1200ms 220ms cubic-bezier(0.22, 0.9, 0.3, 1) forwards;
 }
 #info-pulse.animate .ip-ring-3 {
-  animation: ipRingExpand 720ms 260ms cubic-bezier(0.22, 0.9, 0.3, 1) forwards;
+  animation: ipRingExpand 1200ms 440ms cubic-bezier(0.22, 0.9, 0.3, 1) forwards;
 }
 @keyframes ipFlash {
   0%   { transform: translate(-50%, -50%) scale(0.4); opacity: 0; }
@@ -3194,8 +3195,8 @@ function fireInfoPulse(x, y) {
   // Force reflow so the animation can restart
   void p.offsetWidth;
   requestAnimationFrame(() => p.classList.add('animate'));
-  // Clear after the longest animation completes (ring-3 = 260ms delay + 720ms)
-  setTimeout(() => p.classList.remove('animate'), 1020);
+  // Clear after the longest animation completes (ring-3 = 440ms delay + 1200ms)
+  setTimeout(() => p.classList.remove('animate'), 1680);
 }
 function closeInfo() {
   if (!infoOpen) return;
