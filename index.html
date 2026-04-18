@@ -579,6 +579,90 @@ nav.hide {
   display:flex;
   flex-direction:column;
 }
+
+/* ── YEAR INDICATOR ── 
+   Fixed on the right side of the work page, vertically centered.
+   Shows the year of whichever project is currently in the viewport's middle.
+   The transition between years uses two stacked spans that cross-slide:
+   old year eases out with a subtle upward/downward motion + blur,
+   new year arrives from the opposite direction. Classic iOS digit-change feel. */
+#work-year {
+  position: fixed;
+  right: 3.2rem;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 92;
+  pointer-events: none;
+  font-family: 'NM', sans-serif;
+  font-size: 5.5rem;
+  font-weight: 300;
+  line-height: 1;
+  color: #fff;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  mix-blend-mode: difference;  /* always readable regardless of thumbnail color */
+  opacity: 0;
+  transition: opacity 0.6s var(--ease-out);
+  /* Two slots stacked on top of each other */
+  width: 7ch;
+  height: 1em;
+  text-align: right;
+}
+#work.open #work-year { opacity: 1; transition-delay: 0.3s; }
+#work-year .wy-slot {
+  position: absolute;
+  right: 0;
+  top: 0;
+  white-space: nowrap;
+  transition:
+    opacity 0.45s var(--ease-out),
+    transform 0.55s var(--ease-out),
+    filter 0.45s var(--ease-out);
+  will-change: opacity, transform, filter;
+}
+/* Default state: current year is visible, incoming is waiting */
+#work-year .wy-current {
+  opacity: 1;
+  transform: translateY(0);
+  filter: blur(0);
+}
+#work-year .wy-incoming {
+  opacity: 0;
+  /* Starts below — will slide up into place when animating forward */
+  transform: translateY(40%);
+  filter: blur(6px);
+}
+/* When scrolling DOWN (next project), current goes up + out, incoming arrives from below */
+#work-year.is-changing-forward .wy-current {
+  opacity: 0;
+  transform: translateY(-40%);
+  filter: blur(6px);
+}
+#work-year.is-changing-forward .wy-incoming {
+  opacity: 1;
+  transform: translateY(0);
+  filter: blur(0);
+}
+/* When scrolling UP (prev project), current goes down + out, incoming arrives from above */
+#work-year.is-changing-backward .wy-current {
+  opacity: 0;
+  transform: translateY(40%);
+  filter: blur(6px);
+}
+#work-year.is-changing-backward .wy-incoming {
+  opacity: 1;
+  transform: translateY(0);
+  filter: blur(0);
+}
+/* When NOT animating (after reset), the incoming slot pre-positions without animation */
+#work-year.no-anim .wy-slot { transition: none; }
+
+@media (max-width: 768px) {
+  #work-year {
+    right: 1.2rem;
+    font-size: 3rem;
+  }
+}
 .work-row {
   position:relative;
   width:100%;
@@ -1155,6 +1239,13 @@ body.is-fullscreen .win-resize { display: none !important; }
 <!-- Work page -->
 <div id="work">
   <div id="work-inner"></div>
+  <!-- Year indicator — fixed on the right, vertically centered.
+       Shows the year of whichever project is currently in the middle of the viewport.
+       Two layered spans for smooth cross-fade + slide transitions. -->
+  <div id="work-year" aria-hidden="true">
+    <span class="wy-slot wy-current"></span>
+    <span class="wy-slot wy-incoming"></span>
+  </div>
 </div>
 
 <!-- Info sheet — iPhone-style modal -->
@@ -1405,6 +1496,9 @@ async function loadProjects() {
       if (!res.ok) throw new Error('info.txt missing');
       const txt  = await res.text();
       const info = parseInfo(txt);
+      // Extract year: prefer info.txt "year:" field, fall back to parsing from
+      // the folder name's leading 4-digit number (e.g. "2025-bold" → "2025")
+      const folderYear = (folder.match(/^(\d{4})/) || [])[1] || '';
       return {
         proj: {
           folder,
@@ -1413,6 +1507,7 @@ async function loadProjects() {
           client:   info.client   || '',
           studio:   info.studio   || '',
           type:     info.type     || '',
+          year:     info.year     || folderYear,
           duration: parseInt(info.duration) || 60,
           src:      fixDropbox(info.video) || `${mediaBase}/video.mp4`,
         },
@@ -1431,8 +1526,9 @@ async function loadProjects() {
     } catch(e) {
       console.warn(`Failed to load info.txt for ${folder}:`, e);
       const fb = FALLBACK_PROJECTS.find(p => p.folder === folder);
+      const folderYear = (folder.match(/^(\d{4})/) || [])[1] || '';
       return {
-        proj:   fb || { folder, tc: colors[idx % colors.length], name: folder, client:'', studio:'', type:'', duration:60, src:`${mediaBase}/video.mp4` },
+        proj:   fb || { folder, tc: colors[idx % colors.length], name: folder, client:'', studio:'', type:'', year: folderYear, duration:60, src:`${mediaBase}/video.mp4` },
         detail: { about:'', team:'', credits:'', images:[], thumbFrames:[], thumb:null }
       };
     }
@@ -2661,6 +2757,10 @@ function setupInfiniteWorkScroll() {
     const middle = parseInt(workInner.dataset.middle) || 2;
     workEl.scrollTop = blockHeight * middle;
 
+    // Initialize year indicator with the project currently at viewport center.
+    // The scroll handlers below will update it smoothly as the user scrolls.
+    initWorkYearForCenter();
+
     if (isTouch) {
       // ── MOBILE: debounced snap after scroll settles ──
       // iOS momentum is fragile — any scrollTop change mid-scroll cancels it.
@@ -2686,6 +2786,7 @@ function setupInfiniteWorkScroll() {
         }
       };
       workEl.onscroll = () => {
+        updateWorkYearOnScroll();
         if (workEl._scrollEndTimer) clearTimeout(workEl._scrollEndTimer);
         workEl._scrollEndTimer = setTimeout(checkAndSnap, 150);
       };
@@ -2700,6 +2801,7 @@ function setupInfiniteWorkScroll() {
 
       let snapping = false;
       workEl.onscroll = () => {
+        updateWorkYearOnScroll();
         if (snapping) return;
         const st = workEl.scrollTop;
         if (st < topThreshold) {
@@ -2715,6 +2817,118 @@ function setupInfiniteWorkScroll() {
       };
     }
   });
+}
+
+// ── YEAR INDICATOR TRACKING ──
+// Finds which project row is closest to the viewport's vertical center and
+// updates the #work-year element. Uses two stacked spans so the transition
+// can slide + fade simultaneously in either direction (up when moving to a
+// newer project, down when moving to an older one).
+let _workYearState = { current: null, lastScrollTop: 0 };
+
+function getProjectIdxAtViewportCenter() {
+  const rows = Array.from(workInner.querySelectorAll('.work-row'));
+  if (!rows.length) return null;
+  const centerY = window.innerHeight / 2;
+  // Find row whose bounding box contains centerY (or closest)
+  let best = null, bestDist = Infinity;
+  for (const r of rows) {
+    const rect = r.getBoundingClientRect();
+    const rowCenter = rect.top + rect.height / 2;
+    const dist = Math.abs(rowCenter - centerY);
+    if (dist < bestDist) { bestDist = dist; best = r; }
+  }
+  if (!best) return null;
+  return parseInt(best.dataset.projectIdx);
+}
+
+function initWorkYearForCenter() {
+  const yearEl = document.getElementById('work-year');
+  if (!yearEl) return;
+  const idx = getProjectIdxAtViewportCenter();
+  if (idx == null) return;
+  const year = projectData[idx]?.year || '';
+  yearEl.classList.add('no-anim');
+  yearEl.classList.remove('is-changing-forward', 'is-changing-backward');
+  const cur = yearEl.querySelector('.wy-current');
+  const inc = yearEl.querySelector('.wy-incoming');
+  cur.textContent = year;
+  inc.textContent = year;
+  _workYearState.current = idx;
+  _workYearState.lastScrollTop = workEl.scrollTop;
+  // Next frame: remove no-anim so future changes animate
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => yearEl.classList.remove('no-anim'));
+  });
+}
+
+// Throttled via rAF — only one check per frame even on fast scroll
+let _workYearRaf = null;
+function updateWorkYearOnScroll() {
+  if (_workYearRaf) return;
+  _workYearRaf = requestAnimationFrame(() => {
+    _workYearRaf = null;
+    const yearEl = document.getElementById('work-year');
+    if (!yearEl) return;
+    const idx = getProjectIdxAtViewportCenter();
+    if (idx == null) return;
+    if (idx === _workYearState.current) {
+      _workYearState.lastScrollTop = workEl.scrollTop;
+      return;
+    }
+    // Determine direction: scrolling down (forward) or up (backward)
+    const direction = workEl.scrollTop > _workYearState.lastScrollTop ? 'forward' : 'backward';
+    _workYearState.lastScrollTop = workEl.scrollTop;
+    changeWorkYear(idx, direction);
+  });
+}
+
+function changeWorkYear(newIdx, direction) {
+  const yearEl = document.getElementById('work-year');
+  if (!yearEl) return;
+  const year = projectData[newIdx]?.year || '';
+  const cur = yearEl.querySelector('.wy-current');
+  const inc = yearEl.querySelector('.wy-incoming');
+  if (!cur || !inc) return;
+  // If a transition is still mid-flight, snap it to final state before starting next
+  if (yearEl.classList.contains('is-changing-forward') ||
+      yearEl.classList.contains('is-changing-backward')) {
+    yearEl.classList.add('no-anim');
+    cur.textContent = inc.textContent;
+    yearEl.classList.remove('is-changing-forward', 'is-changing-backward');
+    requestAnimationFrame(() => yearEl.classList.remove('no-anim'));
+  }
+  // Position the incoming slot on the correct side based on direction
+  inc.textContent = year;
+  // Reset incoming's pre-animation position based on direction
+  yearEl.classList.add('no-anim');
+  if (direction === 'forward') {
+    // Incoming comes from below
+    inc.style.transform = 'translateY(40%)';
+  } else {
+    // Incoming comes from above
+    inc.style.transform = 'translateY(-40%)';
+  }
+  inc.style.opacity = '0';
+  inc.style.filter = 'blur(6px)';
+  // Next frame: remove no-anim, add change class — CSS transitions kick in
+  requestAnimationFrame(() => {
+    yearEl.classList.remove('no-anim');
+    requestAnimationFrame(() => {
+      inc.style.transform = '';  // cleared; CSS class rules take over
+      inc.style.opacity = '';
+      inc.style.filter = '';
+      yearEl.classList.add(`is-changing-${direction}`);
+    });
+  });
+  // After the transition finishes, swap: current ← incoming, reset incoming
+  setTimeout(() => {
+    yearEl.classList.add('no-anim');
+    yearEl.classList.remove('is-changing-forward', 'is-changing-backward');
+    cur.textContent = year;
+    requestAnimationFrame(() => yearEl.classList.remove('no-anim'));
+  }, 580);
+  _workYearState.current = newIdx;
 }
 
 function createFlyThumb(startRect, endRect, frames, sc, fallbackTc) {
