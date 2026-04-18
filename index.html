@@ -396,7 +396,7 @@ body.cur-hover #cur svg {
   position: absolute;
   left: 50%;
   top: 50%;
-  transform: translate(-50%, -46%) scale(0.92);
+  transform: translate(-50%, -50%) scale(0.88);
   width: min(520px, calc(100vw - 3rem));
   max-height: 80vh;
   background: rgba(255,255,255,0.08);
@@ -407,7 +407,17 @@ body.cur-hover #cur svg {
   color: #000;
   font-family: 'NM', sans-serif;
   opacity: 0;
-  transition: opacity 0.45s var(--ease-out), transform 0.55s var(--ease-spring);
+  /* Clip-path circle morphs from 0 to covering the rectangle.
+     During expansion, the visible portion IS circular (because circle < panel).
+     As the circle exceeds the panel bounds, the rectangular edges emerge.
+     This creates a seamless circle-to-square transformation. */
+  clip-path: circle(0% at 50% 50%);
+  -webkit-clip-path: circle(0% at 50% 50%);
+  transition:
+    opacity 0.4s var(--ease-out),
+    transform 0.65s var(--ease-spring),
+    clip-path 0.85s cubic-bezier(0.16, 1, 0.3, 1),
+    -webkit-clip-path 0.85s cubic-bezier(0.16, 1, 0.3, 1);
   box-shadow: 0 30px 80px rgba(0,0,0,0.45), 0 8px 24px rgba(0,0,0,0.3);
   overflow: hidden;
 }
@@ -432,10 +442,8 @@ body.cur-hover #cur svg {
 #info-sheet.open #info-panel {
   opacity: 1;
   transform: translate(-50%, -50%) scale(1);
-}
-#info-sheet.open #info-panel {
-  opacity: 1;
-  transform: translate(-50%, -50%) scale(1);
+  clip-path: circle(100% at 50% 50%);
+  -webkit-clip-path: circle(100% at 50% 50%);
 }
 
 #info-close {
