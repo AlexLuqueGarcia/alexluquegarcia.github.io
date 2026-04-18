@@ -244,105 +244,6 @@ body.cur-hover #cur svg {
 }
 #info-sheet.open { pointer-events: auto; }
 
-/* ── INFO PULSE — AirDrop-style ripple rings (iOS 17.4 aesthetic)
-   Thin expanding rings emanate from the viewport center when Info opens.
-   Three rings with staggered timing create the elegant "energy ripple" effect.
-   Each ring is a stroked circle (not filled), with a subtle chromatic fringe
-   via layered box-shadows — one pink inner, one cyan outer — giving the rings
-   a very faint prism edge without heavy color.
-   
-   Plus a tiny initial flash at the origin for the "ignition" moment.
-   
-   Sits at z-index 299, just below the info-sheet (300), so it ripples BEHIND
-   the panel as it materializes. */
-#info-pulse {
-  position: fixed;
-  top: 0; left: 0;
-  width: 0; height: 0;
-  pointer-events: none;
-  z-index: 299;
-  --px: 50%;
-  --py: 50%;
-}
-#info-pulse .ip-ring,
-#info-pulse .ip-flash {
-  position: fixed;
-  left: var(--px);
-  top: var(--py);
-  border-radius: 50%;
-  transform: translate(-50%, -50%) scale(0);
-  opacity: 0;
-  pointer-events: none;
-  will-change: transform, opacity;
-  box-sizing: border-box;
-}
-/* Rings — soft gradient-based luminous bands. Instead of a thin crisp
-   border, each ring is a radial gradient with a wide soft band peaking
-   around 50% of radius. Blur adds extra smoothness. Chromatic dispersion
-   via pink/warm/cyan hue shifts across the band creates the prism feel.
-   Much softer and more diffuse than a 1px stroke — feels like actual
-   light rather than a line. */
-#info-pulse .ip-ring {
-  width: 160px;
-  height: 160px;
-  background: radial-gradient(
-    circle,
-    transparent 0%,
-    transparent 38%,
-    rgba(255, 180, 210, 0.06) 42%,      /* pink inner fringe */
-    rgba(255, 235, 215, 0.16) 48%,      /* warm peak */
-    rgba(255, 240, 220, 0.2) 50%,       /* brightest band */
-    rgba(220, 220, 255, 0.14) 54%,      /* cyan drift */
-    rgba(160, 200, 255, 0.05) 60%,      /* blue outer fringe */
-    transparent 66%,
-    transparent 100%
-  );
-  filter: blur(8px);
-  mix-blend-mode: plus-lighter;
-}
-/* Center flash — soft glow that marks the origin of the ripple.
-   Larger now so it reads as a genuine "ignition burst". */
-#info-pulse .ip-flash {
-  width: 220px;
-  height: 220px;
-  background: radial-gradient(
-    circle,
-    rgba(255, 245, 225, 0.22) 0%,
-    rgba(255, 220, 210, 0.13) 30%,
-    rgba(200, 180, 255, 0.05) 60%,
-    rgba(200, 180, 255, 0) 85%
-  );
-  filter: blur(18px);
-  mix-blend-mode: plus-lighter;
-}
-/* Staggered ring animations — each ring starts slightly later than the
-   previous, creating the AirDrop-style rippling outward effect.
-   Durations are tuned to run at the same rhythm as the letter reveal
-   cascade — the pulse feels like it's propelling the letters into place. */
-#info-pulse.animate .ip-flash {
-  animation: ipFlash 650ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
-}
-#info-pulse.animate .ip-ring-1 {
-  animation: ipRingExpand 1200ms 0ms cubic-bezier(0.22, 0.9, 0.3, 1) forwards;
-}
-#info-pulse.animate .ip-ring-2 {
-  animation: ipRingExpand 1200ms 220ms cubic-bezier(0.22, 0.9, 0.3, 1) forwards;
-}
-#info-pulse.animate .ip-ring-3 {
-  animation: ipRingExpand 1200ms 440ms cubic-bezier(0.22, 0.9, 0.3, 1) forwards;
-}
-@keyframes ipFlash {
-  0%   { transform: translate(-50%, -50%) scale(0.4); opacity: 0; }
-  25%  { transform: translate(-50%, -50%) scale(1);   opacity: 0.35; }
-  100% { transform: translate(-50%, -50%) scale(1.5); opacity: 0; }
-}
-@keyframes ipRingExpand {
-  0%   { transform: translate(-50%, -50%) scale(0.25); opacity: 0; }
-  18%  { opacity: 0.85; }
-  65%  { opacity: 0.45; }
-  100% { transform: translate(-50%, -50%) scale(12);   opacity: 0; }
-}
-
 #info-backdrop {
   position: absolute;
   inset: 0;
@@ -1532,15 +1433,6 @@ body.is-fullscreen .win-resize { display: none !important; }
 </div>
 
 <!-- Info sheet — iPhone-style modal -->
-<!-- Magical energy pulse — AirDrop-style thin rings rippling outward from the
-     viewport center when Info opens. Staggered timing creates the elegant
-     "energy ripple" effect. Stroked rings with subtle chromatic fringe. -->
-<div id="info-pulse" aria-hidden="true">
-  <span class="ip-flash"></span>
-  <span class="ip-ring ip-ring-1"></span>
-  <span class="ip-ring ip-ring-2"></span>
-  <span class="ip-ring ip-ring-3"></span>
-</div>
 <div id="info-sheet">
   <div id="info-backdrop"></div>
   <div id="info-panel">
@@ -3186,28 +3078,11 @@ function openInfo(ev) {
   // Force reflow — commits the scattered state with transitions disabled
   void infoEl.offsetWidth;
   infoEl.classList.remove('resetting');
-  // Fire the energy pulse from the viewport center
-  const px = window.innerWidth / 2;
-  const py = window.innerHeight / 2;
-  fireInfoPulse(px, py);
   infoEl.classList.add('open');
   const ind = mobIndicator;
   if (ind) ind.classList.remove('visible');
 }
 
-function fireInfoPulse(x, y) {
-  const p = document.getElementById('info-pulse');
-  if (!p) return;
-  // Reset — remove animate class, force reflow, re-add so animation fires
-  p.classList.remove('animate');
-  p.style.setProperty('--px', x + 'px');
-  p.style.setProperty('--py', y + 'px');
-  // Force reflow so the animation can restart
-  void p.offsetWidth;
-  requestAnimationFrame(() => p.classList.add('animate'));
-  // Clear after the longest animation completes (ring-3 = 440ms delay + 1200ms)
-  setTimeout(() => p.classList.remove('animate'), 1680);
-}
 function closeInfo() {
   if (!infoOpen) return;
   infoOpen = false;
