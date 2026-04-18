@@ -1,10 +1,26 @@
 name: BOLD
-client: Gentle Monster 
+client: Gentle Monster
 studio: Olimpic TV
 type: VFX Supervisor & CG Lead
+duration: 90
+color: tc-6
 video: https://vz-114da70f-2b3.b-cdn.net/9899c30a-5e43-458f-8fdb-421995615b95/play_1080p.mp4
-about: CG work for Black MIDI's Welcome To Hell music video. Directed by Páraic Mc Gloughlin, combining hand-drawn 2D animation with procedural 3D environments.
+about: BOLD — a cinematic short film for Gentle Monster directed by Mau Morgó, starring Tilda Swinton with music by Amnesia Scanner. VFX supervision and CG lead on the post-production work at Olimpic TV.
 team: Alex Luque Garcia — VFX Supervisor & CG Lead
-credits: Studio: Olimpic TV
-Direction: Mau Morgo
-Animation: Black MIDI
+Cesar Rodrez — VFX Creative Director
+Lucia Serrano — Coordinator
+Noha Manfredi — Character Design
+Valeria Baret — Costume Designer
+Nacho Conesa — Lead Animator
+Juan Manuel Reyes, Nacho Hoyos — Compositors
+Daniel Benza, Javier Polo, Telmo Garai, Quim Gonzalez — CG
+credits: Client — Gentle Monster
+Starring — Tilda Swinton
+Music — Amnesia Scanner
+Creative Direction — Gentle Monster
+Director — Mau Morgó
+DOP — Mauro Chiarello
+Production Company — ProdCo
+Post House — OLIMPIC
+EP — Sira Molla
+MoCap Choreo & Perf — MARVALYRA, Pecado Carnal
