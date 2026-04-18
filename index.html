@@ -276,19 +276,28 @@ body.cur-hover #cur svg {
   will-change: transform, opacity;
   box-sizing: border-box;
 }
-/* Rings — thin stroked circles. Start at 160px diameter, expand via scale
-   transform up to ~2000px — extends well past the info panel (~680px) so
-   the pulse visibly radiates out beyond the window, not hidden behind it.
-   Chromatic fringe via two offset color shadows that mimic lens dispersion. */
+/* Rings — soft gradient-based luminous bands. Instead of a thin crisp
+   border, each ring is a radial gradient with a wide soft band peaking
+   around 50% of radius. Blur adds extra smoothness. Chromatic dispersion
+   via pink/warm/cyan hue shifts across the band creates the prism feel.
+   Much softer and more diffuse than a 1px stroke — feels like actual
+   light rather than a line. */
 #info-pulse .ip-ring {
   width: 160px;
   height: 160px;
-  background: transparent;
-  border: 1.2px solid rgba(255, 255, 255, 0.45);
-  box-shadow:
-    0 0 0 0.5px rgba(255, 130, 200, 0.3),       /* magenta outer fringe */
-    inset 0 0 0 0.5px rgba(120, 200, 255, 0.25), /* cyan inner fringe */
-    0 0 18px rgba(255, 240, 220, 0.12);          /* soft ambient glow */
+  background: radial-gradient(
+    circle,
+    transparent 0%,
+    transparent 38%,
+    rgba(255, 180, 210, 0.06) 42%,      /* pink inner fringe */
+    rgba(255, 235, 215, 0.16) 48%,      /* warm peak */
+    rgba(255, 240, 220, 0.2) 50%,       /* brightest band */
+    rgba(220, 220, 255, 0.14) 54%,      /* cyan drift */
+    rgba(160, 200, 255, 0.05) 60%,      /* blue outer fringe */
+    transparent 66%,
+    transparent 100%
+  );
+  filter: blur(8px);
   mix-blend-mode: plus-lighter;
 }
 /* Center flash — soft glow that marks the origin of the ripple.
@@ -328,9 +337,10 @@ body.cur-hover #cur svg {
   100% { transform: translate(-50%, -50%) scale(1.5); opacity: 0; }
 }
 @keyframes ipRingExpand {
-  0%   { transform: translate(-50%, -50%) scale(0.25); opacity: 0; border-width: 1.2px; }
-  15%  { opacity: 0.35; }
-  100% { transform: translate(-50%, -50%) scale(12);   opacity: 0; border-width: 0.2px; }
+  0%   { transform: translate(-50%, -50%) scale(0.25); opacity: 0; }
+  18%  { opacity: 0.85; }
+  65%  { opacity: 0.45; }
+  100% { transform: translate(-50%, -50%) scale(12);   opacity: 0; }
 }
 
 #info-backdrop {
