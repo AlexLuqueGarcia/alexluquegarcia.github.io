@@ -696,7 +696,9 @@ nav.hide {
 /* Apple-style focus: every row is subtly dimmed by default, and the row
    at the viewport's vertical center (.is-focused) gets the bright treatment.
    On desktop, hovering a specific row overrides the scroll-center focus so
-   the cursor always wins when actively used. */
+   the cursor always wins when actively used — EXCEPT during active scrolling,
+   where scroll-center focus wins (otherwise a stationary cursor pins hover
+   to whichever row it happens to sit over). */
 #work-inner:has(.work-row.is-focused) .work-row .work-bg,
 #work-inner:has(.work-row:hover) .work-row .work-bg {
   opacity: 0.75;
@@ -707,18 +709,29 @@ nav.hide {
   filter: brightness(1.05) saturate(1.05);
 }
 @media (hover: hover) and (pointer: fine) {
-  /* When cursor is over a row, it wins — dim the scroll-focused row if it's different */
-  #work-inner:has(.work-row:hover) .work-row.is-focused:not(:hover) .work-bg {
+  /* When cursor is over a row AND we're NOT scrolling, hover wins */
+  #work:not(.is-scrolling) #work-inner:has(.work-row:hover) .work-row.is-focused:not(:hover) .work-bg {
     opacity: 0.75;
     filter: brightness(0.82) saturate(0.9);
   }
-  #work-inner:has(.work-row:hover) .work-row:hover .work-bg {
+  #work:not(.is-scrolling) #work-inner:has(.work-row:hover) .work-row:hover .work-bg {
+    opacity: 1;
+    filter: brightness(1.05) saturate(1.05);
+  }
+  /* During active scrolling, scroll-focus forcefully wins over hover */
+  #work.is-scrolling .work-row:hover:not(.is-focused) .work-bg {
+    opacity: 0.75;
+    filter: brightness(0.82) saturate(0.9);
+  }
+  #work.is-scrolling .work-row.is-focused .work-bg {
     opacity: 1;
     filter: brightness(1.05) saturate(1.05);
   }
 }
 .work-row:hover .work-overlay,
 .work-row.is-focused .work-overlay { transform: translateX(8px); }
+#work.is-scrolling .work-row:hover:not(.is-focused) .work-overlay { transform: none; }
+#work.is-scrolling .work-row.is-focused .work-overlay { transform: translateX(8px); }
 .work-row .work-title {
   font-family:'NM',sans-serif;
   font-size:1.4rem; font-weight:500;
@@ -2893,7 +2906,15 @@ function initWorkYearForCenter() {
 
 // Throttled via rAF — one check per frame even on fast scroll
 let _workYearRaf = null;
+let _workScrollSettleTimer = null;
 function updateWorkYearOnScroll() {
+  // Mark that we're actively scrolling — CSS uses this to override :hover
+  workEl.classList.add('is-scrolling');
+  if (_workScrollSettleTimer) clearTimeout(_workScrollSettleTimer);
+  _workScrollSettleTimer = setTimeout(() => {
+    workEl.classList.remove('is-scrolling');
+  }, 200);
+
   if (_workYearRaf) return;
   _workYearRaf = requestAnimationFrame(() => {
     _workYearRaf = null;
