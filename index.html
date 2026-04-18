@@ -347,7 +347,7 @@ body.cur-hover #cur svg {
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%) scale(0.88);
-  width: min(520px, calc(100vw - 3rem));
+  width: min(680px, calc(100vw - 3rem));
   max-height: 80vh;
   background: rgba(255,255,255,0.08);
   backdrop-filter: blur(30px) saturate(1.4) invert(1) hue-rotate(180deg);
@@ -498,10 +498,10 @@ body.cur-hover #cur svg {
 }
 .info-section .info-body a:hover { opacity: 0.6; }
 
-/* Hero bio — light weight. Explicitly `display: block` so when the bio IS
-   also an .info-body (flex-column), our word spans flow inline instead of
-   stacking vertically. */
-.info-bio {
+/* Hero bio — light weight. `#info-panel .info-bio` specificity wins over
+   `.info-section .info-body`'s flex-column, so bio text flows as normal
+   wrapping text (not each word on its own line). */
+#info-panel .info-bio {
   display: block;
   font-size: 1.55rem;
   line-height: 1.35;
