@@ -420,19 +420,49 @@ body.cur-hover #cur svg {
   gap: 1.8rem;
   padding-top: 0.5rem;
 }
-/* Each section starts slightly offset and faded, then cascades into place
-   after the panel itself has settled — classic Apple dialog entrance. */
+/* The old section-level fade is replaced by per-letter letter-in-flight
+   reveal (see `.il` below). Sections stay visible — individual letters
+   handle the entrance animation. */
 .info-section {
-  opacity: 0;
-  transform: translateY(14px);
-  transition: opacity 0.55s var(--ease-out), transform 0.55s var(--ease-out);
-}
-#info-sheet.open .info-section:nth-child(1) { transition-delay: 0.18s; }
-#info-sheet.open .info-section:nth-child(2) { transition-delay: 0.28s; }
-#info-sheet.open .info-section:nth-child(3) { transition-delay: 0.38s; }
-#info-sheet.open .info-section {
   opacity: 1;
-  transform: translateY(0);
+}
+
+/* ── MAGICAL LETTER REVEAL ──
+   Each character starts scattered from its final position (in a random
+   direction + radius), rotated, blurred, invisible. When the info panel
+   opens, all letters fly back to their positions with spring easing,
+   staggered by index so the reveal sweeps like a wave across the text.
+   `.iw` (word wrapper) prevents mid-word line breaks — letters don't split
+   across lines.
+   `--dx/--dy/--dr/--i` per-letter CSS vars are set by JS on wrap. */
+.iw {
+  display: inline-block;
+  white-space: nowrap;
+}
+.il {
+  display: inline-block;
+  transform: translate(var(--dx, 0), var(--dy, 0)) rotate(var(--dr, 0deg));
+  opacity: 0;
+  filter: blur(10px);
+  transition:
+    transform 0.9s cubic-bezier(0.16, 1, 0.3, 1) calc(var(--i, 0) * 14ms),
+    opacity 0.55s var(--ease-out) calc(var(--i, 0) * 14ms),
+    filter 0.55s var(--ease-out) calc(var(--i, 0) * 14ms);
+  will-change: transform, opacity, filter;
+  vertical-align: baseline;
+}
+#info-sheet.open .il {
+  transform: translate(0, 0) rotate(0deg);
+  opacity: 1;
+  filter: blur(0);
+}
+/* Closing: snap letters to final state so they don't fly back out as panel
+   fades. No transition = instant snap. */
+#info-sheet.closing .il {
+  transform: translate(0, 0) rotate(0deg);
+  opacity: 1;
+  filter: blur(0);
+  transition: none;
 }
 .info-section .info-label {
   font-size: 0.75rem;
@@ -3045,10 +3075,81 @@ let infoOpen = false;
 const infoEl       = document.getElementById('info-sheet');
 const infoBackdrop = document.getElementById('info-backdrop');
 
+// ── MAGICAL LETTER REVEAL ──
+// Wraps each character in a span with randomized starting offset/rotation,
+// so CSS can transition them from scattered → into position when Info opens.
+// Wraps words in `.iw` so letters don't split mid-word across lines.
+function wrapLetters(el, startIdx) {
+  if (el.dataset.lettersWrapped) return startIdx;
+  const text = el.textContent;
+  el.textContent = '';
+  let idx = startIdx;
+  // Split on whitespace but preserve it — each non-space chunk becomes a word
+  const parts = text.split(/(\s+)/);
+  parts.forEach(part => {
+    if (part.length === 0) return;
+    if (/^\s+$/.test(part)) {
+      // Whitespace — preserve as plain text node between word wrappers
+      el.appendChild(document.createTextNode(part));
+      return;
+    }
+    // Word wrapper — keeps letters together across line breaks
+    const wordSpan = document.createElement('span');
+    wordSpan.className = 'iw';
+    for (const ch of part) {
+      const s = document.createElement('span');
+      s.className = 'il';
+      // Random polar offset: an angle + a radius, converted to dx/dy.
+      // Radius 180-360px — letters seem to come from beyond the text's line,
+      // not from halfway inside the panel.
+      const angle = Math.random() * Math.PI * 2;
+      const radius = 180 + Math.random() * 180;
+      const dx = Math.cos(angle) * radius;
+      const dy = Math.sin(angle) * radius;
+      const dr = (Math.random() - 0.5) * 50;  // ±25deg rotation
+      s.style.setProperty('--dx', dx.toFixed(1) + 'px');
+      s.style.setProperty('--dy', dy.toFixed(1) + 'px');
+      s.style.setProperty('--dr', dr.toFixed(1) + 'deg');
+      s.style.setProperty('--i', idx);
+      s.textContent = ch;
+      wordSpan.appendChild(s);
+      idx++;
+    }
+    el.appendChild(wordSpan);
+  });
+  el.dataset.lettersWrapped = '1';
+  return idx;
+}
+function setupInfoLetters() {
+  let idx = 0;
+  const bio = document.querySelector('.info-bio');
+  if (bio) idx = wrapLetters(bio, idx);
+  document.querySelectorAll('#info-panel .info-body a').forEach(a => {
+    idx = wrapLetters(a, idx);
+  });
+}
+// Rescatter the existing letters with new random offsets — call before each
+// open so every entrance animation is visually unique. Preserves DOM, just
+// updates per-letter CSS vars.
+function rescatterInfoLetters() {
+  document.querySelectorAll('#info-panel .il').forEach(s => {
+    const angle = Math.random() * Math.PI * 2;
+    const radius = 180 + Math.random() * 180;
+    const dx = Math.cos(angle) * radius;
+    const dy = Math.sin(angle) * radius;
+    const dr = (Math.random() - 0.5) * 50;
+    s.style.setProperty('--dx', dx.toFixed(1) + 'px');
+    s.style.setProperty('--dy', dy.toFixed(1) + 'px');
+    s.style.setProperty('--dr', dr.toFixed(1) + 'deg');
+  });
+}
+
 function openInfo(ev) {
   if (infoOpen) return;
   infoOpen = true;
   haptic('medium');
+  // Rescatter the letter offsets so this entrance has unique trajectories
+  rescatterInfoLetters();
   // The pulse originates from the viewport center — where the panel materializes.
   // This makes the energy feel like it's coming FROM the panel appearing, not
   // from where the user clicked.
@@ -3885,6 +3986,9 @@ window.addEventListener('load', async () => {
   };
   window.addEventListener('touchstart', initHapticsOnce, { once: true, passive: true });
   window.addEventListener('pointerdown', initHapticsOnce, { once: true });
+  // Wrap Info panel text into per-letter spans for the magical reveal.
+  // Done once on load — text never changes. Rescatter happens per-open.
+  setupInfoLetters();
   // 1. Load project metadata
   await loadProjects();
 
