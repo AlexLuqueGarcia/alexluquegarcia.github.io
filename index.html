@@ -244,6 +244,100 @@ body.cur-hover #cur svg {
 }
 #info-sheet.open { pointer-events: auto; }
 
+/* ── INFO PULSE — magical energy burst that radiates from the click point
+   when the Info tab opens. Three stacked layers:
+   - .ip-core: fast, bright, small (the "spark")
+   - .ip-halo: slower, larger, warm-white (the "wave")
+   - .ip-shimmer: slowest, huge, diffuse (the "afterglow")
+   All use plus-lighter blend mode for luminous feel — they add light to
+   whatever is beneath, never darken. The pulse sits at z-index 299, just
+   below the info-sheet, so it illuminates the video background and any
+   UI beneath before the panel materializes above it. */
+#info-pulse {
+  position: fixed;
+  top: 0; left: 0;
+  width: 0; height: 0;
+  pointer-events: none;
+  z-index: 299;
+  --px: 50%;
+  --py: 50%;
+}
+#info-pulse .ip-core,
+#info-pulse .ip-halo,
+#info-pulse .ip-shimmer {
+  position: fixed;
+  left: var(--px);
+  top: var(--py);
+  border-radius: 50%;
+  transform: translate(-50%, -50%) scale(0);
+  opacity: 0;
+  pointer-events: none;
+  mix-blend-mode: plus-lighter;
+  will-change: transform, opacity;
+}
+#info-pulse .ip-core {
+  width: 200px; height: 200px;
+  background: radial-gradient(
+    circle,
+    rgba(255,255,255,0.95) 0%,
+    rgba(255,250,240,0.75) 15%,
+    rgba(255,245,230,0.35) 35%,
+    rgba(255,240,220,0.08) 60%,
+    rgba(255,230,200,0) 80%
+  );
+  filter: blur(18px);
+}
+#info-pulse .ip-halo {
+  width: 700px; height: 700px;
+  background: radial-gradient(
+    circle,
+    rgba(255,255,255,0.6) 0%,
+    rgba(255,250,240,0.4) 12%,
+    rgba(255,245,230,0.2) 30%,
+    rgba(255,240,220,0.08) 55%,
+    rgba(255,220,190,0) 75%
+  );
+  filter: blur(40px);
+}
+#info-pulse .ip-shimmer {
+  width: 1600px; height: 1600px;
+  background: radial-gradient(
+    circle,
+    rgba(255,255,255,0.3) 0%,
+    rgba(255,248,238,0.18) 15%,
+    rgba(255,240,220,0.08) 35%,
+    rgba(255,235,210,0.03) 55%,
+    rgba(255,220,190,0) 75%
+  );
+  filter: blur(80px);
+}
+/* Animations — staggered so the pulse feels like it's rippling outward
+   in waves. Each layer has its own curve and duration. */
+#info-pulse.animate .ip-core {
+  animation: ipCore 700ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+#info-pulse.animate .ip-halo {
+  animation: ipHalo 1100ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+#info-pulse.animate .ip-shimmer {
+  animation: ipShimmer 1500ms cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+@keyframes ipCore {
+  0%   { transform: translate(-50%, -50%) scale(0.2);  opacity: 0; }
+  12%  { transform: translate(-50%, -50%) scale(0.6);  opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(2.2);  opacity: 0; }
+}
+@keyframes ipHalo {
+  0%   { transform: translate(-50%, -50%) scale(0.3);  opacity: 0; }
+  15%  { opacity: 0.9; }
+  100% { transform: translate(-50%, -50%) scale(2.4);  opacity: 0; }
+}
+@keyframes ipShimmer {
+  0%   { transform: translate(-50%, -50%) scale(0.4);  opacity: 0; }
+  20%  { opacity: 0.8; }
+  100% { transform: translate(-50%, -50%) scale(2.0);  opacity: 0; }
+}
+
 #info-backdrop {
   position: absolute;
   inset: 0;
@@ -1305,7 +1399,7 @@ body.is-fullscreen .win-resize { display: none !important; }
 <!-- Nav -->
 <nav>
   <div class="nav-links">
-    <a href="#" onclick="goHome();return false;">Feed</a><a href="#" onclick="openWork();return false;">Work</a><a href="#" onclick="openInfo();return false;">Info</a>
+    <a href="#" onclick="goHome();return false;">Feed</a><a href="#" onclick="openWork();return false;">Work</a><a href="#" onclick="openInfo(event);return false;">Info</a>
   </div>
   <div class="nav-brand" onclick="goHome()" style="cursor:pointer;">
     <span class="name">Alex Luque Garcia</span>
@@ -1360,6 +1454,12 @@ body.is-fullscreen .win-resize { display: none !important; }
 </div>
 
 <!-- Info sheet — iPhone-style modal -->
+<!-- Magical energy pulse — radiates from the user's click point when Info opens -->
+<div id="info-pulse" aria-hidden="true">
+  <span class="ip-core"></span>
+  <span class="ip-halo"></span>
+  <span class="ip-shimmer"></span>
+</div>
 <div id="info-sheet">
   <div id="info-backdrop"></div>
   <div id="info-panel">
@@ -2919,13 +3019,46 @@ let infoOpen = false;
 const infoEl       = document.getElementById('info-sheet');
 const infoBackdrop = document.getElementById('info-backdrop');
 
-function openInfo() {
+function openInfo(ev) {
   if (infoOpen) return;
   infoOpen = true;
   haptic('medium');
+  // Fire the magical energy pulse — origins from the click point if available,
+  // otherwise from the Info button's center as a fallback.
+  let px, py;
+  if (ev && ev.clientX != null) {
+    px = ev.clientX;
+    py = ev.clientY;
+  } else {
+    // Fallback: use the Info link's center
+    const infoBtn = document.querySelector('.nav-links a[onclick*="openInfo"]');
+    if (infoBtn) {
+      const r = infoBtn.getBoundingClientRect();
+      px = r.left + r.width / 2;
+      py = r.top + r.height / 2;
+    } else {
+      px = window.innerWidth / 2;
+      py = window.innerHeight / 2;
+    }
+  }
+  fireInfoPulse(px, py);
   infoEl.classList.add('open');
   const ind = mobIndicator;
   if (ind) ind.classList.remove('visible');
+}
+
+function fireInfoPulse(x, y) {
+  const p = document.getElementById('info-pulse');
+  if (!p) return;
+  // Reset — remove animate class, force reflow, re-add so animation fires
+  p.classList.remove('animate');
+  p.style.setProperty('--px', x + 'px');
+  p.style.setProperty('--py', y + 'px');
+  // Force reflow so the animation can restart
+  void p.offsetWidth;
+  requestAnimationFrame(() => p.classList.add('animate'));
+  // Clear after the longest animation completes (shimmer = 1500ms)
+  setTimeout(() => p.classList.remove('animate'), 1550);
 }
 function closeInfo() {
   if (!infoOpen) return;
