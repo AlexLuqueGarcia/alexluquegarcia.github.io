@@ -802,7 +802,10 @@ nav.hide {
   right: 3.2rem;
   top: 50%;
   transform: translateY(-50%);
-  z-index: 92;
+  /* Must be above .fly-thumb (z-index 95) so the year stays visible as
+     thumbnails fly between landing and work positions during the FLIP
+     transition. Below info-sheet (300) and detail overlays. */
+  z-index: 110;
   pointer-events: none;
   font-family: 'NM', sans-serif;
   font-size: 5.5rem;
