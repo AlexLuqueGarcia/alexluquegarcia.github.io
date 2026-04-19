@@ -623,12 +623,21 @@ nav.hide {
   bottom:var(--pad-b);
   height:var(--strip-h);
   z-index:100;
-  display:flex;
-  /* Safety clip — thumb widths are computed as floats and the browser
-     rounds them per-element, so the sum could exceed viewport by a pixel
-     or two. Without this, overflow pushes the rightmost thumb offscreen. */
+  /* No longer flex directly — thumbs are inside #strip-inner so we can
+     transform them as a group for the mobile slide animation without
+     disturbing #strip-area's fixed positioning (which translateY uses for
+     the hide-state). */
   overflow:hidden;
   transition: transform 0.6s var(--ease-smooth);
+}
+#strip-inner {
+  display: flex;
+  height: 100%;
+  width: 100%;
+  /* transform transitions are set/reset from JS per slide — see
+     slideStripNext/slideStripPrev. Default has no transition so fresh
+     buildStrip calls don't slowly animate. */
+  will-change: transform;
 }
 #strip-area.hide {
   transform: translateY(calc(100% + var(--pad-b) + 1.25rem));
@@ -1922,7 +1931,7 @@ body.is-fullscreen .win-resize { display: none !important; }
 </div>
 
 <!-- Strip -->
-<div id="strip-area"></div>
+<div id="strip-area"><div id="strip-inner"></div></div>
 
 <!-- Detail page -->
 <div id="detail">
@@ -2262,8 +2271,75 @@ let totalDur = 0;
 // dataset.i is still the projectData index, not the strip position.
 let stripOrder = [];
 
+// ──────────────── MOBILE SLIDING-WINDOW STATE ────────────────
+// On mobile (narrow viewports), the strip isn't a random slice of projects —
+// it's a window over a deterministic sequence. Every swipe advances the
+// window by one, so the user can reach every project by swiping, and the
+// "previous" project they came from is always one swipe back (memory).
+//
+// `fullSequence` is the complete project order: pinned first, then the rest
+// in year-desc order (already sorted in loadProjects). It wraps — swiping
+// past the last project loops to the first.
+//
+// `mobileWindowStart` is the index into fullSequence where the visible window
+// begins. The active ("current") project sits MOBILE_CURRENT_SLOT positions
+// into the window — so with slot 1 and size 4, arrangement is
+// [past, CURRENT, next, next+1].
+let fullSequence = [];
+let mobileWindowStart = 0;
+const MOBILE_STRIP_SIZE    = 4;
+const MOBILE_CURRENT_SLOT  = 1;   // 0-indexed: 1 past + cur + 2 upcoming
+
+function buildFullSequence() {
+  if (projectData.length === 0) return [];
+  const pinnedIdx = projectData.findIndex(p => p.pinned);
+  const pinned = pinnedIdx >= 0 ? pinnedIdx : 0;
+  // projectData is already sorted newest-first (loadProjects). Put pinned
+  // at the head, then the rest in their existing order.
+  const rest = projectData.map((_, i) => i).filter(i => i !== pinned);
+  return [pinned, ...rest];
+}
+
+// Helper: compute the 4-thumb window starting at mobileWindowStart, wrapping
+// around fullSequence. Used both by pickStripOrder and by swipe handlers.
+function getMobileWindow() {
+  const total = fullSequence.length;
+  if (total === 0) return [];
+  const size = Math.min(MOBILE_STRIP_SIZE, total);
+  const win = [];
+  for (let i = 0; i < size; i++) {
+    win.push(fullSequence[(mobileWindowStart + i) % total]);
+  }
+  return win;
+}
+
 function pickStripOrder(forceInclude = null) {
   if (projectData.length === 0) return [];
+
+  // ── Mobile: deterministic sliding window ──
+  // The window is "owned" by mobileWindowStart — we advance it in
+  // nextInStrip/prevInStrip, and re-center it here if forceInclude asks us to
+  // (e.g. restoring after detail closes, the user's last-viewed project
+  // should still be in the current slot).
+  const isMobile = window.innerWidth <= 1024;
+  if (isMobile) {
+    if (fullSequence.length === 0) {
+      fullSequence = buildFullSequence();
+    }
+    if (forceInclude !== null
+        && forceInclude >= 0
+        && forceInclude < projectData.length) {
+      const pos = fullSequence.indexOf(forceInclude);
+      if (pos >= 0) {
+        const total = fullSequence.length;
+        // Position forceInclude in the CURRENT slot of the new window
+        mobileWindowStart = (pos - MOBILE_CURRENT_SLOT + total) % total;
+      }
+    }
+    return getMobileWindow();
+  }
+
+  // ── Desktop: existing random-with-pinned logic ──
 
   // Find the pinned project. Fallback: newest (index 0 after year-desc sort)
   // so the strip still has a stable anchor even if projects.json doesn't mark
@@ -2278,12 +2354,10 @@ function pickStripOrder(forceInclude = null) {
     [pool[i], pool[j]] = [pool[j], pool[i]];
   }
 
-  // Take up to 4 random. On mobile/narrow viewports, cap lower so each thumb
-  // gets more screen width. Note: 1024 (not 768) is used because phones in
-  // landscape and small tablets exceed 768 but still have insufficient width
-  // for 5 proportional thumbs with readable titles. Mobile total:
-  // 1 pinned + 3 random = 4 thumbs. Desktop total: 5 @ 20% each.
-  const randomCount = (window.innerWidth <= 1024) ? 3 : 4;
+  // Take up to 4 random (5-thumb strip: 1 pinned + 4 random).
+  // This branch only runs on desktop (viewport > 1024) since mobile takes
+  // the sliding-window early-return above.
+  const randomCount = 4;
   let picks = pool.slice(0, randomCount);
 
   // Continuity preservation: if a "current" project is given (e.g. the one
@@ -2303,22 +2377,82 @@ function pickStripOrder(forceInclude = null) {
   return [pinned, ...picks];
 }
 
-// Advance helper for autoplay: find cur's position in stripOrder and move to
-// the next one (wrapping). If cur somehow isn't in stripOrder (shouldn't
-// happen given forceInclude logic, but defensive), fall back to the pinned.
+// Advance helper for autoplay / swipe-next. On mobile, "next" means advance
+// by 1 in fullSequence (infinite loop). On desktop, cycle through stripOrder.
+// This function is NON-mutating — it just returns the next cur. The actual
+// window-centering happens in syncMobileWindow, called from goTo after cur
+// is updated. Keeping this non-mutating means touchmove peek (which also
+// calls this to preview the next thumb) is safe to call repeatedly.
 function nextInStrip(fromIdx) {
+  const isMobile = window.innerWidth <= 1024;
+  if (isMobile) {
+    if (fullSequence.length === 0) fullSequence = buildFullSequence();
+    if (fullSequence.length === 0) return fromIdx;
+    const curPos = fullSequence.indexOf(fromIdx);
+    if (curPos < 0) return fromIdx;
+    return fullSequence[(curPos + 1) % fullSequence.length];
+  }
+  // Desktop: cycle through stripOrder
   if (!stripOrder || stripOrder.length === 0) return fromIdx;
   const pos = stripOrder.indexOf(fromIdx);
   if (pos < 0) return stripOrder[0];
   return stripOrder[(pos + 1) % stripOrder.length];
 }
 
-// Reverse counterpart for swipe-back / ArrowLeft.
+// Reverse counterpart for swipe-back / ArrowLeft. Also non-mutating.
 function prevInStrip(fromIdx) {
+  const isMobile = window.innerWidth <= 1024;
+  if (isMobile) {
+    if (fullSequence.length === 0) fullSequence = buildFullSequence();
+    if (fullSequence.length === 0) return fromIdx;
+    const curPos = fullSequence.indexOf(fromIdx);
+    if (curPos < 0) return fromIdx;
+    return fullSequence[(curPos - 1 + fullSequence.length) % fullSequence.length];
+  }
+  // Desktop: cycle
   if (!stripOrder || stripOrder.length === 0) return fromIdx;
   const pos = stripOrder.indexOf(fromIdx);
   if (pos < 0) return stripOrder[0];
   return stripOrder[(pos - 1 + stripOrder.length) % stripOrder.length];
+}
+
+// Re-center the mobile sliding window so `cur` sits at MOBILE_CURRENT_SLOT.
+// Called from goTo on mobile after cur updates. For ±1 window changes (the
+// common case — user swiped once) we animate the slide; for larger jumps
+// (e.g. tapping a thumb 3 projects away) we hard-rebuild since there's no
+// sensible "slide by N" animation that keeps all 4 thumbs relevant.
+function syncMobileWindow() {
+  const isMobile = window.innerWidth <= 1024;
+  if (!isMobile) return;
+  if (fullSequence.length === 0) fullSequence = buildFullSequence();
+  if (fullSequence.length === 0) return;
+  const curPos = fullSequence.indexOf(cur);
+  if (curPos < 0) return;
+  const total = fullSequence.length;
+  const oldStart = mobileWindowStart;
+  const newStart = (curPos - MOBILE_CURRENT_SLOT + total) % total;
+  if (newStart === oldStart) return;  // window already correct
+
+  // Compute shortest signed delta between old and new start (handles wrap
+  // around the sequence). Positive = window moved forward (slide next),
+  // negative = moved backward (slide prev).
+  let delta = newStart - oldStart;
+  if (delta >  total / 2) delta -= total;
+  if (delta < -total / 2) delta += total;
+
+  mobileWindowStart = newStart;
+  stripOrder = getMobileWindow();
+
+  if (delta === 1) {
+    slideStripNext();
+  } else if (delta === -1) {
+    slideStripPrev();
+  } else {
+    // Jump of |delta| > 1 — hard rebuild (e.g. user tapped a thumb
+    // several positions away, or returning from detail view). No slide
+    // animation since there's no natural "slide by many" motion.
+    buildStrip();
+  }
 }
 
 // Pick a fresh set of strip projects + rebuild the DOM. Called on every
@@ -2463,7 +2597,7 @@ function buildStrip() {
     });
     t.addEventListener('touchstart', (e) => {
       // Show the inverted overlay on all other thumbs, clear on this one
-      stripEl.classList.add('strip-pressing');
+      stripOuterEl.classList.add('strip-pressing');
       t.classList.add('pressed');
       if (detailOpen || thumbIndex !== cur) return;
       scrubStart(e.touches[0].clientX, t);
@@ -2476,12 +2610,12 @@ function buildStrip() {
       scrubEnd();
       // Keep overlay visible briefly after release, then fade out
       setTimeout(() => {
-        stripEl.classList.remove('strip-pressing');
+        stripOuterEl.classList.remove('strip-pressing');
         t.classList.remove('pressed');
       }, 250);
     }, { passive: true });
     t.addEventListener('touchcancel', () => {
-      stripEl.classList.remove('strip-pressing');
+      stripOuterEl.classList.remove('strip-pressing');
       t.classList.remove('pressed');
     }, { passive: true });
 
@@ -2507,6 +2641,253 @@ function buildStrip() {
   }
 }
 
+/* ─────────────────────────────────────────────────────────
+   MOBILE SLIDE ANIMATION
+   ─────────────────────────────────────────────────────────
+   When the mobile sliding window advances by exactly ±1 (the common case —
+   user swiped once), we animate the change instead of hard-rebuilding:
+
+   Slide NEXT (swipe to next project):
+     - Build the incoming thumb (appears at stripOrder[last])
+     - Append it at end — it sits off-screen right, clipped by overflow:hidden
+     - Animate #strip-inner transform from 0 → translateX(-firstThumbWidth)
+     - The old first thumb slides off-left, the new thumb slides into view
+     - On transitionend, remove the old first thumb and reset transform
+
+   Slide PREV (swipe back):
+     - Build the incoming thumb (appears at stripOrder[0])
+     - Prepend it — since #strip-inner is flex, this pushes everything right
+     - Start with transform: translateX(-newThumbWidth) so new thumb is
+       initially off-screen left
+     - Animate to translateX(0)
+     - On transitionend, remove the old last thumb and reset transform
+
+   If a slide is triggered while another is animating, we skip straight to
+   the end state via buildStrip — no stacked/janky animations. */
+
+let stripAnimating = false;
+const STRIP_SLIDE_MS = 420;
+
+// Build a single thumb DOM element. Extracted from buildStrip's forEach so
+// slide animations can construct one ad-hoc. All event handlers/behavior
+// must stay in sync with the forEach version — if you change one, update
+// both. (buildStrip still does its own inline construction to avoid
+// per-thumb function-call overhead on first paint.)
+function buildSingleThumb(projIdx, width, renderSliceCount) {
+  const p = projectData[projIdx];
+  const t = document.createElement('div');
+  t.className = 'thumb';
+  t.dataset.i = projIdx;
+  t.style.width = width + 'px';
+
+  const frames     = projectDetails[projIdx]?.thumbFrames || [];
+  const slicesHTML = buildThumbSlices(frames, p.tc, renderSliceCount);
+
+  t.innerHTML = `
+    <div class="thumb-bg">${slicesHTML}</div>
+    <div class="thumb-black"></div>
+    <div class="thumb-marker"></div>
+    <div class="thumb-corners"><span class="tc-rc"></span></div>
+    <div class="thumb-label">${p.name}</div>`;
+
+  const thumbIndex = projIdx;
+  t.addEventListener('mousedown', (e) => {
+    if (detailOpen) return;
+    if (thumbIndex !== cur) return;
+    e.preventDefault();
+    scrubStart(e.clientX, t);
+  });
+  t.addEventListener('click', (e) => {
+    if (detailOpen) return;
+    if (thumbIndex !== cur) { goTo(thumbIndex); return; }
+    if (!isTouch && !scrubState.didScrub) {
+      const rect = t.getBoundingClientRect();
+      seekVideo((e.clientX - rect.left) / rect.width);
+    }
+  });
+  t.addEventListener('touchstart', (e) => {
+    stripOuterEl.classList.add('strip-pressing');
+    t.classList.add('pressed');
+    if (detailOpen || thumbIndex !== cur) return;
+    scrubStart(e.touches[0].clientX, t);
+  }, { passive: true });
+  t.addEventListener('touchmove', (e) => {
+    if (!scrubState.active) return;
+    scrubMove(e.touches[0].clientX);
+  }, { passive: true });
+  t.addEventListener('touchend', () => {
+    scrubEnd();
+    setTimeout(() => {
+      stripOuterEl.classList.remove('strip-pressing');
+      t.classList.remove('pressed');
+    }, 250);
+  }, { passive: true });
+  t.addEventListener('touchcancel', () => {
+    stripOuterEl.classList.remove('strip-pressing');
+    t.classList.remove('pressed');
+  }, { passive: true });
+
+  return t;
+}
+
+// Compute the NEW proportional widths for every thumb in the current
+// stripOrder. Mirrors buildStrip's mobile branch width math so the two
+// stay visually identical. Returns pixel widths summing to viewport.
+function computeMobileProportionalWidths() {
+  const durs = stripOrder.map(i => projectData[i]?.duration || 0);
+  const rawMin = Math.min(...durs);
+  const rawMax = Math.max(...durs);
+  const equalShare = 1 / stripOrder.length;
+  const minShare = equalShare * 0.75;
+  const maxShare = equalShare * 1.50;
+  let widthShares;
+  if (rawMax > rawMin) {
+    widthShares = durs.map(d => {
+      const ratio = (d - rawMin) / (rawMax - rawMin);
+      return minShare + ratio * (maxShare - minShare);
+    });
+    const sumShares = widthShares.reduce((s, v) => s + v, 0);
+    widthShares = widthShares.map(s => s / sumShares);
+  } else {
+    widthShares = durs.map(() => equalShare);
+  }
+  return widthShares.map(s => s * window.innerWidth);
+}
+
+// Compute slice count for a single project using the mobile global budget.
+// Mirrors buildStrip: longer videos get denser filmstrips (more slices).
+function computeMobileSliceCount(projIdx) {
+  const TOTAL_MOBILE_SLICES = 80;
+  const totalDurInWindow = stripOrder.reduce((s, i) => s + (projectData[i]?.duration || 0), 0) || 1;
+  const dur = projectData[projIdx]?.duration || 0;
+  return Math.max(4, Math.round(TOTAL_MOBILE_SLICES * dur / totalDurInWindow));
+}
+
+// Apply new proportional widths to the current 4 thumbs with a smooth
+// transition. Called at the end of each slide animation so widths redistribute
+// gracefully from the slide's initial (symmetric) state to the correct
+// new-set proportions. Each thumb's transition is cleared after the
+// animation completes so subsequent hard rebuilds (from buildStrip) don't
+// inadvertently trigger a width transition.
+function redistributeThumbWidths() {
+  const targets = computeMobileProportionalWidths();
+  const thumbs = Array.from(stripEl.children);
+  thumbs.forEach((t, i) => {
+    if (targets[i] === undefined) return;
+    t.style.transition = `width ${STRIP_SLIDE_MS}ms var(--ease-smooth)`;
+    t.style.width = targets[i] + 'px';
+  });
+  // Clear the transition afterward so next hard rebuild is instant
+  setTimeout(() => {
+    thumbs.forEach(t => {
+      if (t.parentNode) t.style.transition = '';
+    });
+  }, STRIP_SLIDE_MS + 80);
+}
+
+function slideStripNext() {
+  // If already animating, skip animation and snap to current state
+  if (stripAnimating) { buildStrip(); return; }
+
+  const firstThumb = stripEl.firstElementChild;
+  if (!firstThumb) { buildStrip(); return; }
+
+  // The new project that needs to appear at the end is the last in stripOrder
+  // (syncMobileWindow has already updated mobileWindowStart + stripOrder)
+  const incomingIdx = stripOrder[stripOrder.length - 1];
+  if (incomingIdx === undefined) { buildStrip(); return; }
+
+  // Use the outgoing thumb's CURRENT rendered width for the incoming thumb.
+  // This makes the slide perfectly symmetric — as much is revealed on the
+  // right as is hidden on the left. After the slide completes,
+  // redistributeThumbWidths() smoothly adjusts every thumb to its correct
+  // new proportional width.
+  const shiftPx = firstThumb.offsetWidth;
+  const incomingThumb = buildSingleThumb(
+    incomingIdx,
+    shiftPx,
+    computeMobileSliceCount(incomingIdx)
+  );
+  stripEl.appendChild(incomingThumb);
+
+  stripAnimating = true;
+
+  // Force reflow to lock the "before" state before the transition kicks in
+  stripEl.style.transition = 'none';
+  stripEl.style.transform = 'translateX(0px)';
+  void stripEl.offsetWidth;
+
+  // Start the animation in the next frame
+  requestAnimationFrame(() => {
+    stripEl.style.transition = `transform ${STRIP_SLIDE_MS}ms var(--ease-smooth)`;
+    stripEl.style.transform = `translateX(-${shiftPx}px)`;
+  });
+
+  const cleanup = () => {
+    if (!stripAnimating) return;
+    stripAnimating = false;
+    // Remove the outgoing thumb and reset transform in one synchronous block
+    // so the browser batches them — no intermediate frame where the strip
+    // appears at the wrong position.
+    if (firstThumb.parentNode) firstThumb.remove();
+    stripEl.style.transition = 'none';
+    stripEl.style.transform = 'translateX(0px)';
+    // Smoothly redistribute widths from "symmetric slide" to proper
+    // new-set proportions
+    redistributeThumbWidths();
+    setActiveThumb(cur);
+    setProgress(localProgress);
+  };
+  stripEl.addEventListener('transitionend', cleanup, { once: true });
+  setTimeout(cleanup, STRIP_SLIDE_MS + 80);
+}
+
+function slideStripPrev() {
+  if (stripAnimating) { buildStrip(); return; }
+
+  const lastThumb = stripEl.lastElementChild;
+  if (!lastThumb) { buildStrip(); return; }
+
+  // Incoming project appears at the START of the window
+  const incomingIdx = stripOrder[0];
+  if (incomingIdx === undefined) { buildStrip(); return; }
+
+  // Symmetric slide: incoming's initial width = outgoing's (last) width,
+  // so the amount that exits right equals the amount that enters left.
+  // redistributeThumbWidths runs after cleanup to settle to proportional.
+  const shiftPx = lastThumb.offsetWidth;
+  const incomingThumb = buildSingleThumb(
+    incomingIdx,
+    shiftPx,
+    computeMobileSliceCount(incomingIdx)
+  );
+  stripEl.insertBefore(incomingThumb, stripEl.firstChild);
+
+  stripAnimating = true;
+
+  stripEl.style.transition = 'none';
+  stripEl.style.transform = `translateX(-${shiftPx}px)`;
+  void stripEl.offsetWidth;
+
+  requestAnimationFrame(() => {
+    stripEl.style.transition = `transform ${STRIP_SLIDE_MS}ms var(--ease-smooth)`;
+    stripEl.style.transform = 'translateX(0px)';
+  });
+
+  const cleanup = () => {
+    if (!stripAnimating) return;
+    stripAnimating = false;
+    if (lastThumb.parentNode) lastThumb.remove();
+    stripEl.style.transition = 'none';
+    stripEl.style.transform = 'translateX(0px)';
+    redistributeThumbWidths();
+    setActiveThumb(cur);
+    setProgress(localProgress);
+  };
+  stripEl.addEventListener('transitionend', cleanup, { once: true });
+  setTimeout(cleanup, STRIP_SLIDE_MS + 80);
+}
+
 function seekVideo(pct) {
   const vid = document.getElementById('video-bg-inner');
   pct = Math.max(0, Math.min(1, pct));
@@ -2530,10 +2911,10 @@ function flashActiveThumb() {
   // Clear any previous flash
   if (_flashTimer) clearTimeout(_flashTimer);
   thumbs.forEach(x => x.classList.remove('pressed'));
-  stripEl.classList.add('strip-pressing');
+  stripOuterEl.classList.add('strip-pressing');
   active.classList.add('pressed');
   _flashTimer = setTimeout(() => {
-    stripEl.classList.remove('strip-pressing');
+    stripOuterEl.classList.remove('strip-pressing');
     active.classList.remove('pressed');
     _flashTimer = null;
   }, 350);
@@ -2600,7 +2981,8 @@ if (isTouch) {
 const hintEl       = document.getElementById('scroll-hint');
 const navEl        = document.querySelector('nav');
 const detailEl     = document.getElementById('detail');
-const stripEl      = document.getElementById('strip-area');
+const stripOuterEl = document.getElementById('strip-area');
+const stripEl      = document.getElementById('strip-inner');
 const mobIndicator = document.getElementById('mob-play-indicator');
 
 let cur = 0, localProgress = 0, playing = true;
@@ -2980,6 +3362,12 @@ function goTo(i) {
   // always resume when switching project — keeps video + marker in sync
   setPlaying(true);
   haptic('light');
+  // On mobile, keep the sliding-window strip centered on the new cur.
+  // This advances/rewinds the 4-thumb window as projects change, giving the
+  // infinite-feed behavior where every swipe reveals a new rightmost thumb
+  // and the leftmost thumb exits. Desktop is unchanged (stripOrder stays
+  // the same random slice until reshuffle triggers).
+  syncMobileWindow();
 }
 
 // Haptic feedback — multi-layered tactile response system.
@@ -4336,13 +4724,13 @@ function closeWork(skipAnim = false) {
     hintEl.classList.remove('hide');
     // Start the strip below the viewport, then animate it up to its final position
     stripEl.style.visibility = '';
-    stripEl.classList.add('hide');  // starts translated down
+    stripOuterEl.classList.add('hide');  // starts translated down
     // Reshuffle while strip is translated offscreen — user sees a fresh set
     // of random projects when the strip slides back up.
     reshuffleStrip(cur);
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        stripEl.classList.remove('hide');  // slides up (existing .hide transition handles it)
+        stripOuterEl.classList.remove('hide');  // slides up (existing .hide transition handles it)
       });
     });
     setTimeout(() => { transitioning = false; }, 700);
@@ -4766,7 +5154,7 @@ function openDetail() {
   haptic('medium');
   fillDetail(cur);
 
-  stripEl.classList.add('hide');
+  stripOuterEl.classList.add('hide');
   metaEl.classList.add('hide');
   hintEl.classList.add('hide');
 
@@ -4844,7 +5232,7 @@ function closeDetail() {
     // doesn't suddenly change underneath them.
     reshuffleStrip(cur);
 
-    stripEl.classList.remove('hide');
+    stripOuterEl.classList.remove('hide');
     metaEl.classList.remove('hide');
     hintEl.classList.remove('hide');
 
@@ -5147,12 +5535,27 @@ window.addEventListener('load', async () => {
   // 1. Load project metadata
   await loadProjects();
 
-  // 2. Pick the initial strip order. stripOrder[0] is the pinned project
-  // (or the newest as fallback) — that's the one users see first, so preload
-  // its video and make it the starting `cur`.
+  // 2. Pick the initial strip order. The initial `cur` is the pinned project
+  // (or newest as fallback). On mobile with the sliding-window model, the
+  // current thumb sits in MOBILE_CURRENT_SLOT, so we init the window to put
+  // pinned there. On desktop, pinned is stripOrder[0].
   stripOrder = pickStripOrder();
-  const initialIdx = stripOrder[0] ?? 0;
+  const isMobileInit = window.innerWidth <= 1024;
+  // On mobile, initial cur = pinned (fullSequence[0]). syncMobileWindow below
+  // will re-center the window so pinned lands in CURRENT_SLOT.
+  const initialIdx = isMobileInit && fullSequence.length > 0
+    ? fullSequence[0]
+    : (stripOrder[0] ?? 0);
   cur = initialIdx;
+  // Re-center mobile window on pinned, so strip shows [prev, pinned, next, next+1]
+  // with pinned active, consistent with how subsequent swipes arrange the strip.
+  if (isMobileInit) {
+    const total = fullSequence.length;
+    if (total > 0) {
+      mobileWindowStart = (0 - MOBILE_CURRENT_SLOT + total) % total;
+      stripOrder = getMobileWindow();
+    }
+  }
 
   // 3. Preload initial video at highest browser priority
   if (projectData[initialIdx]?.src) {
