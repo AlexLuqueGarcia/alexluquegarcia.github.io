@@ -340,6 +340,18 @@
       </div>
     </div>
 
+    <!-- Photo picker (also only for new projects — edit view uses media-section) -->
+    <div id="photo-field">
+      <label>Photos <span class="hint">optional — auto-renamed 01.jpg, 02.jpg, ... in the order you pick them</span></label>
+      <div class="photo-grid" id="new-photo-grid">
+        <div class="asset-empty" id="new-photo-empty">No photos picked yet — they're optional.</div>
+      </div>
+      <div class="btn-row" style="margin-top: 0.75rem;">
+        <button type="button" class="ghost" id="add-new-photos-btn">+ Add photos</button>
+        <input type="file" id="new-photos-input" accept="image/*" multiple class="hidden">
+      </div>
+    </div>
+
     <!-- Metadata fields -->
     <h2>Metadata</h2>
     <div class="field">
@@ -453,6 +465,11 @@
         <span class="label">Extracting + uploading thumbnails</span>
         <span class="detail" id="stage-thumbs-detail"></span>
       </div>
+      <div class="stage" id="stage-photos" data-stage="photos">
+        <span class="icon"></span>
+        <span class="label">Uploading photos</span>
+        <span class="detail" id="stage-photos-detail"></span>
+      </div>
       <div class="stage" id="stage-commit" data-stage="commit">
         <span class="icon"></span>
         <span class="label">Committing to GitHub</span>
@@ -485,6 +502,7 @@ const state = {
   videoFile: null,     // File object picked by the user
   videoDuration: 0,    // seconds, from loadedmetadata
   assets: null,        // {photos, thumbs, videoUrl, videoGuid} from list-assets
+  newPhotos: [],       // File[] picked for a new project, not yet uploaded
 };
 
 const api = (path, opts = {}) => {
@@ -655,17 +673,20 @@ function startNewProject() {
   state.videoFile = null;
   state.videoDuration = 0;
   state.assets = null;
+  state.newPhotos = [];
   $('form-title').textContent = 'New project';
   $('submit-btn').textContent = 'Create project';
   fields.forEach(k => $('f-' + k).value = '');
   $('f-pinned').checked = false;
   $('f-folder').disabled = false;
   show($('video-field'));
+  show($('photo-field'));      // photo picker visible only for new projects
   hide($('delete-btn'));
   hide($('progress-block'));
   hide($('form-status'));
-  hide($('media-section'));   // not relevant for a new project
+  hide($('media-section'));    // not relevant for a new project
   resetDropArea();
+  renderNewPhotos();
 }
 
 function startEditProject(folder) {
@@ -690,6 +711,7 @@ function startEditProject(folder) {
   $('f-credits').value = (p.credits || '').replace(/\\n/g, '\n');
   $('f-pinned').checked = !!p.pinned;
   hide($('video-field'));        // don't allow video pick on edit (uses Replace btn)
+  hide($('photo-field'));        // photo picker is new-project-only (edit uses media-section)
   show($('delete-btn'));
   hide($('progress-block'));
   hide($('form-status'));
@@ -752,6 +774,52 @@ function handleFilePick(file) {
 }
 
 /* ─────────────────────────────────────────────────────────
+   New-project photo picker — holds File objects in state until submit.
+   Uploads happen as part of the create flow, after thumbnails.
+   ───────────────────────────────────────────────────────── */
+$('add-new-photos-btn').addEventListener('click', () => $('new-photos-input').click());
+$('new-photos-input').addEventListener('change', (e) => {
+  const files = Array.from(e.target.files || []);
+  if (!files.length) return;
+  // Filter out anything that's not an image (browser usually does this but
+  // double-check in case someone drags odd files in via a future drop zone).
+  files.forEach(f => {
+    if (f.type.startsWith('image/')) state.newPhotos.push(f);
+  });
+  renderNewPhotos();
+  e.target.value = '';  // allow re-picking the same file if desired
+});
+
+function renderNewPhotos() {
+  const grid = $('new-photo-grid');
+  if (!state.newPhotos.length) {
+    grid.innerHTML = '<div class="asset-empty" id="new-photo-empty">No photos picked yet — they\'re optional.</div>';
+    return;
+  }
+  grid.innerHTML = '';
+  state.newPhotos.forEach((file, idx) => {
+    const el = document.createElement('div');
+    el.className = 'asset';
+    const url = URL.createObjectURL(file);
+    el.style.backgroundImage = `url('${url}')`;
+    // Display the future final filename so the user sees how it'll be named
+    const slotName = String(idx + 1).padStart(2, '0') + '.jpg';
+    el.innerHTML = `
+      <button class="asset-delete" title="Remove">×</button>
+      <div class="asset-name">${slotName}</div>
+    `;
+    el.querySelector('.asset-delete').addEventListener('click', (e) => {
+      e.stopPropagation();
+      // Free the object URL to avoid leaks on long sessions
+      try { URL.revokeObjectURL(url); } catch {}
+      state.newPhotos.splice(idx, 1);
+      renderNewPhotos();
+    });
+    grid.appendChild(el);
+  });
+}
+
+/* ─────────────────────────────────────────────────────────
    Submit — create OR edit
    ───────────────────────────────────────────────────────── */
 $('submit-btn').addEventListener('click', async () => {
@@ -805,7 +873,14 @@ async function submitCreate() {
   $('submit-btn').disabled = true;
   hide($('form-status'));
   show($('progress-block'));
-  ['create','upload','thumbs','commit'].forEach(s => setStage(s, '', ''));
+  // Make sure photos stage is visible (replace-video flow hides it)
+  show($('stage-photos'));
+  $('progress-block').querySelector('h2').textContent = 'Upload Progress';
+  $('stage-create').querySelector('.label').textContent = 'Creating video entry on Bunny Stream';
+  $('stage-upload').querySelector('.label').textContent = 'Uploading video to Bunny Stream';
+  $('stage-thumbs').querySelector('.label').textContent = 'Extracting + uploading thumbnails';
+  $('stage-commit').querySelector('.label').textContent = 'Committing to GitHub';
+  ['create','upload','thumbs','photos','commit'].forEach(s => setStage(s, '', ''));
 
   try {
     // 1. Create Stream video entry
@@ -834,7 +909,19 @@ async function submitCreate() {
     });
     setStage('thumbs', 'done', `${frameList.length} frames`);
 
-    // 4. Commit info.txt + projects.json
+    // 4. Upload photos (if any). Named 01.jpg, 02.jpg, ... in pick order —
+    // new project has no pre-existing photos, so numbering always starts at 01.
+    if (state.newPhotos.length > 0) {
+      setStage('photos', 'active', `0/${state.newPhotos.length}`);
+      await uploadNewProjectPhotos(folder, state.newPhotos, (done, total) => {
+        setStage('photos', 'active', `${done}/${total}`);
+      });
+      setStage('photos', 'done', `${state.newPhotos.length} photo${state.newPhotos.length === 1 ? '' : 's'}`);
+    } else {
+      setStage('photos', 'done', 'none');
+    }
+
+    // 5. Commit info.txt + projects.json
     setStage('commit', 'active', '');
     const info = gatherInfo();
     info.video  = create.streamUrl;
@@ -855,7 +942,7 @@ async function submitCreate() {
       switchView('list');
     }, 1800);
   } catch (e) {
-    ['create','upload','thumbs','commit'].forEach(s => {
+    ['create','upload','thumbs','photos','commit'].forEach(s => {
       const el = $('stage-' + s);
       if (el.classList.contains('active')) el.classList.remove('active'), el.classList.add('error');
     });
@@ -863,6 +950,27 @@ async function submitCreate() {
   } finally {
     $('submit-btn').disabled = false;
   }
+}
+
+// Upload a batch of photos for a new project (folder just created, no
+// existing photos to worry about). Photos are numbered 01.jpg onward in the
+// order the user picked them. Runs uploads in parallel with concurrency 3.
+async function uploadNewProjectPhotos(folder, files, onProgress) {
+  const CONCURRENCY = 3;
+  let done = 0;
+  let next = 0;
+  async function worker() {
+    while (true) {
+      const idx = next++;
+      if (idx >= files.length) return;
+      const slotName = String(idx + 1).padStart(2, '0') + '.jpg';
+      const blob = await encodePhotoForUpload(files[idx]);
+      await uploadPhotoBlob(folder, slotName, blob);
+      done++;
+      onProgress && onProgress(done, files.length);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, files.length) }, worker));
 }
 
 async function submitEdit() {
@@ -1152,20 +1260,25 @@ $('add-photos-input').addEventListener('change', async (e) => {
 });
 
 function nextPhotoSlots(count) {
-  // Find used numeric slots (01, 02, ...) from current photos, then return
-  // the lowest `count` unused slots — or sequential past the max if there
-  // are no gaps. Keeps numbering tidy when photos are added/removed.
-  const used = new Set();
+  // Find the highest existing slot number, then return `count` consecutive
+  // slots starting from max+1. This preserves upload order as display order —
+  // new photos always appear after existing ones in the site's grid,
+  // regardless of any gaps left by deletions. If no photos exist yet,
+  // numbering starts at 01.
+  let maxUsed = 0;
   (state.assets?.photos || []).forEach(p => {
     const m = p.name.match(/^(\d{2})\./);
-    if (m) used.add(parseInt(m[1], 10));
+    if (m) {
+      const n = parseInt(m[1], 10);
+      if (n > maxUsed) maxUsed = n;
+    }
   });
   const slots = [];
-  let n = 1;
+  let n = maxUsed + 1;
   while (slots.length < count) {
-    if (!used.has(n)) { slots.push(n); used.add(n); }
-    n++;
     if (n > 99) break;
+    slots.push(n);
+    n++;
   }
   return slots;
 }
@@ -1309,6 +1422,9 @@ async function replaceVideoFlow(file) {
   hide($('form-status'));
   show($('progress-block'));
   $('progress-block').querySelector('h2').textContent = 'Replacing video';
+  // Photos stage isn't relevant when replacing a video — hide it so only the
+  // 4 relevant steps are visible.
+  hide($('stage-photos'));
   ['create','upload','thumbs','commit'].forEach(s => setStage(s, '', ''));
   // Override stage labels to reflect replacement flow
   $('stage-create').querySelector('.label').textContent = 'Creating new video entry on Bunny Stream';
