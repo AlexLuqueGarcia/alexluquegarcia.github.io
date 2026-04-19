@@ -2668,6 +2668,17 @@ function buildStrip() {
 let stripAnimating = false;
 const STRIP_SLIDE_MS = 420;
 
+// Gesture-linked drag state. When the user swipes the bg video, we link the
+// strip's horizontal translate to their finger in real time (same as how
+// the bg video itself follows finger dy). To allow dragging in either
+// direction on a single gesture, we pre-render BOTH a lookback (prev
+// project) and a lookahead (next project) thumb at drag start, giving the
+// strip 6 thumbs briefly. On commit we keep the correct 4; on cancel we
+// remove both extras and snap back.
+let stripDragging = false;
+let stripDragLookbackWidth = 0;
+let stripDragFirstVisibleWidth = 0;
+
 // Build a single thumb DOM element. Extracted from buildStrip's forEach so
 // slide animations can construct one ad-hoc. All event handlers/behavior
 // must stay in sync with the forEach version — if you change one, update
@@ -2783,6 +2794,143 @@ function redistributeThumbWidths() {
       if (t.parentNode) t.style.transition = '';
     });
   }, STRIP_SLIDE_MS + 80);
+}
+
+/* ─────────────────────────────────────────────────────────
+   GESTURE-LINKED STRIP DRAG
+   ─────────────────────────────────────────────────────────
+   When user swipes the bg video, the strip's horizontal translate follows
+   their finger in real time. At drag start we pre-render a lookback
+   (prev) and lookahead (next) thumb — giving the strip 6 thumbs briefly.
+   Direction is determined by dy sign as the user drags. On commit we keep
+   4 (drop lookback+oldSlot0 or lookahead+oldSlot3 depending on direction).
+   On cancel we remove both extras and snap back. */
+
+function prepareStripDrag() {
+  if (stripDragging) return;
+  const isMobile = window.innerWidth <= 1024;
+  if (!isMobile) return;
+  if (stripAnimating) return;  // don't interfere with in-flight slide
+  if (fullSequence.length === 0) fullSequence = buildFullSequence();
+  if (fullSequence.length === 0) return;
+  if (stripEl.children.length === 0) return;
+
+  stripDragging = true;
+
+  // Capture current widths for drag-progress math. The lookback/lookahead
+  // get widths matching the outgoing thumbs (symmetric drag), so the strip
+  // never has visual gaps as it moves.
+  const firstThumb = stripEl.firstElementChild;
+  const lastThumb  = stripEl.lastElementChild;
+  stripDragFirstVisibleWidth = firstThumb.offsetWidth;
+  const lastVisibleWidth     = lastThumb.offsetWidth;
+  stripDragLookbackWidth     = stripDragFirstVisibleWidth;
+
+  // Resolve prev + next project indices in fullSequence
+  const total = fullSequence.length;
+  const lookbackSeqIdx  = (mobileWindowStart - 1 + total) % total;
+  const lookaheadSeqIdx = (mobileWindowStart + MOBILE_STRIP_SIZE) % total;
+  const lookbackProjIdx  = fullSequence[lookbackSeqIdx];
+  const lookaheadProjIdx = fullSequence[lookaheadSeqIdx];
+
+  const lookbackThumb  = buildSingleThumb(lookbackProjIdx,  stripDragLookbackWidth, computeMobileSliceCount(lookbackProjIdx));
+  const lookaheadThumb = buildSingleThumb(lookaheadProjIdx, lastVisibleWidth,       computeMobileSliceCount(lookaheadProjIdx));
+  stripEl.insertBefore(lookbackThumb, stripEl.firstChild);
+  stripEl.appendChild(lookaheadThumb);
+
+  // Initial translate: hide lookback off-left so the visible strip looks unchanged
+  stripEl.style.transition = 'none';
+  stripEl.style.transform  = `translateX(-${stripDragLookbackWidth}px)`;
+  void stripEl.offsetWidth;  // flush the no-transition state
+}
+
+function updateStripDragPosition(dy) {
+  if (!stripDragging) return;
+
+  const h = window.innerHeight;
+  const threshold = h * 0.2;  // same commit threshold used by video swipe
+  // Progress is signed: positive = swipe down (prev), negative = up (next).
+  // At |progress| = 1 we've reached the commit threshold and the strip
+  // should have fully slid by one thumb width.
+  const progress = dy / threshold;
+
+  let translate;
+  if (progress >= 0) {
+    // Prev direction — interpolate from -lookbackWidth (hidden) to 0 (fully revealed)
+    const clamped = Math.min(progress, 1.1);  // small over-drag allowance
+    translate = -stripDragLookbackWidth + stripDragLookbackWidth * clamped;
+  } else {
+    // Next direction — interpolate from -lookbackWidth to -(lookbackWidth + firstVisibleWidth)
+    const clamped = Math.max(progress, -1.1);
+    translate = -stripDragLookbackWidth + stripDragFirstVisibleWidth * clamped;
+  }
+
+  // Keep transition off during drag so the strip stays lock-step with finger
+  stripEl.style.transition = 'none';
+  stripEl.style.transform = `translateX(${translate}px)`;
+}
+
+function finishStripDrag(commit, direction) {
+  // direction: 1 = next (swipe was up), -1 = prev (swipe was down), 0 = ignore
+  if (!stripDragging) return;
+  stripDragging = false;
+
+  const SETTLE_MS = 280;  // shorter than full slide since user already did most of the motion
+  stripEl.style.transition = `transform ${SETTLE_MS}ms cubic-bezier(0.33,1,0.68,1)`;
+
+  const children = Array.from(stripEl.children);
+  const lookbackThumb  = children[0];
+  const lookaheadThumb = children[children.length - 1];
+  const firstVisible   = children[1];
+  const lastVisible    = children[children.length - 2];
+
+  if (!commit || direction === 0) {
+    // Snap back to neutral — lookback hidden left, lookahead hidden right
+    stripEl.style.transform = `translateX(-${stripDragLookbackWidth}px)`;
+    setTimeout(() => {
+      if (lookbackThumb  && lookbackThumb.parentNode)  lookbackThumb.remove();
+      if (lookaheadThumb && lookaheadThumb.parentNode) lookaheadThumb.remove();
+      stripEl.style.transition = 'none';
+      stripEl.style.transform  = 'translateX(0px)';
+    }, SETTLE_MS);
+    return;
+  }
+
+  // Commit — advance or reverse mobileWindowStart by one, then settle.
+  // Doing this HERE (instead of relying on syncMobileWindow) means goTo
+  // can be called with skipStripSync=true, so the strip doesn't try to
+  // animate again on top of our drag.
+  const total = fullSequence.length;
+  if (direction === 1) {
+    // Next: slide left until oldSlot0 fully exits (along with lookback)
+    const finalTranslate = -(stripDragLookbackWidth + stripDragFirstVisibleWidth);
+    stripEl.style.transform = `translateX(${finalTranslate}px)`;
+    mobileWindowStart = (mobileWindowStart + 1) % total;
+    stripOrder = getMobileWindow();
+    setTimeout(() => {
+      if (lookbackThumb && lookbackThumb.parentNode) lookbackThumb.remove();
+      if (firstVisible  && firstVisible.parentNode)  firstVisible.remove();
+      stripEl.style.transition = 'none';
+      stripEl.style.transform  = 'translateX(0px)';
+      redistributeThumbWidths();
+      setActiveThumb(cur);
+      setProgress(localProgress);
+    }, SETTLE_MS);
+  } else {
+    // Prev: slide right until lookback fully reveals (along with lastVisible exiting right)
+    stripEl.style.transform = 'translateX(0px)';
+    mobileWindowStart = (mobileWindowStart - 1 + total) % total;
+    stripOrder = getMobileWindow();
+    setTimeout(() => {
+      if (lookaheadThumb && lookaheadThumb.parentNode) lookaheadThumb.remove();
+      if (lastVisible    && lastVisible.parentNode)    lastVisible.remove();
+      stripEl.style.transition = 'none';
+      stripEl.style.transform  = 'translateX(0px)';
+      redistributeThumbWidths();
+      setActiveThumb(cur);
+      setProgress(localProgress);
+    }, SETTLE_MS);
+  }
 }
 
 function slideStripNext() {
@@ -3350,7 +3498,7 @@ function setPlaying(val) {
   }
 }
 
-function goTo(i) {
+function goTo(i, skipStripSync = false) {
   scrubToken++; // Abort any in-flight scrubEnd — project is changing
   cancelAnimationFrame(raf);
   lastTs = null;
@@ -3367,7 +3515,11 @@ function goTo(i) {
   // infinite-feed behavior where every swipe reveals a new rightmost thumb
   // and the leftmost thumb exits. Desktop is unchanged (stripOrder stays
   // the same random slice until reshuffle triggers).
-  syncMobileWindow();
+  //
+  // skipStripSync=true is passed by the gesture-drag path (finishStripDrag
+  // already advanced the window + animated the settle, so syncMobileWindow
+  // would just fire a redundant rebuild).
+  if (!skipStripSync) syncMobileWindow();
 }
 
 // Haptic feedback — multi-layered tactile response system.
@@ -5282,6 +5434,9 @@ window.addEventListener('touchmove', e => {
       swipeActive = true;
       videoBg.classList.add('swiping');
       peekEl.classList.add('swiping');
+      // Prep the strip's lookback+lookahead thumbs so it can drag in
+      // either direction during this gesture. Idempotent.
+      prepareStripDrag();
     } else return;
   }
 
@@ -5292,6 +5447,9 @@ window.addEventListener('touchmove', e => {
 
   // Current video follows finger
   videoBg.style.transform = `translateY(${dy}px)`;
+
+  // Strip follows finger horizontally (prev/next direction based on dy sign)
+  updateStripDragPosition(dy);
 
   // Peek of next/prev project sits edge-to-edge with current,
   // so they move together like a film strip. Navigation wraps within the
@@ -5321,6 +5479,10 @@ window.addEventListener('touchend', e => {
     // Commit if swiped more than 20% of screen
     if (Math.abs(swipeDy) > h * 0.2) {
       haptic('heavy');  // tactile confirmation of the gesture
+      // Strip settles in parallel with video/peek — drag handled the
+      // intermediate motion, so we just animate the remaining small distance.
+      // skipStripSync=true below tells goTo not to re-animate the strip.
+      finishStripDrag(true, isSwipeUp ? 1 : -1);
       // Slide both all the way off — current moves fully off, peek moves fully in
       videoBg.style.transition = 'transform 0.35s cubic-bezier(0.33,1,0.68,1)';
       peekEl.style.transition  = 'transform 0.35s cubic-bezier(0.33,1,0.68,1)';
@@ -5332,8 +5494,9 @@ window.addEventListener('touchend', e => {
         videoBg.style.transition = 'none';
         videoBg.style.transform  = '';
         peekEl.style.transition  = 'none';
-        // Load the new project (this updates the bg thumbnail poster and starts video)
-        goTo(nextIdx);
+        // Load the new project. skipStripSync since finishStripDrag already
+        // advanced mobileWindowStart + animated the strip.
+        goTo(nextIdx, true);
         // Hide peek on next frame, once video has the new poster set
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
@@ -5345,7 +5508,8 @@ window.addEventListener('touchend', e => {
         flashActiveThumb();
       }, 350);
     } else {
-      // Snap back
+      // Snap back — cancel strip drag too
+      finishStripDrag(false, 0);
       videoBg.style.transition = 'transform 0.25s ease-out';
       peekEl.style.transition  = 'transform 0.25s ease-out';
       videoBg.style.transform  = 'translateY(0)';
