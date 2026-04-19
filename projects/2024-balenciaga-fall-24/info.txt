@@ -1,0 +1,15 @@
+name: Balenciaga Fall 24
+client: Balenciaga
+studio: Olimpic
+type: CG Lead
+year: 2024
+duration: 26
+video: https://vz-114da70f-2b3.b-cdn.net/0b811112-9331-49b9-a91a-f4bb29ff7e50/play_720p.mp4
+frames: video_000.jpg, video_001.jpg, video_002.jpg, video_003.jpg, video_004.jpg, video_005.jpg, video_006.jpg, video_007.jpg, video_008.jpg, video_009.jpg, video_010.jpg, video_011.jpg, video_012.jpg, video_013.jpg, video_014.jpg, video_015.jpg, video_016.jpg, video_017.jpg, video_018.jpg, video_019.jpg, video_020.jpg, video_021.jpg, video_022.jpg, video_023.jpg, video_024.jpg, video_025.jpg
+about: Balenciaga Fall 24 campaign piece produced by Olímpic. CG Lead on the project — led the CG pipeline from lookdev through final frames.
+team: Creative Direction — Mau Morgo & Cesar Rodrez
+CG Lead — Alex Luque Garcia
+Mocap Artist — Marta Ros
+credits: Creative Studio — Olímpic.tv
+Written by — Mau Morgo
+Executive Producer — Sira Molla
