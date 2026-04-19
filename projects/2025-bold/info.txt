@@ -2,6 +2,7 @@ name: BOLD
 client: Gentle Monster
 studio: Olimpic
 type: VFX Supervisor & CG Lead
+year: 2025
 duration: 90
 color: tc-6
 video: https://vz-114da70f-2b3.b-cdn.net/9899c30a-5e43-458f-8fdb-421995615b95/play_1080p.mp4
