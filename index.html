@@ -5528,6 +5528,28 @@ const SWIPE_THRESHOLD = 80; // px to commit to a project change
 
 const peekEl = document.getElementById('video-bg-peek');
 
+// Preload the next/prev project's video as soon as direction is clear in
+// the gesture. Uses <link rel="preload" as="video"> so the browser starts
+// the fetch in parallel with the user's drag — by the time they release,
+// the video is already cached and setBg can play it instantly instead of
+// waiting for a fresh network fetch.
+let preloadLinkEl = null;
+let preloadedVideoUrl = null;
+function preloadVideoFor(projIdx) {
+  if (projIdx === undefined || projIdx === null) return;
+  const url = (projectData[projIdx]?.src || '').trim();
+  if (!url) return;
+  if (preloadedVideoUrl === url) return;  // already preloading this URL
+  preloadedVideoUrl = url;
+  if (!preloadLinkEl) {
+    preloadLinkEl = document.createElement('link');
+    preloadLinkEl.rel = 'preload';
+    preloadLinkEl.as  = 'video';
+    document.head.appendChild(preloadLinkEl);
+  }
+  preloadLinkEl.href = url;
+}
+
 window.addEventListener('touchstart', e => {
   ty0 = e.touches[0].clientY;
   tx0 = e.touches[0].clientX;
@@ -5572,6 +5594,12 @@ window.addEventListener('touchmove', e => {
   const nextThumb = projectDetails[nextIdx]?.thumbFrames?.[0];
   if (nextThumb) peekEl.style.backgroundImage = `url('${nextThumb}')`;
 
+  // Kick off the video fetch NOW (not at commit) so the target video has
+  // time to buffer while the user is still dragging. On release + commit,
+  // setBg reads from browser cache instead of starting a cold fetch,
+  // making the new video visible ~300-500ms sooner.
+  preloadVideoFor(nextIdx);
+
   // Position peek: if swiping up, peek sits below (+h), moves with finger to 0
   // If swiping down, peek sits above (-h), moves with finger to 0
   const peekY = isSwipeUp ? (h + dy) : (-h + dy);
@@ -5596,9 +5624,11 @@ window.addEventListener('touchend', e => {
       // intermediate motion, so we just animate the remaining small distance.
       // skipStripSync=true below tells goTo not to re-animate the strip.
       finishStripDrag(true, isSwipeUp ? 1 : -1);
-      // Slide both all the way off — current moves fully off, peek moves fully in
-      videoBg.style.transition = 'transform 0.35s cubic-bezier(0.33,1,0.68,1)';
-      peekEl.style.transition  = 'transform 0.35s cubic-bezier(0.33,1,0.68,1)';
+      // 280ms (not 350ms) so the peek animation ends sooner + goTo fires
+      // sooner. Video is preloaded during drag so setBg is essentially
+      // free — the bottleneck is just this visible peek animation.
+      videoBg.style.transition = 'transform 0.28s cubic-bezier(0.33,1,0.68,1)';
+      peekEl.style.transition  = 'transform 0.28s cubic-bezier(0.33,1,0.68,1)';
       videoBg.style.transform  = `translateY(${isSwipeUp ? -h : h}px)`;
       peekEl.style.transform   = 'translateY(0)';
       setTimeout(() => {
@@ -5619,7 +5649,7 @@ window.addEventListener('touchend', e => {
         });
         // Briefly highlight the new active thumb on the strip
         flashActiveThumb();
-      }, 350);
+      }, 280);
     } else {
       // Snap back — cancel strip drag too
       finishStripDrag(false, 0);
