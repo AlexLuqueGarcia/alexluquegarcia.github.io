@@ -4,7 +4,7 @@ type: CG Artist
 year: 2022
 duration: 90
 color: tc-0
-video: https://vz-114da70f-2b3.b-cdn.net/96deae81-d239-448c-835f-45abc515adcc/play_1080p.mp4
+video: https://vz-114da70f-2b3.b-cdn.net/7854f655-6f9c-4d80-a382-348a11fac291/play_720p.mp4
 about: Animated music video for black midi's "Welcome To Hell", from the album Hellfire. 3D modelling for the piece, directed by Gustaf Holtenäs with 3D direction by Sevi Iko Dømochevsky.
 team: 3D Director — Sevi Iko Dømochevsky
 2D Animation — Gustaf Holtenäs, Joel Arizona Widerberg & Noha Manfredi
@@ -12,3 +12,4 @@ team: 3D Director — Sevi Iko Dømochevsky
 Sound Effects — Hannes Ferm
 credits: Directed by — Gustaf Holtenäs
 Written by — Gustaf Holtenäs, Sevi Iko Dømochevsky & Noha Manfredi
+frames: video_000.jpg, video_001.jpg, video_002.jpg, video_003.jpg, video_004.jpg, video_005.jpg, video_006.jpg, video_007.jpg, video_008.jpg, video_009.jpg, video_010.jpg, video_011.jpg, video_012.jpg, video_013.jpg, video_014.jpg, video_015.jpg, video_016.jpg, video_017.jpg, video_018.jpg, video_019.jpg, video_020.jpg, video_021.jpg, video_022.jpg, video_023.jpg, video_024.jpg, video_025.jpg, video_026.jpg, video_027.jpg, video_028.jpg, video_029.jpg
