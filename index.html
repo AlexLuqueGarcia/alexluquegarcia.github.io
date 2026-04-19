@@ -297,11 +297,11 @@ body.cur-hover #cur svg {
   position:fixed;
   inset:0;
   z-index:1;
-  /* contain (not cover) so the poster image and video always show in their
-     native aspect ratio with black bars where needed — vertical videos no
-     longer crop heavily on landscape viewports. */
-  background-size:contain;
-  background-repeat:no-repeat;
+  /* background-size set dynamically by updateVideoFit() to match the video's
+     aspect rule — cover for horizontal, contain for vertical on desktop;
+     always cover on mobile. Default to cover here for the brief poster flash
+     before the video's loadedmetadata fires. */
+  background-size:cover;
   background-position:center;
   background-color:#000;
   transition: filter 0.8s var(--ease-out), transform 0.8s var(--ease-out);
@@ -329,14 +329,12 @@ body.cur-hover #cur svg {
 }
 #video-bg.blurred #video-bg-inner { animation: none; }
 #video-bg-inner.switching { opacity: 0; }
-/* Peek layer — shows next/prev project thumbnail during swipe.
-   Same contain behavior so the swipe peek matches the landed video. */
+/* Peek layer — shows next/prev project thumbnail during swipe */
 #video-bg-peek {
   position:fixed;
   inset:0;
   z-index:1;
-  background-size:contain;
-  background-repeat:no-repeat;
+  background-size:cover;
   background-position:center;
   background-color:#000;
   opacity:0;
@@ -1129,9 +1127,9 @@ nav.hide {
 .win-video { background:rgba(10,10,10,0.55); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px); }
 .win-video video {
   width:100%; height:100%;
-  /* contain (not cover) so full video shows — vertical/square videos no
-     longer crop at top/bottom in the detail window */
-  object-fit:contain; display:block;
+  /* cover — the window itself is resized to match video aspect (see
+     buildWindows video branch) so there's no letterboxing here */
+  object-fit:cover; display:block;
   pointer-events:none;
 }
 
@@ -1228,8 +1226,9 @@ body.is-fullscreen .win-resize { display: none !important; }
 :-webkit-full-screen .win-video video { object-fit:contain; }
 .win-video video {
   width:100%; height:100%;
-  /* contain so full video shows; see note above the earlier rule */
-  object-fit:contain; display:block;
+  /* cover — window is resized to video aspect (see buildWindows) so cover
+     is equivalent to contain visually but resize handles sit at video edges */
+  object-fit:cover; display:block;
   pointer-events:none;
 }
 .win-video-label {
@@ -1834,7 +1833,7 @@ body.is-fullscreen .win-resize { display: none !important; }
 
 <!-- Always-fixed video background -->
 <div id="video-bg-peek"></div>
-<div id="video-bg"><video id="video-bg-inner" autoplay muted playsinline crossorigin="anonymous" style="width:100%;height:100%;object-fit:contain;display:block;"></video></div>
+<div id="video-bg"><video id="video-bg-inner" autoplay muted playsinline crossorigin="anonymous" style="width:100%;height:100%;object-fit:cover;display:block;"></video></div>
 
 <!-- Custom cursor -->
 <div id="cur">
@@ -2560,6 +2559,31 @@ function buildThumbSlices(frames, fallbackTc, sliceCount) {
 const videoBgInner = document.getElementById('video-bg-inner');
 const videoBg      = document.getElementById('video-bg');
 const isTouch = window.matchMedia('(pointer: coarse)').matches;
+
+// updateVideoFit — chooses cover vs contain dynamically based on video aspect
+// and viewport. On mobile (<=768px) we always cover (fill the screen top to
+// bottom, crop horizontally if needed — user preference: "fill vertically,
+// don't care about cropping"). On desktop we cover for horizontal videos
+// (full bleed, no black bars) and contain for vertical ones (show full
+// video centered with black side bars). The #video-bg background-image is
+// kept in sync so the brief poster flash matches the incoming video.
+function updateVideoFit() {
+  const v = videoBgInner;
+  if (!v.videoWidth || !v.videoHeight) return;
+  const isPortrait = v.videoHeight > v.videoWidth;
+  const isMobileVp = window.innerWidth <= 768;
+  const fit = isMobileVp ? 'cover' : (isPortrait ? 'contain' : 'cover');
+  v.style.objectFit = fit;
+  videoBg.style.backgroundSize = fit;
+  // When contain mode is active we also need background-repeat:no-repeat so
+  // a tiled poster doesn't fill the letterbox area. Cover doesn't need it
+  // (image always fills), but setting it unconditionally is harmless.
+  videoBg.style.backgroundRepeat = 'no-repeat';
+}
+videoBgInner.addEventListener('loadedmetadata', updateVideoFit);
+// Re-evaluate on viewport resize (e.g. phone rotation) — aspect decision
+// may flip between mobile and desktop rules.
+window.addEventListener('resize', updateVideoFit);
 
 // When video ends, advance to next project (within the strip's current order)
 videoBgInner.addEventListener('ended', () => {
@@ -3344,6 +3368,24 @@ function buildWindows(p, pd) {
         </div>
         ${resizeHandle}`;
       const vid = win.querySelector('video');
+      // Resize window to match video aspect once metadata is available.
+      // Same shrink-only logic as win-img: keep the larger dimension, reduce
+      // the smaller one so no letterboxing is needed. Resize handles and
+      // minimize button end up at the actual video edges.
+      vid.addEventListener('loadedmetadata', () => {
+        const vw = vid.videoWidth, vh = vid.videoHeight;
+        if (!vw || !vh) return;
+        const vidAspect = vw / vh;
+        const curW = win.offsetWidth;
+        const curH = win.offsetHeight;
+        const curAspect = curW / curH;
+        if (Math.abs(vidAspect - curAspect) < 0.02) return;  // already matches
+        if (vidAspect > curAspect) {
+          win.style.height = (curW / vidAspect) + 'px';
+        } else {
+          win.style.width = (curH * vidAspect) + 'px';
+        }
+      });
       // Load video with HLS support
       const winSrc = p.src || '';
       const winIsHLS = winSrc.includes('.m3u8');
@@ -3461,13 +3503,32 @@ function buildWindows(p, pd) {
       win.classList.add('win-img');
       if (spec.src) {
         win.style.backgroundImage = `url('${spec.src}')`;
-        // contain (not cover) so the full photo is visible — with aspect-
-        // ratio-preserving black bars around it when the window shape doesn't
-        // match the photo's aspect. The glass .win-img background fills bars.
-        win.style.backgroundSize = 'contain';
-        win.style.backgroundRepeat = 'no-repeat';
+        // cover with no letterboxing — we'll resize the window itself to
+        // match the image aspect ratio (below), so cover == contain visually
+        // but the resize handles and minimize button sit at the actual
+        // image corners instead of floating in empty black bars.
+        win.style.backgroundSize = 'cover';
         win.style.backgroundPosition = 'center';
-        win.style.backgroundColor = '#000';
+        // Load the image to get its natural aspect, then shrink the smaller
+        // dimension to match. We only ever shrink (never grow) so the window
+        // stays within the footprint the layout algorithm reserved for it.
+        const probe = new Image();
+        probe.onload = () => {
+          const imgAspect = probe.naturalWidth / probe.naturalHeight;
+          if (!isFinite(imgAspect) || imgAspect <= 0) return;
+          const curW = win.offsetWidth;
+          const curH = win.offsetHeight;
+          const curAspect = curW / curH;
+          if (Math.abs(imgAspect - curAspect) < 0.02) return;  // already matches
+          if (imgAspect > curAspect) {
+            // Image wider than window → shrink window height to match
+            win.style.height = (curW / imgAspect) + 'px';
+          } else {
+            // Image taller than window → shrink window width to match
+            win.style.width = (curH * imgAspect) + 'px';
+          }
+        };
+        probe.src = spec.src;
       } else {
         const ci = projectData.indexOf(p);
         win.classList.add(['tc-0','tc-1','tc-2','tc-3','tc-4','tc-5','tc-6','tc-7'][ci % 8]);
