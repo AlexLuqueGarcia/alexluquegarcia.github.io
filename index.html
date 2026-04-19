@@ -1842,7 +1842,7 @@ body.is-fullscreen .win-resize { display: none !important; }
 
 <!-- Always-fixed video background -->
 <div id="video-bg-peek"></div>
-<div id="video-bg"><video id="video-bg-inner" autoplay muted playsinline crossorigin="anonymous" style="width:100%;height:100%;object-fit:cover;display:block;"></video></div>
+<div id="video-bg"><video id="video-bg-inner" autoplay muted playsinline preload="auto" crossorigin="anonymous" style="width:100%;height:100%;object-fit:contain;display:block;"></video></div>
 
 <!-- Custom cursor -->
 <div id="cur">
@@ -5537,29 +5537,45 @@ const peekEl = document.getElementById('video-bg-peek');
 // Video neighbor preloading (TikTok-style)
 // ─────────────────────────────────────────────────────────
 // After each navigation, prefetch the 1 prev + 1 next project's videos via
-// <link rel="preload" as="video"> so swiping to them is near-instant. We
-// track all active preloads in a Map and prune any that leave the current
-// neighborhood (keeps bandwidth bounded to ~3 URLs at a time: current +
-// 1 ahead + 1 behind).
-const preloadLinkByUrl = new Map();
+// HIDDEN <video preload="auto"> elements. Unlike <link rel="preload">, which
+// is unreliable for videos (Range mismatches, Safari doesn't honor it well),
+// a real <video> element's preload="auto" reliably downloads the bytes into
+// the browser cache. When setBg later sets the MAIN video element's src to
+// the same URL, the browser serves it from cache near-instantly.
+//
+// We use a Map keyed by URL so the same hidden video is reused if the user
+// swipes back and forth. Preloaders outside the current neighborhood are
+// removed to bound memory + bandwidth.
+const preloadVideosByUrl = new Map();
 let _neighborPreloadTimer = null;
 
 function preloadVideoUrl(url) {
   if (!url) return;
-  if (preloadLinkByUrl.has(url)) return;  // already preloading this URL
-  const link = document.createElement('link');
-  link.rel  = 'preload';
-  link.as   = 'video';
-  link.href = url;
-  document.head.appendChild(link);
-  preloadLinkByUrl.set(url, link);
+  if (preloadVideosByUrl.has(url)) return;  // already preloading this URL
+  const v = document.createElement('video');
+  v.muted = true;
+  v.playsInline = true;
+  v.preload = 'auto';     // tell the browser to fetch aggressively
+  v.crossOrigin = 'anonymous';
+  // Must be in-flow (not display:none) for iOS Safari to actually preload.
+  // Position way off-screen with 1x1 size so it doesn't render or affect layout.
+  v.style.cssText = 'position:absolute;width:1px;height:1px;top:-9999px;left:-9999px;opacity:0;pointer-events:none;';
+  v.src = url;
+  v.load();
+  document.body.appendChild(v);
+  preloadVideosByUrl.set(url, v);
 }
 
 function prunePreloadsKeeping(keepUrls) {
-  for (const [url, link] of preloadLinkByUrl) {
+  for (const [url, v] of preloadVideosByUrl) {
     if (!keepUrls.has(url)) {
-      link.remove();
-      preloadLinkByUrl.delete(url);
+      try {
+        v.pause();
+        v.removeAttribute('src');
+        v.load();  // frees the loaded buffer
+      } catch {}
+      v.remove();
+      preloadVideosByUrl.delete(url);
     }
   }
 }
@@ -5687,23 +5703,27 @@ window.addEventListener('touchend', e => {
       // intermediate motion, so we just animate the remaining small distance.
       // skipStripSync=true below tells goTo not to re-animate the strip.
       finishStripDrag(true, isSwipeUp ? 1 : -1);
-      // 280ms (not 350ms) so the peek animation ends sooner + goTo fires
-      // sooner. Video is preloaded during drag so setBg is essentially
-      // free — the bottleneck is just this visible peek animation.
+
+      // Fire goTo IMMEDIATELY so the new video starts loading/decoding in
+      // parallel with the peek animation. By the time the peek finishes
+      // covering (280ms later) and we reveal the video, it's had 280ms of
+      // head start instead of starting cold. The peek animation visually
+      // covers any src-change transition artifacts on videoBg-inner.
+      // skipStripSync since finishStripDrag already advanced the strip.
+      goTo(nextIdx, true);
+
+      // 280ms (not 350ms) so the peek animation ends sooner.
       videoBg.style.transition = 'transform 0.28s cubic-bezier(0.33,1,0.68,1)';
       peekEl.style.transition  = 'transform 0.28s cubic-bezier(0.33,1,0.68,1)';
       videoBg.style.transform  = `translateY(${isSwipeUp ? -h : h}px)`;
       peekEl.style.transform   = 'translateY(0)';
       setTimeout(() => {
-        // Peek is now covering the screen — move video silently to same position
-        // so when goTo loads the new video, it's already in place
+        // Peek is now covering the screen — snap video back to its resting
+        // position (hidden behind peek), then next frame hide peek to
+        // reveal the new video (which should be playing by now).
         videoBg.style.transition = 'none';
         videoBg.style.transform  = '';
         peekEl.style.transition  = 'none';
-        // Load the new project. skipStripSync since finishStripDrag already
-        // advanced mobileWindowStart + animated the strip.
-        goTo(nextIdx, true);
-        // Hide peek on next frame, once video has the new poster set
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
             peekEl.classList.remove('visible');
