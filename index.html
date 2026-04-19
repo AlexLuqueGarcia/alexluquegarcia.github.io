@@ -4071,35 +4071,83 @@ const _BG_TARGETS =
   '.mobile-detail-text .md-role, .mobile-detail-text .md-about, ' +
   '.mobile-detail-text .md-section';
 
+/* Pick a source (video or poster image) and sample it.
+   - Prefer the live video frame — represents what's actually on screen.
+   - Fall back to the poster PNG when video isn't decodable yet. This is
+     common on mobile HLS right after openDetail: the 180ms sample window
+     can fire before video.readyState hits 2, leaving text unreadable
+     against bright backgrounds. The poster IS the first video frame so
+     its brightness is a correct approximation of what the user sees. */
 function sampleBgBrightness() {
   const vid = document.getElementById('video-bg-inner');
-  if (!vid || !vid.videoWidth || vid.readyState < 2) return;
+  const posterUrl = vid?.poster || projectDetails[cur]?.thumbFrames?.[0] || '';
 
-  const CW = 160, CH = 90;  // modest canvas — enough spatial detail per cluster
+  if (vid && vid.videoWidth && vid.readyState >= 2) {
+    _sampleSource(vid);
+    return;
+  }
+  if (!posterUrl) return;
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.onload  = () => _sampleSource(img);
+  img.onerror = () => {
+    // CORS or network fail — revert any stale classes to default (white text)
+    document.querySelectorAll('.is-on-light').forEach(el => el.classList.remove('is-on-light'));
+  };
+  img.src = posterUrl;
+}
+
+/* Draw the source (video or image) onto a canvas that MIRRORS the viewport
+   rendering — including object-fit: cover cropping. Then sample each text
+   cluster's region against that canvas.
+
+   Why mirror the viewport: a 16:9 video rendered into a portrait phone with
+   object-fit:cover is scaled up 2-3× vertically and cropped horizontally.
+   If we drew the whole raw video frame onto an arbitrary 160×90 canvas and
+   then mapped viewport coords into it linearly, we'd be sampling FROM THE
+   CROPPED-OFF EDGES of the video rather than the portion the user sees. By
+   computing the canvas dimensions from viewport aspect and applying the
+   same cover-fit math as CSS, canvas coords and viewport coords line up. */
+function _sampleSource(source) {
+  const srcW = source.videoWidth  || source.naturalWidth;
+  const srcH = source.videoHeight || source.naturalHeight;
+  if (!srcW || !srcH) return;
+
   try {
+    // Canvas aspect ratio = current viewport's. Keep width reasonable; height
+    // scales from width using the viewport ratio.
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const CW = 180;
+    const CH = Math.max(60, Math.round(CW * vh / vw));
+
     const canvas = document.createElement('canvas');
     canvas.width = CW; canvas.height = CH;
     const cx = canvas.getContext('2d', { willReadFrequently: true });
-    cx.drawImage(vid, 0, 0, CW, CH);
+
+    // Apply object-fit: cover math — scale source so the LARGER scale factor
+    // wins; center the oversize dimension so the crop is symmetric.
+    const scale = Math.max(CW / srcW, CH / srcH);
+    const dw = srcW * scale;
+    const dh = srcH * scale;
+    const dx = (CW - dw) / 2;
+    const dy = (CH - dh) / 2;
+    cx.drawImage(source, dx, dy, dw, dh);
+
     const data = cx.getImageData(0, 0, CW, CH).data;
+    const PAD  = 8;  // compensate for #video-bg.blurred's 20px blur smear
 
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
-    const PAD = 8;  // compensate for #video-bg.blurred's 20px blur smear
-
-    // Per-element sampler. Returns null if the element has no visible area
-    // (hidden/unrendered) or its rect lies entirely off-screen — in which
-    // case we leave its class untouched rather than making a blind guess.
+    // Per-element sampler — maps viewport rect to canvas coords. Now
+    // accurate on all aspect ratios since the canvas content mirrors the
+    // viewport rendering (including cover-fit cropping).
     const sampleAt = (el) => {
       const r = el.getBoundingClientRect();
       if (!r.width || !r.height) return null;
-
       const x0 = Math.max(0, Math.floor(((r.left   - PAD) / vw) * CW));
       const y0 = Math.max(0, Math.floor(((r.top    - PAD) / vh) * CH));
       const x1 = Math.min(CW,  Math.ceil (((r.right  + PAD) / vw) * CW));
       const y1 = Math.min(CH,  Math.ceil (((r.bottom + PAD) / vh) * CH));
       if (x1 <= x0 || y1 <= y0) return null;
-
       let lum = 0, count = 0;
       for (let y = y0; y < y1; y++) {
         for (let x = x0; x < x1; x++) {
@@ -4116,7 +4164,7 @@ function sampleBgBrightness() {
       const lum = sampleAt(el);
       if (lum === null) return;  // skip hidden/off-screen
       // Threshold 150 biases toward keeping white text — only clearly bright
-      // regions flip. Matches the old global threshold for continuity.
+      // regions flip.
       el.classList.toggle('is-on-light', lum > 150);
     });
   } catch (e) {
