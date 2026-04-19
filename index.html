@@ -1327,44 +1327,70 @@ body.is-fullscreen .win-resize { display: none !important; }
 .df-values a:hover { opacity: 0.55; }
 
 /* ── DETAIL-VIEW READABILITY LAYER ──
-   When the detail view is open the background video is blurred and can land on
-   any color — including near-white frames that made white nav/footer text vanish.
-   We fix this per-layer because they live in different stacking contexts:
+   When the detail view opens we sample the current video frame's average
+   luminance and add/remove `body.bg-light` accordingly (see JS). Text colors
+   on nav, the detail-footer, and the mobile detail block swap between white
+   (default, dark bg) and near-black (bright bg).
 
-   1. Nav + detail-footer live in the root stacking context (siblings of #video-bg),
-      so mix-blend-mode: difference works directly — identical approach to #work-year.
-      Gated on detail-open state so landing/work pages keep their normal nav look.
-   2. .win-text panel handles itself via its dark-tinted glass background (above).
-   3. Mobile detail text sits inside #detail's own stacking context where blend
-      modes can't reach the video bg, so we add a subtle dark vertical scrim
-      behind the content instead. */
+   Architecture note: we use color-swap rather than mix-blend-mode because
+   (a) `#detail-footer` sat inside `#detail`'s isolated stacking context so
+   blend modes couldn't reach the video-bg, and (b) mix-blend-mode: difference
+   produces inverted *colors* on saturated frames (white-on-pink → cyan),
+   which fights the clean Apple-style aesthetic. A binary white/black swap
+   reads as intentional rather than psychedelic.
 
-/* Nav: invert against whatever the blurred video bg is when detail is open.
-   Applied to <nav> itself — the whole element composites as a group and blends
-   with the video-bg beneath it (both are direct children of <body>, so they
-   share the root stacking context). Children inherit the group treatment. */
-#video-bg.blurred ~ nav {
-  mix-blend-mode: difference;
+   .win-text panel handles its own contrast via its dark-tinted glass
+   background above — it stays dark-on-video regardless of bg brightness. */
+
+/* Smooth color transitions so the swap doesn't snap. Applied to every text
+   element that listens to bg-light; shorter than the video-bg blur transition
+   so it completes inside the open animation. */
+nav .nav-links a,
+nav .nav-brand .name,
+nav .nav-brand .tagline,
+nav #nav-year,
+#detail-footer .df-copy,
+#detail-footer .df-labels span,
+#detail-footer .df-values a,
+.mobile-detail-text,
+.mobile-detail-text .md-header,
+.mobile-detail-text .md-year,
+.mobile-detail-text .md-sep,
+.mobile-detail-text .md-studio,
+.mobile-detail-text .md-title,
+.mobile-detail-text .md-role,
+.mobile-detail-text .md-about,
+.mobile-detail-text .md-label,
+.mobile-detail-text .md-body,
+.mobile-detail-text .md-section {
+  transition: color 0.45s var(--ease-out), border-color 0.45s var(--ease-out);
 }
 
-/* Detail footer: only visible when detail is open, so always-on difference is fine */
-#detail-footer {
-  mix-blend-mode: difference;
+/* Bright background → switch to near-black text. `#video-bg.blurred ~ nav`
+   ensures the nav only adapts in detail view; on landing the nav keeps its
+   usual look even if body.bg-light is set. */
+body.bg-light #video-bg.blurred ~ nav .nav-links a,
+body.bg-light #video-bg.blurred ~ nav .nav-brand .name,
+body.bg-light #video-bg.blurred ~ nav .nav-brand .tagline,
+body.bg-light #video-bg.blurred ~ nav #nav-year,
+body.bg-light #detail-footer .df-copy,
+body.bg-light #detail-footer .df-labels span,
+body.bg-light #detail-footer .df-values a,
+body.bg-light .mobile-detail-text,
+body.bg-light .mobile-detail-text .md-header,
+body.bg-light .mobile-detail-text .md-year,
+body.bg-light .mobile-detail-text .md-sep,
+body.bg-light .mobile-detail-text .md-studio,
+body.bg-light .mobile-detail-text .md-title,
+body.bg-light .mobile-detail-text .md-role,
+body.bg-light .mobile-detail-text .md-about,
+body.bg-light .mobile-detail-text .md-label,
+body.bg-light .mobile-detail-text .md-body {
+  color: #111;
 }
-
-/* Mobile detail: add a soft dark scrim behind the vertical content stack so
-   white text is always readable on pale video frames. Kept gentle so the
-   blurred video still sets the mood. */
-@media (max-width: 768px) {
-  #detail.open #canvas-inner.mobile-detail {
-    background: linear-gradient(
-      to bottom,
-      rgba(0,0,0,0.55) 0%,
-      rgba(0,0,0,0.35) 35%,
-      rgba(0,0,0,0.35) 65%,
-      rgba(0,0,0,0.55) 100%
-    );
-  }
+/* Section dividers also need to flip so they don't disappear on light bg */
+body.bg-light .mobile-detail-text .md-section {
+  border-top-color: rgba(0,0,0,0.18);
 }
 
 .tc-1{background:linear-gradient(160deg,#402810,#201408);}
@@ -1586,13 +1612,12 @@ body.is-fullscreen .win-resize { display: none !important; }
   </div>
 </div>
 
-<!-- Detail footer is a SIBLING of #detail (not a child) so it sits in the root
-     stacking context alongside #video-bg. This lets mix-blend-mode: difference
-     blend the white footer text against the blurred video bg regardless of its
-     color. If it were nested inside #detail (z-index:90, transparent), the blend
-     would have no backdrop to blend against. Visibility is gated on the
-     #video-bg.blurred class, which is added/removed in lockstep with detail
-     open/close — same trigger used for the nav's blend mode. -->
+<!-- Detail footer is a SIBLING of #detail (not a child). Originally moved out
+     to support mix-blend-mode: difference; now kept outside because it's
+     cleaner architecturally — the footer isn't really content of #detail,
+     it's page chrome that appears alongside it. Visibility is gated on the
+     #video-bg.blurred class (added/removed in lockstep with detail open/close).
+     Text color adapts via body.bg-light set by sampleBgBrightness() in JS. -->
 <div id="detail-footer">
   <div class="df-copy">© Alex Luque Garcia 2026</div>
   <div class="df-contact">
@@ -2272,6 +2297,10 @@ function setBg(i) {
     vid.classList.remove('switching');
     vid.removeEventListener('playing', unfade);
     vid.removeEventListener('canplay', unfade);
+    // Re-sample background brightness on the fresh video frame so detail-view
+    // project swipes update nav/footer colors to match the new project. No-op
+    // on landing (body.bg-light only affects visible elements inside detail).
+    sampleBgBrightness();
   };
   vid.addEventListener('playing', unfade);
   vid.addEventListener('canplay', unfade);
@@ -3703,6 +3732,39 @@ function closeWork(skipAnim = false) {
   }, 750);
 }
 
+/* ── BACKGROUND BRIGHTNESS DETECTION ──
+   Samples the current <video> frame into a tiny canvas, computes average
+   Rec.709 luminance, and toggles body.bg-light so nav + footer + mobile
+   detail text can switch to dark ink on bright frames and stay white on
+   dark frames. Called on detail open and whenever a new project video
+   starts playing. Requires video element to have crossorigin="anonymous"
+   AND the CDN to send Access-Control-Allow-Origin — both are set up here. */
+function sampleBgBrightness() {
+  const vid = document.getElementById('video-bg-inner');
+  if (!vid || !vid.videoWidth || vid.readyState < 2) return;
+  try {
+    const c  = document.createElement('canvas');
+    c.width  = 32;   // Tiny — luminance averaging doesn't need detail
+    c.height = 18;
+    const cx = c.getContext('2d', { willReadFrequently: true });
+    cx.drawImage(vid, 0, 0, 32, 18);
+    const d  = cx.getImageData(0, 0, 32, 18).data;
+    let lum = 0;
+    for (let i = 0; i < d.length; i += 4) {
+      // Rec.709 coefficients — match how human eyes perceive brightness
+      // (green matters most, blue least) rather than a naive RGB average
+      lum += 0.2126 * d[i] + 0.7152 * d[i+1] + 0.0722 * d[i+2];
+    }
+    lum /= (d.length / 4);
+    // Threshold 150 biases slightly toward keeping white text — mid-gray frames
+    // stay in dark mode. Only clearly bright frames flip to dark ink.
+    document.body.classList.toggle('bg-light', lum > 150);
+  } catch (e) {
+    // CORS failure or canvas tainted — fall back to default (white text)
+    document.body.classList.remove('bg-light');
+  }
+}
+
 function openDetail() {
   transitioning = true;
   detailOpen = true;
@@ -3728,6 +3790,11 @@ function openDetail() {
     videoBg.classList.add('blurred');
     detailEl.classList.add('open');
     detailEl.scrollTop = 0;
+    // Sample background brightness right as the detail opens so nav + footer
+    // text is the correct color by the time the fade-in completes. Using the
+    // current frame rather than waiting for a fresh one — landing video is
+    // already playing and has valid frames.
+    sampleBgBrightness();
   }, 180);
 
   setTimeout(() => { transitioning = false; }, 900);
@@ -3741,6 +3808,10 @@ function closeDetail() {
   detailEl.classList.remove('open');
   videoBg.classList.remove('blurred');
   canvasInner.classList.remove('mobile-detail');
+  // Clear brightness class — detail view is where it actually affects visuals,
+  // so reset it on close to keep body classes clean and avoid stale state on
+  // the next open (openDetail re-samples, so this is belt-and-braces).
+  document.body.classList.remove('bg-light');
 
   // Resume landing video. On HLS (mobile), segments around _savedTime may have
   // been evicted while detail was open — we need to tell hls.js to reload
