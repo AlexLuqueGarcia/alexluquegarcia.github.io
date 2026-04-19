@@ -1327,69 +1327,66 @@ body.is-fullscreen .win-resize { display: none !important; }
 .df-values a:hover { opacity: 0.55; }
 
 /* ── DETAIL-VIEW READABILITY LAYER ──
-   When the detail view opens we sample the current video frame's average
-   luminance and add/remove `body.bg-light` accordingly (see JS). Text colors
-   on nav, the detail-footer, and the mobile detail block swap between white
-   (default, dark bg) and near-black (bright bg).
+   Each text cluster samples the video pixels directly behind its own
+   bounding rect and toggles `.is-on-light` independently — so if a video
+   frame is bright in the top-right but dark on the bottom-left, only the
+   contact link flips to black while the copyright stays white. See JS:
+   sampleBgBrightness() does per-element region sampling.
 
-   Architecture note: we use color-swap rather than mix-blend-mode because
-   (a) `#detail-footer` sat inside `#detail`'s isolated stacking context so
-   blend modes couldn't reach the video-bg, and (b) mix-blend-mode: difference
-   produces inverted *colors* on saturated frames (white-on-pink → cyan),
-   which fights the clean Apple-style aesthetic. A binary white/black swap
-   reads as intentional rather than psychedelic.
+   Clusters sampled (each toggles .is-on-light individually):
+   - .nav-links (left: Feed/Work/Info)
+   - .nav-brand (centered name/tagline)
+   - .nav-links (right: Contact + year span)
+   - .df-copy (bottom-left copyright)
+   - .df-contact (bottom-right email/instagram block)
+   - .mobile-detail-text .md-* sections (mobile stacked content)
 
-   .win-text panel handles its own contrast via its dark-tinted glass
-   background above — it stays dark-on-video regardless of bg brightness. */
+   .win-text panel stays dark-tinted glass regardless — it handles its
+   own contrast above. */
 
-/* Smooth color transitions so the swap doesn't snap. Applied to every text
-   element that listens to bg-light; shorter than the video-bg blur transition
-   so it completes inside the open animation. */
-nav .nav-links a,
-nav .nav-brand .name,
-nav .nav-brand .tagline,
-nav #nav-year,
-#detail-footer .df-copy,
-#detail-footer .df-labels span,
-#detail-footer .df-values a,
-.mobile-detail-text,
-.mobile-detail-text .md-header,
-.mobile-detail-text .md-year,
-.mobile-detail-text .md-sep,
-.mobile-detail-text .md-studio,
-.mobile-detail-text .md-title,
-.mobile-detail-text .md-role,
-.mobile-detail-text .md-about,
-.mobile-detail-text .md-label,
-.mobile-detail-text .md-body,
+/* Smooth color swap — completes well inside the detail open animation */
+.nav-links a, .nav-brand .name, .nav-brand .tagline, #nav-year,
+.df-copy, .df-labels span, .df-values a,
+.mobile-detail-text, .mobile-detail-text .md-header,
+.mobile-detail-text .md-year, .mobile-detail-text .md-sep,
+.mobile-detail-text .md-studio, .mobile-detail-text .md-title,
+.mobile-detail-text .md-role, .mobile-detail-text .md-about,
+.mobile-detail-text .md-label, .mobile-detail-text .md-body,
 .mobile-detail-text .md-section {
   transition: color 0.45s var(--ease-out), border-color 0.45s var(--ease-out);
 }
 
-/* Bright background → switch to near-black text. `#video-bg.blurred ~ nav`
-   ensures the nav only adapts in detail view; on landing the nav keeps its
-   usual look even if body.bg-light is set. */
-body.bg-light #video-bg.blurred ~ nav .nav-links a,
-body.bg-light #video-bg.blurred ~ nav .nav-brand .name,
-body.bg-light #video-bg.blurred ~ nav .nav-brand .tagline,
-body.bg-light #video-bg.blurred ~ nav #nav-year,
-body.bg-light #detail-footer .df-copy,
-body.bg-light #detail-footer .df-labels span,
-body.bg-light #detail-footer .df-values a,
-body.bg-light .mobile-detail-text,
-body.bg-light .mobile-detail-text .md-header,
-body.bg-light .mobile-detail-text .md-year,
-body.bg-light .mobile-detail-text .md-sep,
-body.bg-light .mobile-detail-text .md-studio,
-body.bg-light .mobile-detail-text .md-title,
-body.bg-light .mobile-detail-text .md-role,
-body.bg-light .mobile-detail-text .md-about,
-body.bg-light .mobile-detail-text .md-label,
-body.bg-light .mobile-detail-text .md-body {
+/* Nav clusters — gated on #video-bg.blurred ~ nav so landing/work nav
+   keeps its normal look even if a stale class lingers. */
+#video-bg.blurred ~ nav .nav-links.is-on-light a,
+#video-bg.blurred ~ nav .nav-brand.is-on-light .name,
+#video-bg.blurred ~ nav .nav-brand.is-on-light .tagline,
+#video-bg.blurred ~ nav .nav-links.is-on-light #nav-year {
   color: #111;
 }
-/* Section dividers also need to flip so they don't disappear on light bg */
-body.bg-light .mobile-detail-text .md-section {
+
+/* Detail footer clusters — footer only appears in detail view (gated by
+   #video-bg.blurred ~ #detail-footer opacity), so no extra guard needed. */
+#detail-footer .df-copy.is-on-light,
+#detail-footer .df-contact.is-on-light .df-labels span,
+#detail-footer .df-contact.is-on-light .df-values a {
+  color: #111;
+}
+
+/* Mobile detail — each .md-* block samples the pixels behind it at its
+   current scroll position. .md-section also flips its border. */
+.mobile-detail-text .md-header.is-on-light,
+.mobile-detail-text .md-header.is-on-light .md-year,
+.mobile-detail-text .md-header.is-on-light .md-sep,
+.mobile-detail-text .md-title.is-on-light,
+.mobile-detail-text .md-role.is-on-light,
+.mobile-detail-text .md-about.is-on-light,
+.mobile-detail-text .md-section.is-on-light,
+.mobile-detail-text .md-section.is-on-light .md-label,
+.mobile-detail-text .md-section.is-on-light .md-body {
+  color: #111;
+}
+.mobile-detail-text .md-section.is-on-light {
   border-top-color: rgba(0,0,0,0.18);
 }
 
@@ -1617,7 +1614,9 @@ body.bg-light .mobile-detail-text .md-section {
      cleaner architecturally — the footer isn't really content of #detail,
      it's page chrome that appears alongside it. Visibility is gated on the
      #video-bg.blurred class (added/removed in lockstep with detail open/close).
-     Text color adapts via body.bg-light set by sampleBgBrightness() in JS. -->
+     Text color adapts via per-element .is-on-light classes set by
+     sampleBgBrightness() in JS — each cluster samples the video pixels
+     directly behind it. -->
 <div id="detail-footer">
   <div class="df-copy">© Alex Luque Garcia 2026</div>
   <div class="df-contact">
@@ -2298,8 +2297,10 @@ function setBg(i) {
     vid.removeEventListener('playing', unfade);
     vid.removeEventListener('canplay', unfade);
     // Re-sample background brightness on the fresh video frame so detail-view
-    // project swipes update nav/footer colors to match the new project. No-op
-    // on landing (body.bg-light only affects visible elements inside detail).
+    // project swipes update nav/footer colors to match the new project. On
+    // landing, sampling still runs but has no visual effect — the .is-on-light
+    // classes are gated on `#video-bg.blurred` (nav) or on elements only
+    // visible inside the detail view (footer, mobile-detail-text).
     sampleBgBrightness();
   };
   vid.addEventListener('playing', unfade);
@@ -3732,36 +3733,84 @@ function closeWork(skipAnim = false) {
   }, 750);
 }
 
-/* ── BACKGROUND BRIGHTNESS DETECTION ──
-   Samples the current <video> frame into a tiny canvas, computes average
-   Rec.709 luminance, and toggles body.bg-light so nav + footer + mobile
-   detail text can switch to dark ink on bright frames and stay white on
-   dark frames. Called on detail open and whenever a new project video
-   starts playing. Requires video element to have crossorigin="anonymous"
-   AND the CDN to send Access-Control-Allow-Origin — both are set up here. */
+/* ── PER-REGION BACKGROUND BRIGHTNESS DETECTION ──
+   A single global luminance average flips every element at once even when
+   only part of the frame is actually bright. Instead, draw the whole video
+   frame to a canvas, then sample the pixel region behind each text cluster
+   individually and toggle .is-on-light per element.
+
+   Example: a video that's bright pink in the top-left but dark in the
+   bottom-right → left-nav flips to black ink, footer-contact stays white.
+
+   Selectors sampled (each independent):
+   - nav .nav-links (×2 — left + right clusters, queried together)
+   - nav .nav-brand
+   - #detail-footer .df-copy
+   - #detail-footer .df-contact
+   - .mobile-detail-text .md-header, .md-title, .md-role,
+     .md-about, .md-section (each scroll-aware on mobile)
+
+   Padding of 8px on each rect accounts for the video-bg's 20px blur
+   smearing nearby pixels into the element's visible area. */
+
+const _BG_TARGETS =
+  'nav .nav-links, nav .nav-brand, ' +
+  '#detail-footer .df-copy, #detail-footer .df-contact, ' +
+  '.mobile-detail-text .md-header, .mobile-detail-text .md-title, ' +
+  '.mobile-detail-text .md-role, .mobile-detail-text .md-about, ' +
+  '.mobile-detail-text .md-section';
+
 function sampleBgBrightness() {
   const vid = document.getElementById('video-bg-inner');
   if (!vid || !vid.videoWidth || vid.readyState < 2) return;
+
+  const CW = 160, CH = 90;  // modest canvas — enough spatial detail per cluster
   try {
-    const c  = document.createElement('canvas');
-    c.width  = 32;   // Tiny — luminance averaging doesn't need detail
-    c.height = 18;
-    const cx = c.getContext('2d', { willReadFrequently: true });
-    cx.drawImage(vid, 0, 0, 32, 18);
-    const d  = cx.getImageData(0, 0, 32, 18).data;
-    let lum = 0;
-    for (let i = 0; i < d.length; i += 4) {
-      // Rec.709 coefficients — match how human eyes perceive brightness
-      // (green matters most, blue least) rather than a naive RGB average
-      lum += 0.2126 * d[i] + 0.7152 * d[i+1] + 0.0722 * d[i+2];
-    }
-    lum /= (d.length / 4);
-    // Threshold 150 biases slightly toward keeping white text — mid-gray frames
-    // stay in dark mode. Only clearly bright frames flip to dark ink.
-    document.body.classList.toggle('bg-light', lum > 150);
+    const canvas = document.createElement('canvas');
+    canvas.width = CW; canvas.height = CH;
+    const cx = canvas.getContext('2d', { willReadFrequently: true });
+    cx.drawImage(vid, 0, 0, CW, CH);
+    const data = cx.getImageData(0, 0, CW, CH).data;
+
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const PAD = 8;  // compensate for #video-bg.blurred's 20px blur smear
+
+    // Per-element sampler. Returns null if the element has no visible area
+    // (hidden/unrendered) or its rect lies entirely off-screen — in which
+    // case we leave its class untouched rather than making a blind guess.
+    const sampleAt = (el) => {
+      const r = el.getBoundingClientRect();
+      if (!r.width || !r.height) return null;
+
+      const x0 = Math.max(0, Math.floor(((r.left   - PAD) / vw) * CW));
+      const y0 = Math.max(0, Math.floor(((r.top    - PAD) / vh) * CH));
+      const x1 = Math.min(CW,  Math.ceil (((r.right  + PAD) / vw) * CW));
+      const y1 = Math.min(CH,  Math.ceil (((r.bottom + PAD) / vh) * CH));
+      if (x1 <= x0 || y1 <= y0) return null;
+
+      let lum = 0, count = 0;
+      for (let y = y0; y < y1; y++) {
+        for (let x = x0; x < x1; x++) {
+          const i = (y * CW + x) * 4;
+          // Rec.709 luminance — perceptual, not naive RGB avg
+          lum += 0.2126 * data[i] + 0.7152 * data[i+1] + 0.0722 * data[i+2];
+          count++;
+        }
+      }
+      return count > 0 ? lum / count : null;
+    };
+
+    document.querySelectorAll(_BG_TARGETS).forEach(el => {
+      const lum = sampleAt(el);
+      if (lum === null) return;  // skip hidden/off-screen
+      // Threshold 150 biases toward keeping white text — only clearly bright
+      // regions flip. Matches the old global threshold for continuity.
+      el.classList.toggle('is-on-light', lum > 150);
+    });
   } catch (e) {
-    // CORS failure or canvas tainted — fall back to default (white text)
-    document.body.classList.remove('bg-light');
+    // CORS / canvas-tainted fallback: revert every cluster to default (white)
+    document.querySelectorAll('.is-on-light').forEach(el => el.classList.remove('is-on-light'));
   }
 }
 
@@ -3808,10 +3857,11 @@ function closeDetail() {
   detailEl.classList.remove('open');
   videoBg.classList.remove('blurred');
   canvasInner.classList.remove('mobile-detail');
-  // Clear brightness class — detail view is where it actually affects visuals,
-  // so reset it on close to keep body classes clean and avoid stale state on
-  // the next open (openDetail re-samples, so this is belt-and-braces).
-  document.body.classList.remove('bg-light');
+  // Clear per-element brightness flags — detail view is where they matter,
+  // so reset on close to avoid stale state. openDetail re-samples anyway,
+  // but cleaning up is cheap and keeps DOM inspector output sensible.
+  document.querySelectorAll('.is-on-light')
+          .forEach(el => el.classList.remove('is-on-light'));
 
   // Resume landing video. On HLS (mobile), segments around _savedTime may have
   // been evicted while detail was open — we need to tell hls.js to reload
@@ -4074,6 +4124,18 @@ function scheduleResizeRebuild() {
 }
 window.addEventListener('orientationchange', resetViewport);
 window.addEventListener('resize', scheduleResizeRebuild);
+
+// Re-sample brightness on viewport changes while detail is open. Rotating a
+// phone or resizing a desktop window moves every cluster's bounding rect, so
+// previous samples no longer match what's behind each element. Debounced via
+// the existing scheduleResizeRebuild timer so we don't thrash during drag.
+window.addEventListener('resize', () => {
+  if (detailOpen) {
+    clearTimeout(_bgResampleTimer);
+    _bgResampleTimer = setTimeout(sampleBgBrightness, 180);
+  }
+});
+let _bgResampleTimer = null;
 
 // ── CUSTOM CURSOR ──
 const curEl = document.getElementById('cur');
