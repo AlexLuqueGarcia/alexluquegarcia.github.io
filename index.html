@@ -2320,12 +2320,31 @@ function buildStrip() {
 
   const MIN_SLICES = 4, MAX_SLICES = 20;
   // sliceCounts parallels stripOrder (indexed by strip position 0..4)
-  const sliceCounts = stripOrder.map((i) => {
+  let sliceCounts = stripOrder.map((i) => {
     const sc = projectDetails[i]?.sliceCount;
     if (sc) return sc;
     const p = projectData[i];
     return Math.round(Math.min(MAX_SLICES, Math.max(MIN_SLICES, (p.duration / minDur) * MIN_SLICES)));
   });
+
+  // On mobile, compress the sliceCount range so the ratio between widest and
+  // narrowest thumb is at most ~2.5:1. Without this, a 120-frame project next
+  // to a 20-frame project on a ~400px viewport squeezes the short titles into
+  // "No es la..." territory. We preserve relative ordering (longer video → still
+  // visually wider) but clamp extremes so every title gets enough space to read.
+  const isMobile = window.innerWidth <= 768;
+  if (isMobile && sliceCounts.length > 1) {
+    const rawMax = Math.max(...sliceCounts);
+    const rawMin = Math.min(...sliceCounts);
+    if (rawMax > rawMin) {
+      const targetMin = MIN_SLICES;
+      const targetMax = Math.round(MIN_SLICES * 2.5);  // e.g. 10 if MIN=4
+      sliceCounts = sliceCounts.map(sc => {
+        const ratio = (sc - rawMin) / (rawMax - rawMin);
+        return Math.round(targetMin + ratio * (targetMax - targetMin));
+      });
+    }
+  }
 
   const totalSlices = sliceCounts.reduce((s, n) => s + n, 0);
   const sliceW = window.innerWidth / totalSlices;
