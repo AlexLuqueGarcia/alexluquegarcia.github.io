@@ -1282,6 +1282,209 @@ body.is-fullscreen .win-resize { display: none !important; }
 
 .win-img { overflow:hidden; }
 
+/* ── WINDOW MINIMIZE + DOCK ──
+   Desktop detail view only. Each window has a small circular minimize button
+   in its top-left (macOS traffic-light position, monochrome not yellow to
+   match the site's aesthetic). Clicking it animates the window down into a
+   floating glass dock at the bottom-center; clicking a dock item springs the
+   window back to its resting rect. Dock auto-hides when empty.
+
+   Mobile has no windows (buildMobileDetail uses a stacked vertical layout),
+   so the dock is display:none on small viewports.
+
+   Z-index layering reminder:
+     #detail         90
+     .win           100+  (base), 150 (dragging)
+     nav            100
+     #win-dock      180   (above dragging windows, below footer)
+     #detail-footer 200
+     #work-year     110
+     #info-sheet    300
+*/
+
+/* Minimize button — hidden by default, fades in on parent window hover.
+   Sits above the resize bracket layer (z:10) so clicks always register. */
+.win-min {
+  position: absolute;
+  top: 14px; left: 14px;
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.2);
+  border: 1px solid rgba(255,255,255,0.35);
+  cursor: pointer;
+  padding: 0;
+  z-index: 15;
+  opacity: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.25s var(--ease-out),
+              transform 0.25s var(--ease-out),
+              background 0.2s var(--ease-out),
+              border-color 0.2s var(--ease-out);
+}
+.win:hover .win-min,
+.win-min:focus-visible {
+  opacity: 1;
+}
+.win-min:hover {
+  background: rgba(255,255,255,0.9);
+  border-color: rgba(255,255,255,0.9);
+  transform: scale(1.18);
+}
+.win-min:active {
+  transform: scale(0.92);
+  transition-duration: 0.08s;
+}
+/* Dash icon appears on button hover — invisible otherwise so the dot reads
+   as pure minimal affordance */
+.win-min::before {
+  content: '';
+  width: 7px; height: 1.5px;
+  background: transparent;
+  border-radius: 1px;
+  transition: background 0.18s;
+}
+.win-min:hover::before { background: rgba(0,0,0,0.82); }
+
+/* Window minimize transition — scale + translate toward dock slot */
+.win.minimizing {
+  pointer-events: none;
+  transition: transform 0.55s cubic-bezier(0.55, 0.05, 0.75, 0),
+              opacity   0.5s  cubic-bezier(0.55, 0.05, 0.75, 0);
+  will-change: transform, opacity;
+}
+/* Window is stashed in dock — not rendered, but kept in DOM to preserve
+   position/size for restore. visibility (not display) so layout survives. */
+.win.is-minimized {
+  visibility: hidden;
+  pointer-events: none;
+}
+/* Restore transition — spring back to resting rect */
+.win.restoring {
+  transition: transform 0.65s cubic-bezier(0.34, 1.56, 0.64, 1),
+              opacity   0.4s  var(--ease-out);
+  will-change: transform, opacity;
+}
+
+/* The dock itself — floats above #detail-footer, below nav/info.
+   Shows only when it has items. Glass pill, slight tint + blur. */
+#win-dock {
+  position: fixed;
+  bottom: 4.2rem;   /* clears #detail-footer (~3rem tall) + breathing room */
+  left: 50%;
+  transform: translateX(-50%) translateY(10px) scale(0.95);
+  z-index: 180;
+  display: flex;
+  gap: 10px;
+  padding: 8px 10px;
+  background: rgba(20, 20, 20, 0.55);
+  backdrop-filter: blur(30px) saturate(1.6);
+  -webkit-backdrop-filter: blur(30px) saturate(1.6);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 18px;
+  box-shadow: 0 20px 50px rgba(0,0,0,0.4),
+              0 6px 18px rgba(0,0,0,0.25);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.4s var(--ease-out),
+              transform 0.55s var(--ease-spring);
+  transform-origin: bottom center;
+}
+#win-dock.has-items {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(-50%) translateY(0) scale(1);
+}
+/* Hide on mobile — no windows exist there */
+@media (max-width: 768px) {
+  #win-dock { display: none !important; }
+}
+
+.dock-item {
+  position: relative;
+  width: 54px;
+  height: 54px;
+  border-radius: 11px;
+  overflow: hidden;
+  cursor: pointer;
+  padding: 0;
+  background: rgba(40, 40, 40, 0.9);
+  border: 1px solid rgba(255,255,255,0.1);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.35);
+  transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1),
+              box-shadow 0.3s var(--ease-out);
+  transform-origin: bottom center;
+  flex-shrink: 0;
+}
+/* Dock magnification — lighter than full macOS proximity magnification,
+   just a hover lift. Scales the hovered item + casts a bigger shadow. */
+.dock-item:hover {
+  transform: translateY(-8px) scale(1.15);
+  box-shadow: 0 14px 28px rgba(0,0,0,0.5);
+}
+.dock-item:active {
+  transform: translateY(-3px) scale(1.06);
+  transition-duration: 0.12s;
+}
+.dock-item img {
+  width: 100%; height: 100%;
+  object-fit: cover;
+  display: block;
+  pointer-events: none;
+}
+/* Letter icon for text windows — NM font on subtle gradient, app-icon look */
+.dock-item .di-letter {
+  width: 100%; height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'NM', sans-serif;
+  font-weight: 500;
+  font-size: 1.4rem;
+  color: #fff;
+  background: linear-gradient(135deg, rgba(255,255,255,0.1), rgba(255,255,255,0.02));
+  letter-spacing: 0.01em;
+}
+/* Tooltip — appears above the dock item on hover */
+.dock-item .di-tip {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  transform: translateX(-50%) translateY(4px);
+  background: rgba(18, 18, 18, 0.92);
+  color: #fff;
+  font-family: 'NM', sans-serif;
+  font-size: 0.78rem;
+  padding: 4px 10px;
+  border-radius: 8px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.22s ease,
+              transform 0.32s var(--ease-spring);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+.dock-item:hover .di-tip {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* Dock item entry animation — starts squished at the bottom, springs up */
+.dock-item.di-entering {
+  opacity: 0;
+  transform: translateY(28px) scale(0.3);
+  transition-duration: 0s;
+}
+.dock-item.di-entered {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  transition: transform 0.55s cubic-bezier(0.34, 1.56, 0.64, 1),
+              opacity   0.4s  var(--ease-out);
+}
+
 /* detail footer */
 #detail-footer {
   position:fixed;
@@ -1608,6 +1811,13 @@ body.is-fullscreen .win-resize { display: none !important; }
     </div>
   </div>
 </div>
+
+<!-- Window dock — floats at bottom center in detail view. Populated by JS
+     when a window is minimized (minimizeWin) and cleared on closeDetail.
+     Kept as a sibling of #detail for the same reasons #detail-footer is: it's
+     page chrome, not content of #detail, and it needs to sit in the root
+     stacking context where its z-index plays cleanly with other UI layers. -->
+<div id="win-dock" aria-label="Minimized windows"></div>
 
 <!-- Detail footer is a SIBLING of #detail (not a child). Originally moved out
      to support mix-blend-mode: difference; now kept outside because it's
@@ -2945,6 +3155,24 @@ function buildWindows(p, pd) {
 
     canvasInner.appendChild(win);
 
+    // Inject the minimize affordance — top-left circular button, macOS
+    // traffic-light position. Clicks are stopPropagation'd so the drag
+    // handler doesn't misfire; the button itself calls minimizeWin() which
+    // animates the window into the dock. pointerdown is also stopped so
+    // makeDraggable's pointerdown listener (attached later in this turn)
+    // doesn't initiate a drag on the button hit-area.
+    const minBtn = document.createElement('button');
+    minBtn.type  = 'button';
+    minBtn.className = 'win-min';
+    minBtn.title = 'Minimize';
+    minBtn.setAttribute('aria-label', 'Minimize window');
+    minBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      minimizeWin(win);
+    });
+    minBtn.addEventListener('pointerdown', e => e.stopPropagation());
+    win.appendChild(minBtn);
+
     // For text windows: measure natural content size, lock ratio, store for scaling
     if (spec.type === 'text') {
       const inner = win.querySelector('.win-text-inner');
@@ -3814,6 +4042,206 @@ function sampleBgBrightness() {
   }
 }
 
+/* ── WINDOW DOCK (desktop detail view) ──
+   Provides macOS-style minimize/restore for .win elements. Each window gets
+   a small circular .win-min button that, when clicked, shrinks the window
+   toward a glass dock at the bottom-center of the screen. Clicking a dock
+   item springs the window back to its resting rect.
+
+   Design notes / gotchas:
+   - We use visibility:hidden (not display:none) for minimized windows so
+     their absolutely-positioned rect survives — needed so restore can
+     compute FROM/TO deltas relative to the window's at-rest position.
+   - Dock lives as a sibling of #detail (in the HTML, near #detail-footer),
+     so it sits in the root stacking context and its z-index plays cleanly
+     with nav/footer regardless of #detail's own z-index.
+   - buildWindows() injects the .win-min button onto each window. Its
+     pointerdown is stopPropagation'd so the drag handler doesn't fire. */
+
+const dockEl = document.getElementById('win-dock');
+
+/* Estimate where the next dock slot will be centered, in viewport coords.
+   Used by minimizeWin to compute the translate destination. If the dock
+   is empty the slot falls back to an approximate bottom-center position
+   (dock width = padding + item + padding). */
+function getDockSlotPos(slotIdx) {
+  const dockRect = dockEl.getBoundingClientRect();
+  const ITEM_W = 54, GAP = 10, PAD = 10;
+  if (dockRect.width < 20) {
+    // Dock is hidden/empty — estimate where it WILL be once it materializes
+    const futureWidth = PAD * 2 + ITEM_W + (slotIdx * (ITEM_W + GAP));
+    const futureLeft  = (window.innerWidth - futureWidth) / 2;
+    const slotX = futureLeft + PAD + slotIdx * (ITEM_W + GAP) + ITEM_W / 2;
+    const slotY = window.innerHeight - 4.2 * 16 - (70 / 2); // matches bottom:4.2rem + ~70px dock height
+    return { x: slotX, y: slotY };
+  }
+  return {
+    x: dockRect.left + PAD + slotIdx * (ITEM_W + GAP) + ITEM_W / 2,
+    y: dockRect.top + dockRect.height / 2,
+  };
+}
+
+function createDockItem(winEl) {
+  const item = document.createElement('button');
+  item.type = 'button';
+  item.className = 'dock-item di-entering';
+
+  // Choose a representative thumbnail based on window type:
+  //   video → poster frame (pd.thumbFrames[0]) or video.poster
+  //   img   → the image src parsed out of backgroundImage
+  //   text  → first letter of project name on a subtle gradient (app-icon look)
+  let tipText = 'Window';
+  if (winEl.classList.contains('win-video')) {
+    const vid = winEl.querySelector('video');
+    const poster = vid?.poster || projectDetails[cur]?.thumbFrames?.[0] || '';
+    item.innerHTML = poster
+      ? `<img src="${poster}" alt="">`
+      : `<div class="di-letter">▶</div>`;
+    tipText = projectData[cur]?.name || 'Video';
+  } else if (winEl.classList.contains('win-img')) {
+    const bg = winEl.style.backgroundImage || '';
+    const m = bg.match(/url\(['"]?([^'"()]+)['"]?\)/);
+    item.innerHTML = m
+      ? `<img src="${m[1]}" alt="">`
+      : `<div class="di-letter">✦</div>`;
+    tipText = 'Image';
+  } else if (winEl.classList.contains('win-text')) {
+    const name = projectData[cur]?.name || 'Details';
+    const letter = name.trim()[0].toUpperCase();
+    item.innerHTML = `<div class="di-letter">${letter}</div>`;
+    tipText = name;
+  }
+
+  const tip = document.createElement('div');
+  tip.className = 'di-tip';
+  tip.textContent = tipText;
+  item.appendChild(tip);
+
+  // Restore on click; stop pointerdown/click from bubbling so the global
+  // detail swipe/wheel listeners don't misinterpret it as a close gesture
+  item.addEventListener('click', (e) => {
+    e.stopPropagation();
+    restoreWin(winEl, item);
+  });
+  item.addEventListener('pointerdown', e => e.stopPropagation());
+
+  return item;
+}
+
+function minimizeWin(winEl) {
+  if (winEl.dataset.minimized === '1') return;
+
+  const slotIdx = dockEl.children.length;
+  const target  = getDockSlotPos(slotIdx);
+  const rect    = winEl.getBoundingClientRect();
+
+  // Compute deltas so the window's CENTER ends at the slot center.
+  // transform-origin is 'center center' during the animation.
+  const dx = target.x - (rect.left + rect.width  / 2);
+  const dy = target.y - (rect.top  + rect.height / 2);
+  const finalScale = 54 / rect.width;
+
+  winEl.classList.add('minimizing');
+  winEl.style.transformOrigin = 'center center';
+
+  // Use rAF so the transition catches the from→to state transition. Without
+  // this the transform might snap because the class change and style write
+  // happen in the same tick with no paint in between.
+  requestAnimationFrame(() => {
+    winEl.style.transform = `translate(${dx}px, ${dy}px) scale(${finalScale})`;
+    winEl.style.opacity = '0';
+  });
+
+  haptic('light');
+
+  setTimeout(() => {
+    // Swap visual state: hide win, spawn dock item. Reset inline transform so
+    // the restore animation starts from a clean state later.
+    winEl.classList.remove('minimizing');
+    winEl.classList.add('is-minimized');
+    winEl.style.transform = '';
+    winEl.style.opacity   = '';
+    winEl.dataset.minimized = '1';
+
+    const item = createDockItem(winEl);
+    item._win = winEl;
+    dockEl.appendChild(item);
+    dockEl.classList.add('has-items');
+
+    // Double rAF so the .di-entering initial state is painted before the
+    // .di-entered target — otherwise the item would appear without animation
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => item.classList.add('di-entered'));
+    });
+  }, 550);
+}
+
+function restoreWin(winEl, dockItem) {
+  if (winEl.dataset.minimized !== '1') return;
+
+  // Snapshot where the dock item currently sits in viewport coords
+  const itemRect = dockItem.getBoundingClientRect();
+  const itemCX   = itemRect.left + itemRect.width  / 2;
+  const itemCY   = itemRect.top  + itemRect.height / 2;
+
+  // Un-hide to measure the window's resting rect
+  winEl.classList.remove('is-minimized');
+  const winRect = winEl.getBoundingClientRect();
+  const winCX   = winRect.left + winRect.width  / 2;
+  const winCY   = winRect.top  + winRect.height / 2;
+
+  const dx = itemCX - winCX;
+  const dy = itemCY - winCY;
+  const startScale = 54 / winRect.width;
+
+  // Step 1: jump window to dock position with NO transition
+  winEl.style.transition      = 'none';
+  winEl.style.transformOrigin = 'center center';
+  winEl.style.transform       = `translate(${dx}px, ${dy}px) scale(${startScale})`;
+  winEl.style.opacity         = '0';
+
+  // Force reflow to commit the above state before transitioning
+  winEl.offsetHeight;
+
+  // Step 2: remove dock item (it exits alongside the restoring window)
+  dockItem.classList.remove('di-entered');
+  dockItem.classList.add('di-entering');
+
+  // Step 3: re-enable transition and spring back to rest
+  winEl.style.transition = '';
+  winEl.classList.add('restoring');
+  requestAnimationFrame(() => {
+    winEl.style.transform = '';
+    winEl.style.opacity   = '';
+  });
+
+  haptic('medium');
+
+  setTimeout(() => {
+    winEl.classList.remove('restoring');
+    winEl.style.transformOrigin = '';
+    winEl.dataset.minimized = '';
+    dockItem.remove();
+    if (dockEl.children.length === 0) {
+      dockEl.classList.remove('has-items');
+    }
+  }, 650);
+}
+
+/* Called from closeDetail — wipe any minimized state since buildWindows
+   rebuilds from scratch next time detail opens. */
+function clearDock() {
+  dockEl.innerHTML = '';
+  dockEl.classList.remove('has-items');
+  document.querySelectorAll('.win.is-minimized').forEach(w => {
+    w.classList.remove('is-minimized');
+    w.dataset.minimized = '';
+    w.style.transform = '';
+    w.style.opacity   = '';
+    w.style.transformOrigin = '';
+  });
+}
+
 function openDetail() {
   transitioning = true;
   detailOpen = true;
@@ -3862,6 +4290,9 @@ function closeDetail() {
   // but cleaning up is cheap and keeps DOM inspector output sensible.
   document.querySelectorAll('.is-on-light')
           .forEach(el => el.classList.remove('is-on-light'));
+  // Clear the window dock — any minimized windows are discarded since
+  // buildWindows rebuilds from scratch on the next openDetail
+  clearDock();
 
   // Resume landing video. On HLS (mobile), segments around _savedTime may have
   // been evicted while detail was open — we need to tell hls.js to reload
@@ -4139,7 +4570,7 @@ let _bgResampleTimer = null;
 
 // ── CUSTOM CURSOR ──
 const curEl = document.getElementById('cur');
-const hoverTargets = 'a, button, .thumb, .win, .win-resize-drag, #scroll-hint span, #scroll-hint .scroll-arrow, .df-values a';
+const hoverTargets = 'a, button, .thumb, .win, .win-resize-drag, #scroll-hint span, #scroll-hint .scroll-arrow, .df-values a, .win-min, .dock-item';
 
 if (!isTouch) {
   document.addEventListener('mousemove', e => {
