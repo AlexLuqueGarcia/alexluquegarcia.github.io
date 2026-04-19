@@ -1730,6 +1730,17 @@ body.is-fullscreen .win-resize { display: none !important; }
     left: 4px; right: 3px;
   }
 
+  /* On mobile we decouple slice count from thumb width — thumbs are equal
+     width (for title readability) but can contain a count-proportional to
+     duration set of slices. Slices flex to fill their thumb, so a thumb
+     with more slices simply has thinner slices rather than overflowing.
+     This preserves the "dense filmstrip" aesthetic on small screens. */
+  .thumb-slice {
+    flex: 1 1 0;
+    width: auto;
+    min-width: 0;
+  }
+
   /* Strip height */
   :root { --strip-h: 56px; }
 
@@ -2334,34 +2345,78 @@ function buildStrip() {
     return Math.round(Math.min(MAX_SLICES, Math.max(MIN_SLICES, (p.duration / minDur) * MIN_SLICES)));
   });
 
-  // On mobile, give every thumb equal width. The duration-proportional sizing
-  // that works well on wide desktop viewports just can't coexist with readable
-  // titles on a ~400px phone screen — a 2.5:1 ratio still left the shortest
-  // thumbs truncating titles like "No es la m..." Here we trade the duration
-  // visual cue (which was barely perceptible on mobile anyway) for consistent
-  // readability: every project gets 1/N of the viewport regardless of length.
+  // On mobile, decouple thumb width from slice rendering. Widths are equal
+  // (so every title gets the same space — no truncation on short titles), but
+  // slice COUNTS are distributed proportionally to video duration using a
+  // total-viewport budget. This preserves the dense filmstrip aesthetic:
+  // longer videos still get more slices packed in, they just happen to render
+  // thinner (because they share the same fixed thumb width with more slices).
   const isMobile = window.innerWidth <= 768;
-  if (isMobile && sliceCounts.length > 1) {
-    sliceCounts = sliceCounts.map(() => MIN_SLICES);
-  }
+  let thumbWidths, renderSliceCounts;
 
-  const totalSlices = sliceCounts.reduce((s, n) => s + n, 0);
-  const sliceW = window.innerWidth / totalSlices;
-  stripEl.style.setProperty('--sw', sliceW + 'px');
+  if (isMobile) {
+    const durs = stripOrder.map(i => projectData[i].duration);
+    const totalDur = durs.reduce((s, d) => s + d, 0);
+
+    // Thumb widths: proportional to duration but compressed. Shortest thumb
+    // gets at least 75% of the equal share, longest gets at most 150%. Caps
+    // the widest:narrowest ratio at ~2:1 (vs desktop's potential 5-10:1) —
+    // preserves the duration visual cue aesthetically without squeezing
+    // short-title thumbs into "No es la m..." truncation.
+    const rawMin = Math.min(...durs);
+    const rawMax = Math.max(...durs);
+    const equalShare = 1 / stripOrder.length;
+    const minShare = equalShare * 0.75;
+    const maxShare = equalShare * 1.50;
+    let widthShares;
+    if (rawMax > rawMin) {
+      // Linearly remap durations into [minShare, maxShare] range, then
+      // renormalize so all shares sum to exactly 1 (viewport width).
+      widthShares = durs.map(d => {
+        const ratio = (d - rawMin) / (rawMax - rawMin);
+        return minShare + ratio * (maxShare - minShare);
+      });
+      const sumShares = widthShares.reduce((s, v) => s + v, 0);
+      widthShares = widthShares.map(s => s / sumShares);
+    } else {
+      widthShares = durs.map(() => equalShare);
+    }
+    thumbWidths = widthShares.map(s => s * window.innerWidth);
+
+    // Slice counts: distributed proportionally across a total budget. More
+    // slices in longer-duration thumbs means visually denser filmstrips for
+    // longer videos — this is what preserves the "dense filmstrip" aesthetic
+    // independent of thumb width. Slices flex within the thumb (see CSS) so
+    // dense thumbs have thinner slices, sparse thumbs have thicker ones.
+    const TOTAL_MOBILE_SLICES = 80;
+    renderSliceCounts = durs.map(d =>
+      Math.max(MIN_SLICES, Math.round(TOTAL_MOBILE_SLICES * d / totalDur))
+    );
+    // --sw unused on mobile (slices flex to fill thumb via CSS) but set to a
+    // sensible fallback in case any edge case reads it
+    stripEl.style.setProperty('--sw', (window.innerWidth / TOTAL_MOBILE_SLICES) + 'px');
+  } else {
+    // Desktop: proportional widths as before — slice count drives both the
+    // thumb width AND the slices rendered inside it (they're tied by design)
+    const totalSlices = sliceCounts.reduce((s, n) => s + n, 0);
+    const sliceW = window.innerWidth / totalSlices;
+    thumbWidths = sliceCounts.map(sc => sc * sliceW);
+    renderSliceCounts = sliceCounts.slice();
+    stripEl.style.setProperty('--sw', sliceW + 'px');
+  }
 
   // Iterate stripOrder. `i` is the projectData index (used for dataset.i,
   // event handlers, goTo, etc.); `sp` is the strip position (0..4) used only
   // for layout concerns like the staggered entrance delay.
   stripOrder.forEach((i, sp) => {
     const p  = projectData[i];
-    const sc = sliceCounts[sp];
     const t  = document.createElement('div');
     t.className  = 'thumb';
     t.dataset.i  = i;
-    t.style.width = (sc * sliceW) + 'px';
+    t.style.width = thumbWidths[sp] + 'px';
 
     const frames     = projectDetails[i]?.thumbFrames || [];
-    const slicesHTML = buildThumbSlices(frames, p.tc, sc);
+    const slicesHTML = buildThumbSlices(frames, p.tc, renderSliceCounts[sp]);
 
     t.innerHTML = `
       <div class="thumb-bg">${slicesHTML}</div>
