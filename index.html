@@ -2595,68 +2595,54 @@ function buildStrip() {
     return Math.round(Math.min(MAX_SLICES, Math.max(MIN_SLICES, (p.duration / minDur) * MIN_SLICES)));
   });
 
-  // On mobile, decouple thumb width from slice rendering. Widths are equal
-  // (so every title gets the same space — no truncation on short titles), but
-  // slice COUNTS are distributed proportionally to video duration using a
-  // total-viewport budget. This preserves the dense filmstrip aesthetic:
-  // longer videos still get more slices packed in, they just happen to render
-  // thinner (because they share the same fixed thumb width with more slices).
-  // On mobile/narrow viewports, decouple thumb width from slice rendering.
-  // Widths are compressed-proportional (title-friendly), slice counts stay
-  // dense and proportional to duration. 1024 breakpoint matches the strip
-  // size cap in pickStripOrder — covers landscape phones and small tablets.
+  // Width formula is unified across mobile and desktop: compressed-proportional
+  // to video duration, capped at 150% of equal share (preventing one long-
+  // duration or high-sliceCount project from hogging the strip) and floored at
+  // 75% (preventing title truncation on short titles). This matches
+  // computeMobileProportionalWidths exactly, so the widths set here by
+  // buildStrip are identical to the widths targeted by redistributeThumbWidths
+  // after each slide animation — no visual jump between initial build and
+  // post-slide redistribution.
+  const durs = stripOrder.map(i => projectData[i].duration || 0);
+  const totalDur2 = durs.reduce((s, d) => s + d, 0);
+  const rawMin = Math.min(...durs);
+  const rawMax = Math.max(...durs);
+  const equalShare = 1 / stripOrder.length;
+  const minShare = equalShare * 0.75;
+  const maxShare = equalShare * 1.50;
+  let widthShares;
+  if (rawMax > rawMin) {
+    widthShares = durs.map(d => {
+      const ratio = (d - rawMin) / (rawMax - rawMin);
+      return minShare + ratio * (maxShare - minShare);
+    });
+    const sumShares = widthShares.reduce((s, v) => s + v, 0);
+    widthShares = widthShares.map(s => s / sumShares);
+  } else {
+    widthShares = durs.map(() => equalShare);
+  }
+  let thumbWidths = widthShares.map(s => s * window.innerWidth);
+
+  // Slice count: rendered independent of width so each thumb's filmstrip
+  // density tracks its duration. Mobile uses a global budget (80 slices
+  // spread across the 4-thumb window); desktop uses the per-thumb integer
+  // count computed earlier (bounded MIN_SLICES..MAX_SLICES). Slices flex
+  // inside the thumb via CSS so they always fill the thumb's width.
   const isMobile = window.innerWidth <= 1024;
-  let thumbWidths, renderSliceCounts;
-
+  let renderSliceCounts;
   if (isMobile) {
-    const durs = stripOrder.map(i => projectData[i].duration);
-    const totalDur = durs.reduce((s, d) => s + d, 0);
-
-    // Thumb widths: proportional to duration but compressed. Shortest thumb
-    // gets at least 75% of the equal share, longest gets at most 150%. Caps
-    // the widest:narrowest ratio at ~2:1 (vs desktop's potential 5-10:1) —
-    // preserves the duration visual cue aesthetically without squeezing
-    // short-title thumbs into "No es la m..." truncation.
-    const rawMin = Math.min(...durs);
-    const rawMax = Math.max(...durs);
-    const equalShare = 1 / stripOrder.length;
-    const minShare = equalShare * 0.75;
-    const maxShare = equalShare * 1.50;
-    let widthShares;
-    if (rawMax > rawMin) {
-      // Linearly remap durations into [minShare, maxShare] range, then
-      // renormalize so all shares sum to exactly 1 (viewport width).
-      widthShares = durs.map(d => {
-        const ratio = (d - rawMin) / (rawMax - rawMin);
-        return minShare + ratio * (maxShare - minShare);
-      });
-      const sumShares = widthShares.reduce((s, v) => s + v, 0);
-      widthShares = widthShares.map(s => s / sumShares);
-    } else {
-      widthShares = durs.map(() => equalShare);
-    }
-    thumbWidths = widthShares.map(s => s * window.innerWidth);
-
-    // Slice counts: distributed proportionally across a total budget. More
-    // slices in longer-duration thumbs means visually denser filmstrips for
-    // longer videos — this is what preserves the "dense filmstrip" aesthetic
-    // independent of thumb width. Slices flex within the thumb (see CSS) so
-    // dense thumbs have thinner slices, sparse thumbs have thicker ones.
     const TOTAL_MOBILE_SLICES = 80;
     renderSliceCounts = durs.map(d =>
-      Math.max(MIN_SLICES, Math.round(TOTAL_MOBILE_SLICES * d / totalDur))
+      Math.max(MIN_SLICES, Math.round(TOTAL_MOBILE_SLICES * d / (totalDur2 || 1)))
     );
-    // --sw unused on mobile (slices flex to fill thumb via CSS) but set to a
-    // sensible fallback in case any edge case reads it
     stripEl.style.setProperty('--sw', (window.innerWidth / TOTAL_MOBILE_SLICES) + 'px');
   } else {
-    // Desktop: proportional widths as before — slice count drives both the
-    // thumb width AND the slices rendered inside it (they're tied by design)
-    const totalSlices = sliceCounts.reduce((s, n) => s + n, 0);
-    const sliceW = window.innerWidth / totalSlices;
-    thumbWidths = sliceCounts.map(sc => sc * sliceW);
     renderSliceCounts = sliceCounts.slice();
-    stripEl.style.setProperty('--sw', sliceW + 'px');
+    // --sw is used by slice CSS as a fallback sizing hint; use the average
+    // slice width across the strip (each thumb's slices still flex to fill
+    // the thumb regardless of this variable).
+    const totalSlicesDt = sliceCounts.reduce((s, n) => s + n, 0) || 1;
+    stripEl.style.setProperty('--sw', (window.innerWidth / totalSlicesDt) + 'px');
   }
 
   // Iterate stripOrder. `i` is the projectData index (used for dataset.i,
