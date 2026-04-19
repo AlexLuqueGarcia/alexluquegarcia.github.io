@@ -5,5 +5,10 @@ year: 2022
 duration: 90
 color: tc-0
 video: https://vz-114da70f-2b3.b-cdn.net/96deae81-d239-448c-835f-45abc515adcc/play_1080p.mp4
-about: CG work for Black MIDI's Welcome To Hell music video.
-team: Alex Luque Garcia — CG Artist
+about: Animated music video for black midi's "Welcome To Hell", from the album Hellfire. 3D modelling for the piece, directed by Gustaf Holtenäs with 3D direction by Sevi Iko Dømochevsky.
+team: 3D Director — Sevi Iko Dømochevsky
+2D Animation — Gustaf Holtenäs, Joel Arizona Widerberg & Noha Manfredi
+3D Modelling — Valeria Baret & Alex Luque García
+Sound Effects — Hannes Ferm
+credits: Directed by — Gustaf Holtenäs
+Written by — Gustaf Holtenäs, Sevi Iko Dømochevsky & Noha Manfredi
