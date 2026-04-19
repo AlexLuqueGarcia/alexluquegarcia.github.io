@@ -1216,7 +1216,8 @@ body.is-fullscreen .win-resize { display: none !important; }
 }
 
 .win-text {
-  background: rgba(255,255,255,0.08);
+  /* Dark tinted frosted glass — guarantees white text contrast regardless of video bg color */
+  background: rgba(12,12,12,0.42);
   backdrop-filter: blur(30px) saturate(1.4);
   -webkit-backdrop-filter: blur(30px) saturate(1.4);
   border: 1px solid rgba(255,255,255,0.12);
@@ -1321,6 +1322,48 @@ body.is-fullscreen .win-resize { display: none !important; }
   pointer-events:all;
 }
 .df-values a:hover { opacity: 0.55; }
+
+/* ── DETAIL-VIEW READABILITY LAYER ──
+   When the detail view is open the background video is blurred and can land on
+   any color — including near-white frames that made white nav/footer text vanish.
+   We fix this per-layer because they live in different stacking contexts:
+
+   1. Nav + detail-footer live in the root stacking context (siblings of #video-bg),
+      so mix-blend-mode: difference works directly — identical approach to #work-year.
+      Gated on detail-open state so landing/work pages keep their normal nav look.
+   2. .win-text panel handles itself via its dark-tinted glass background (above).
+   3. Mobile detail text sits inside #detail's own stacking context where blend
+      modes can't reach the video bg, so we add a subtle dark vertical scrim
+      behind the content instead. */
+
+/* Nav: invert against whatever the blurred video bg is when detail is open.
+   Applied to <nav> itself — the whole element composites as a group and blends
+   with the video-bg beneath it (both are direct children of <body>, so they
+   share the root stacking context). Children inherit the group treatment. */
+#video-bg.blurred ~ nav {
+  mix-blend-mode: difference;
+}
+
+/* Detail footer: only visible when detail is open, so always-on difference is fine */
+#detail-footer {
+  mix-blend-mode: difference;
+}
+
+/* Mobile detail: add a soft dark scrim behind the vertical content stack so
+   white text is always readable on pale video frames. Kept gentle so the
+   blurred video still sets the mood. */
+@media (max-width: 768px) {
+  #detail.open #canvas-inner.mobile-detail {
+    background: linear-gradient(
+      to bottom,
+      rgba(0,0,0,0.55) 0%,
+      rgba(0,0,0,0.35) 35%,
+      rgba(0,0,0,0.35) 65%,
+      rgba(0,0,0,0.55) 100%
+    );
+  }
+}
+
 .tc-1{background:linear-gradient(160deg,#402810,#201408);}
 .tc-2{background:linear-gradient(160deg,#183820,#0a2010);}
 .tc-3{background:linear-gradient(160deg,#301850,#180830);}
