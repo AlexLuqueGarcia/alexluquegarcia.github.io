@@ -324,7 +324,11 @@ body.cur-hover #cur svg {
    navigation we swap id + active class rather than changing src, which is
    what eliminates the decode latency on every swipe. See initVideoPool().
    Ambient breath animation lives on the class (not the id) so all pool
-   members animate in sync — swap doesn't re-start the animation. */
+   members animate in sync — swap doesn't re-start the animation.
+   Hidden state uses visibility + opacity + pointer-events together: iOS
+   Safari renders <video> in a native compositor layer that sometimes
+   doesn't honor visibility:hidden alone (inactive videos can flash at
+   their intrinsic size mid-swap). Triple combo is reliable. */
 .bg-video {
   position: absolute;
   inset: 0;
@@ -334,10 +338,16 @@ body.cur-hover #cur svg {
   display: block;
   background: transparent;
   visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
   animation: ambientBreath 24s ease-in-out infinite;
   transform-origin: center center;
 }
-.bg-video.bg-active { visibility: visible; }
+.bg-video.bg-active {
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
+}
 /* Very subtle ambient scale — 1% drift across 24s. Adds filmic aliveness
    without being distracting. Pauses when detail is open (page blurred). */
 @keyframes ambientBreath {
@@ -1859,7 +1869,7 @@ body.is-fullscreen .win-resize { display: none !important; }
 
 <!-- Always-fixed video background -->
 <div id="video-bg-peek"></div>
-<div id="video-bg"><video id="video-bg-inner" class="bg-video bg-active" autoplay muted playsinline preload="auto" crossorigin="anonymous"></video></div>
+<div id="video-bg"><video id="video-bg-inner" class="bg-video bg-active" muted playsinline preload="auto" crossorigin="anonymous"></video></div>
 
 <!-- Custom cursor -->
 <div id="cur">
@@ -3355,6 +3365,12 @@ function activeHls() {
   return videoPool[activeSlotIdx].hlsInstance;
 }
 
+// Global mute preference — defaults to muted. Updated by the mute button
+// handler; activateSlot applies it to the new active so the user's choice
+// persists across project swaps. Preloaded neighbors stay muted always
+// (they shouldn't produce audio — only the active one should).
+let globalMuted = true;
+
 // Load a project's video into a specific pool slot. Does NOT activate it —
 // the slot remains hidden until activateSlot() is called. This is how we
 // pre-decode neighbor videos in the background.
@@ -3379,6 +3395,8 @@ function loadSlot(slotIdx, projIdx) {
   // Poster covers any brief flash if this slot is activated before canplay
   const firstThumb = projectDetails[projIdx]?.thumbFrames?.[0];
   if (firstThumb) el.poster = firstThumb;
+  // Preloaded slots are ALWAYS muted — only the active slot produces sound
+  el.muted = true;
 
   const isHLS = url.includes('.m3u8');
   if (isHLS) {
@@ -3395,6 +3413,11 @@ function loadSlot(slotIdx, projIdx) {
     el.src = url;
     el.load();
   }
+  // Defensive: even though autoplay is removed from the seed HTML, a new
+  // src assignment on a decoded video element can sometimes produce a
+  // brief burst of playback if the browser's heuristics kick in. Pause
+  // explicitly so preload stays silent and non-playing.
+  try { el.pause(); } catch {}
 }
 
 // Make a specific pool slot the visible/playing one. This is the hot path
@@ -3406,6 +3429,7 @@ function activateSlot(slotIdx) {
   if (activeSlotIdx === slotIdx) {
     // Already active — just ensure it's playing (e.g. first-time setBg)
     const el = videoPool[slotIdx].element;
+    el.muted = globalMuted;
     if (typeof playing === 'undefined' || playing !== false) {
       el.play().catch(() => {});
     }
@@ -3421,10 +3445,20 @@ function activateSlot(slotIdx) {
     oldEl.removeAttribute('id');
     oldEl.classList.remove('bg-active');
     try { oldEl.pause(); } catch {}
+    oldEl.muted = true;  // prevent any future autoplay attempts from making audio
     // Persist old project's currentTime so if the user navigates back
     // we could resume — not used right now but cheap to track.
     oldSlot._savedTime = oldEl.currentTime;
   }
+
+  // Belt-and-suspenders: pause + mute every OTHER pool slot too. If any
+  // slot somehow slipped into play state (browser autoplay heuristics,
+  // loadSlot race, etc.), this guarantees exactly one playing video.
+  videoPool.forEach((s, i) => {
+    if (i === slotIdx) return;
+    try { s.element.pause(); } catch {}
+    s.element.muted = true;
+  });
 
   // Activate new. Order: add bg-active FIRST (visibility changes while
   // there's no id-scoped transition), then set id.
@@ -3432,6 +3466,7 @@ function activateSlot(slotIdx) {
   const el = slot.element;
   el.classList.add('bg-active');
   el.id = 'video-bg-inner';
+  el.muted = globalMuted;  // restore user's mute preference
   try { el.currentTime = 0; } catch {}
   el.play().catch(() => {});
 
@@ -5958,12 +5993,14 @@ lndMuteBtn.addEventListener('click', (e) => {
   e.stopPropagation();
   e.currentTarget.blur();
   if (!isLndVideo) return;
-  // Mute state has to propagate to EVERY pool element — otherwise, when the
-  // user unmutes and then swipes to a preloaded neighbor, the new active
-  // element is still muted (its own muted state) and sound disappears.
-  const nextMuted = !lndVideo.muted;
-  videoPool.forEach(s => { s.element.muted = nextMuted; });
-  lndWaves.style.opacity = nextMuted ? '0.15' : '1';
+  // Toggle the global mute state (source of truth). Apply to the ACTIVE
+  // slot only — preloaded slots stay muted so they can never produce
+  // audio even if something triggers a rogue play on them.
+  globalMuted = !globalMuted;
+  if (activeSlotIdx >= 0) {
+    videoPool[activeSlotIdx].element.muted = globalMuted;
+  }
+  lndWaves.style.opacity = globalMuted ? '0.15' : '1';
 });
 
 // ── NAV YEAR ──
