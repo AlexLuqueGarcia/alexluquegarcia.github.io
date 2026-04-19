@@ -1296,7 +1296,10 @@ body.is-fullscreen .win-resize { display: none !important; }
   opacity:0;
   transition: opacity 0.5s ease;
 }
-#detail.open #detail-footer { opacity:1; }
+/* Footer now sits as sibling of #detail (not inside it), so we use the
+   #video-bg.blurred general sibling selector — the blurred class is added/
+   removed in lockstep with detail open/close, same trigger as the nav blend. */
+#video-bg.blurred ~ #detail-footer { opacity:1; }
 .df-copy {
   font-size:1.08rem;
   color:#fff;
@@ -1581,17 +1584,25 @@ body.is-fullscreen .win-resize { display: none !important; }
       <!-- windows injected by JS -->
     </div>
   </div>
-  <div id="detail-footer">
-    <div class="df-copy">© Alex Luque Garcia 2026</div>
-    <div class="df-contact">
-      <div class="df-labels">
-        <span>Email</span>
-        <span>Instagram</span>
-      </div>
-      <div class="df-values">
-        <a href="mailto:info@alexluquegarcia.com">info@alexluquegarcia.com</a>
-        <a href="https://www.instagram.com/alexluquegarcia/" target="_blank">@alexluquegarcia</a>
-      </div>
+</div>
+
+<!-- Detail footer is a SIBLING of #detail (not a child) so it sits in the root
+     stacking context alongside #video-bg. This lets mix-blend-mode: difference
+     blend the white footer text against the blurred video bg regardless of its
+     color. If it were nested inside #detail (z-index:90, transparent), the blend
+     would have no backdrop to blend against. Visibility is gated on the
+     #video-bg.blurred class, which is added/removed in lockstep with detail
+     open/close — same trigger used for the nav's blend mode. -->
+<div id="detail-footer">
+  <div class="df-copy">© Alex Luque Garcia 2026</div>
+  <div class="df-contact">
+    <div class="df-labels">
+      <span>Email</span>
+      <span>Instagram</span>
+    </div>
+    <div class="df-values">
+      <a href="mailto:info@alexluquegarcia.com">info@alexluquegarcia.com</a>
+      <a href="https://www.instagram.com/alexluquegarcia/" target="_blank">@alexluquegarcia</a>
     </div>
   </div>
 </div>
