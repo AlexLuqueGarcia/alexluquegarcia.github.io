@@ -82,9 +82,12 @@ module.exports = async (req, res) => {
       }))
       .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
 
-    // 4. Thumbnail frames
+    // 4. Thumbnail frames — match any image file in thumbnail/ so that
+    // projects created before the video_NNN.jpg convention still show up.
+    // Sort numerically by any digits in the filename so order is intuitive
+    // regardless of the naming scheme.
     const thumbs = thumbItems
-      .filter(it => !it.IsDirectory && /^video_\d{3}\.jpg$/.test(it.ObjectName))
+      .filter(it => !it.IsDirectory && /\.(jpe?g|png|webp)$/i.test(it.ObjectName))
       .map(it => ({
         name: it.ObjectName,
         size: it.Length,
