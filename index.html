@@ -1931,8 +1931,18 @@ body.is-fullscreen .win-resize { display: none !important; }
 // Add a project: just add its folder name to projects/projects.json
 // No HTML changes ever needed.
 //
-// projects/projects.json format:
-//   ["welcome-to-hell", "factmix", "carnet-jove-2025", "bold-campaign-2026"]
+// projects/projects.json format — accepts either plain folder strings,
+// or objects with a pinned flag. The pinned project always appears FIRST
+// in the Feed strip; the rest are chosen randomly (max 4 others, max 5
+// total). If no entry has pinned:true, the newest project (first after
+// year-desc sort) acts as the default pin.
+//
+//   [
+//     {"folder": "2025-bold", "pinned": true},
+//     "2024-olimpic",
+//     "2022-welcome-to-hell",
+//     "2020-factmix"
+//   ]
 //
 // Each folder needs:
 //   info.txt   video.mp4   01.jpg  02.jpg ...
@@ -2121,8 +2131,12 @@ async function loadProjects() {
     return;
   }
 
-  // Load each project's info.txt
-  const results = await Promise.all(manifest.map(async (folder, idx) => {
+  // Load each project's info.txt. Each manifest entry can be either a plain
+  // folder string or an object like {folder, pinned} — normalize here so the
+  // rest of loadProjects sees a uniform {folder, pinned} shape.
+  const results = await Promise.all(manifest.map(async (entry, idx) => {
+    const folder = typeof entry === 'string' ? entry : entry.folder;
+    const pinned = typeof entry === 'string' ? false   : !!entry.pinned;
     const mediaBase = `${ASSETS_BASE}/${folder}`;  // Bunny — videos, images, thumbs
     const infoBase  = `projects/${folder}`;         // GitHub — info.txt
     try {
@@ -2136,6 +2150,7 @@ async function loadProjects() {
       return {
         proj: {
           folder,
+          pinned,
           tc:       info.color    || colors[idx % colors.length],
           name:     info.name     || folder,
           client:   info.client   || '',
@@ -2162,7 +2177,9 @@ async function loadProjects() {
       const fb = FALLBACK_PROJECTS.find(p => p.folder === folder);
       const folderYear = (folder.match(/^(\d{4})/) || [])[1] || '';
       return {
-        proj:   fb || { folder, tc: colors[idx % colors.length], name: folder, client:'', studio:'', type:'', year: folderYear, duration:60, src:`${mediaBase}/video.mp4` },
+        proj:   fb
+          ? { ...fb, pinned }
+          : { folder, pinned, tc: colors[idx % colors.length], name: folder, client:'', studio:'', type:'', year: folderYear, duration:60, src:`${mediaBase}/video.mp4` },
         detail: { about:'', team:'', credits:'', images:[], thumbFrames:[], thumb:null }
       };
     }
@@ -2186,6 +2203,80 @@ async function loadProjects() {
 const SPEED = 6;
 let totalDur = 0;
 
+// ── STRIP ORDERING ──
+// The Feed strip shows at most 5 projects: one "pinned" project (marked in
+// projects.json) always first, then up to 4 others picked randomly from the
+// remaining catalog. Re-picked each time the user returns to Feed, so the
+// strip feels fresh on every visit while the pinned project stays anchored.
+//
+// stripOrder holds projectData indices in display order. Keeping it as
+// indices (rather than a slice of projectData) means click/scrub/dataset.i
+// logic throughout the rest of the codebase keeps working unchanged —
+// dataset.i is still the projectData index, not the strip position.
+let stripOrder = [];
+
+function pickStripOrder(forceInclude = null) {
+  if (projectData.length === 0) return [];
+
+  // Find the pinned project. Fallback: newest (index 0 after year-desc sort)
+  // so the strip still has a stable anchor even if projects.json doesn't mark
+  // anything as pinned.
+  const pinnedIdx = projectData.findIndex(p => p.pinned);
+  const pinned = pinnedIdx >= 0 ? pinnedIdx : 0;
+
+  // Fisher-Yates shuffle of the non-pinned pool
+  const pool = projectData.map((_, i) => i).filter(i => i !== pinned);
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+
+  // Take up to 4 random
+  let picks = pool.slice(0, 4);
+
+  // Continuity preservation: if a "current" project is given (e.g. the one
+  // the user was just viewing in detail), make sure it lands in the strip.
+  // Otherwise the bg video would suddenly swap to a different project when
+  // detail closes — jarring. If it's already in picks (or IS the pinned),
+  // no-op; otherwise replace the last slot with it.
+  if (forceInclude !== null
+      && forceInclude !== pinned
+      && forceInclude >= 0
+      && forceInclude < projectData.length
+      && !picks.includes(forceInclude)) {
+    if (picks.length >= 4) picks[picks.length - 1] = forceInclude;
+    else                    picks.push(forceInclude);
+  }
+
+  return [pinned, ...picks];
+}
+
+// Advance helper for autoplay: find cur's position in stripOrder and move to
+// the next one (wrapping). If cur somehow isn't in stripOrder (shouldn't
+// happen given forceInclude logic, but defensive), fall back to the pinned.
+function nextInStrip(fromIdx) {
+  if (!stripOrder || stripOrder.length === 0) return fromIdx;
+  const pos = stripOrder.indexOf(fromIdx);
+  if (pos < 0) return stripOrder[0];
+  return stripOrder[(pos + 1) % stripOrder.length];
+}
+
+// Reverse counterpart for swipe-back / ArrowLeft.
+function prevInStrip(fromIdx) {
+  if (!stripOrder || stripOrder.length === 0) return fromIdx;
+  const pos = stripOrder.indexOf(fromIdx);
+  if (pos < 0) return stripOrder[0];
+  return stripOrder[(pos - 1 + stripOrder.length) % stripOrder.length];
+}
+
+// Pick a fresh set of strip projects + rebuild the DOM. Called on every
+// Feed re-entry (close detail/work, goHome) so the strip rotates through
+// different projects over the course of a session.
+function reshuffleStrip(forceInclude = null) {
+  stripOrder = pickStripOrder(forceInclude);
+  buildStrip();
+}
+
 // Build strip thumbs from loaded data
 function buildStrip() {
   // Don't rebuild while user is actively scrubbing — it would nuke the DOM element
@@ -2194,16 +2285,27 @@ function buildStrip() {
     setTimeout(buildStrip, 300);
     return;
   }
+  // Ensure we have a strip order to render. First-ever build (or any build
+  // where someone forgot to call reshuffleStrip) bootstraps one here.
+  if (!stripOrder || stripOrder.length === 0) {
+    stripOrder = pickStripOrder();
+  }
   const firstBuild = !stripEl.dataset.built;
   stripEl.dataset.built = '1';
-  totalDur = projectData.reduce((s,p) => s + p.duration, 0);
-  const minDur = Math.min(...projectData.map(p => p.duration));
+
+  // Strip-only duration math — totalDur drives scrub progress, so it should
+  // reflect only the projects actually visible in the strip.
+  const stripProjects = stripOrder.map(i => projectData[i]);
+  totalDur = stripProjects.reduce((s,p) => s + p.duration, 0);
+  const minDur = Math.min(...stripProjects.map(p => p.duration));
   stripEl.innerHTML = '';
 
   const MIN_SLICES = 4, MAX_SLICES = 20;
-  const sliceCounts = projectData.map((p, i) => {
+  // sliceCounts parallels stripOrder (indexed by strip position 0..4)
+  const sliceCounts = stripOrder.map((i) => {
     const sc = projectDetails[i]?.sliceCount;
     if (sc) return sc;
+    const p = projectData[i];
     return Math.round(Math.min(MAX_SLICES, Math.max(MIN_SLICES, (p.duration / minDur) * MIN_SLICES)));
   });
 
@@ -2211,8 +2313,12 @@ function buildStrip() {
   const sliceW = window.innerWidth / totalSlices;
   stripEl.style.setProperty('--sw', sliceW + 'px');
 
-  projectData.forEach((p, i) => {
-    const sc = sliceCounts[i];
+  // Iterate stripOrder. `i` is the projectData index (used for dataset.i,
+  // event handlers, goTo, etc.); `sp` is the strip position (0..4) used only
+  // for layout concerns like the staggered entrance delay.
+  stripOrder.forEach((i, sp) => {
+    const p  = projectData[i];
+    const sc = sliceCounts[sp];
     const t  = document.createElement('div');
     t.className  = 'thumb';
     t.dataset.i  = i;
@@ -2271,8 +2377,8 @@ function buildStrip() {
     stripEl.appendChild(t);
     if (firstBuild) {
       t.classList.add('thumb-enter');
-      // Stagger each thumb's entrance by index * 60ms
-      t.style.setProperty('--enter-delay', (i * 0.06) + 's');
+      // Stagger each thumb's entrance by strip position (0..4) * 60ms
+      t.style.setProperty('--enter-delay', (sp * 0.06) + 's');
     }
   });
 
@@ -2306,7 +2412,9 @@ function seekVideo(pct) {
 let _flashTimer = null;
 function flashActiveThumb() {
   const thumbs = allThumbs();
-  const active = thumbs[cur];
+  // Find the thumb for the current project by dataset.i — strip's array
+  // position no longer corresponds to projectData index.
+  const active = thumbs.find(t => parseInt(t.dataset.i, 10) === cur);
   if (!active) return;
   // Clear any previous flash
   if (_flashTimer) clearTimeout(_flashTimer);
@@ -2341,9 +2449,9 @@ const videoBgInner = document.getElementById('video-bg-inner');
 const videoBg      = document.getElementById('video-bg');
 const isTouch = window.matchMedia('(pointer: coarse)').matches;
 
-// When video ends, advance to next project
+// When video ends, advance to next project (within the strip's current order)
 videoBgInner.addEventListener('ended', () => {
-  if (!detailOpen && !workOpen) goTo((cur + 1) % projectData.length);
+  if (!detailOpen && !workOpen) goTo(nextInStrip(cur));
 });
 const metaEl       = document.getElementById('meta');
 if (isTouch) {
@@ -2674,14 +2782,22 @@ function updateMeta(i) {
   hintEl.classList.add('visible');
 }
 
+// Helper — strip's array position no longer equals projectData index
+// (the strip may only show 5 of N projects), so look up by dataset.i.
+function thumbByProjectIdx(i) {
+  return allThumbs().find(t => parseInt(t.dataset.i, 10) === i) || null;
+}
+
 function setActiveThumb(i) {
-  allThumbs().forEach((t,j) => t.classList.toggle('active', j===i));
+  allThumbs().forEach(t => {
+    t.classList.toggle('active', parseInt(t.dataset.i, 10) === i);
+  });
 }
 
 function setProgress(lp) {
   localProgress = Math.max(0, Math.min(1, lp));
   const pct = (localProgress * 100).toFixed(3) + '%';
-  const at  = allThumbs()[cur];
+  const at  = thumbByProjectIdx(cur);
   if (!at) return;
   at.querySelector('.thumb-marker').style.left = pct;
   const b = at.querySelector('.thumb-black');
@@ -2689,7 +2805,7 @@ function setProgress(lp) {
 }
 
 function resetThumb(i) {
-  const t = allThumbs()[i];
+  const t = thumbByProjectIdx(i);
   if (!t) return;
   t.querySelector('.thumb-marker').style.left = '0%';
   const b = t.querySelector('.thumb-black');
@@ -2897,7 +3013,7 @@ function tick(ts) {
     localProgress = vid.currentTime / vid.duration;
     if (localProgress >= 0.999) {
       setProgress(1);
-      goTo((cur + 1) % projectData.length);
+      goTo(nextInStrip(cur));
       return;
     }
     setProgress(localProgress);
@@ -2906,7 +3022,7 @@ function tick(ts) {
     if (lastTs === null) lastTs = ts;
     const dt = ts - lastTs; lastTs = ts;
     localProgress += (dt * SPEED) / (projectData[cur].duration * 1000);
-    if (localProgress >= 1) { setProgress(1); goTo((cur+1) % projectData.length); return; }
+    if (localProgress >= 1) { setProgress(1); goTo(nextInStrip(cur)); return; }
     setProgress(localProgress);
   }
   schedTick();
@@ -3474,9 +3590,14 @@ function goHome() {
   // Between each close we reset the flag so back-to-back dismissals can
   // actually all fire. Each close will set the flag on its own internal
   // async cleanup timer; that still works for the LAST one called.
+  const nothingOpen = !detailOpen && !workOpen && !infoOpen;
   if (detailOpen) { closeDetail(); transitioning = false; }
   if (workOpen)   { closeWork();   transitioning = false; }
   if (infoOpen)     closeInfo();
+  // If nothing was open (user clicked Feed while already on Feed), treat it
+  // as an explicit "refresh the strip" gesture. When panels were open, their
+  // own close handlers will reshuffle (so we don't double-shuffle here).
+  if (nothingOpen) reshuffleStrip(cur);
 }
 
 // ── INFO SHEET ──
@@ -3928,7 +4049,7 @@ function openWork() {
   const ind = mobIndicator;
   if (ind) ind.classList.remove('visible');
 
-  // 1. Measure where each thumbnail is NOW in the strip
+  // 1. Measure where each thumbnail is NOW in the strip (indexed by strip position 0..4)
   const startRects = allThumbs().map(t => t.getBoundingClientRect());
 
   // 2. Build the work page (hidden - opacity 0)
@@ -3947,21 +4068,34 @@ function openWork() {
   }
 
   // 3. Measure where each row WILL BE in the work page — use middle block
+  // (indexed by projectData index, since buildWork iterates projectData directly)
   const rows = middleWorkRows();
   const endRects = rows.map(r => r.getBoundingClientRect());
 
-  // 4. Hide the landing strip (instant, no slide animation) and work rows
+  // Map projectData index → strip position — only these projects have a
+  // visible thumb in the strip to fly from. The rest just fade in with the
+  // work page opening animation.
+  const stripPosByIdx = {};
+  stripOrder.forEach((pIdx, sp) => { stripPosByIdx[pIdx] = sp; });
+
+  // 4. Hide the landing strip and hide ONLY work rows that have a matching
+  // fly clone. Non-strip rows stay visible and fade in with the work page.
   stripEl.style.visibility = 'hidden';
   metaEl.classList.add('hide');
   hintEl.classList.add('hide');
-  allRows.forEach(r => r.style.visibility = 'hidden');
+  allRows.forEach(r => {
+    const pIdx = parseInt(r.dataset.projectIdx, 10);
+    if (stripPosByIdx[pIdx] !== undefined) r.style.visibility = 'hidden';
+  });
 
-  // 5. Create flying clones that animate from startRect to endRect
-  const flies = projectData.map((p, i) => {
-    const pd     = projectDetails[i];
+  // 5. Create flying clones only for strip projects — each flies from its
+  // slot in the strip to its row in the middle work block.
+  const flies = stripOrder.map((pIdx, sp) => {
+    const p      = projectData[pIdx];
+    const pd     = projectDetails[pIdx];
     const frames = pd?.thumbFrames || [];
     const sc     = pd?.sliceCount  || 20;
-    return createFlyThumb(startRects[i], endRects[i], frames, sc, p.tc);
+    return createFlyThumb(startRects[sp], endRects[pIdx], frames, sc, p.tc);
   });
 
   // 6. Once animation finishes, show the real rows and remove clones
@@ -4020,6 +4154,9 @@ function closeWork(skipAnim = false) {
     // Start the strip below the viewport, then animate it up to its final position
     stripEl.style.visibility = '';
     stripEl.classList.add('hide');  // starts translated down
+    // Reshuffle while strip is translated offscreen — user sees a fresh set
+    // of random projects when the strip slides back up.
+    reshuffleStrip(cur);
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         stripEl.classList.remove('hide');  // slides up (existing .hide transition handles it)
@@ -4038,15 +4175,27 @@ function closeWork(skipAnim = false) {
   // 2. The strip is already at its correct position (just hidden via visibility)
   const endRects = allThumbs().map(t => t.getBoundingClientRect());
 
-  // 3. Hide all work rows so only clones are visible during animation
-  allRows.forEach(r => r.style.visibility = 'hidden');
+  // Map projectData index → strip position. Only projects present in the
+  // current strip have a landing spot; the rest just fade with the page.
+  const stripPosByIdx = {};
+  stripOrder.forEach((pIdx, sp) => { stripPosByIdx[pIdx] = sp; });
 
-  // 4. Create flying clones from row positions → strip positions
-  const flies = projectData.map((p, i) => {
-    const pd     = projectDetails[i];
+  // 3. Hide only the work rows whose projects have a corresponding fly clone.
+  // Non-strip rows stay visible and simply fade out with the work page's
+  // opacity transition — no visual gap, no "dropped" row.
+  allRows.forEach(r => {
+    const pIdx = parseInt(r.dataset.projectIdx, 10);
+    if (stripPosByIdx[pIdx] !== undefined) r.style.visibility = 'hidden';
+  });
+
+  // 4. Create flying clones only for strip projects — each flies from its
+  // row in the middle work block to its slot in the strip.
+  const flies = stripOrder.map((pIdx, sp) => {
+    const p      = projectData[pIdx];
+    const pd     = projectDetails[pIdx];
     const frames = pd?.thumbFrames || [];
     const sc     = pd?.sliceCount  || 20;
-    return createFlyThumb(startRects[i], endRects[i], frames, sc, p.tc);
+    return createFlyThumb(startRects[pIdx], endRects[sp], frames, sc, p.tc);
   });
 
   // 5. Fade out work page, restore meta/hint
@@ -4054,8 +4203,11 @@ function closeWork(skipAnim = false) {
   metaEl.classList.remove('hide');
   hintEl.classList.remove('hide');
 
-  // 6. After animation finishes, restore strip visibility and remove clones
+  // 6. After animation finishes, reshuffle the strip (while it's still
+  // visibility-hidden behind the flies, so the DOM swap is invisible), then
+  // restore visibility + remove clones.
   setTimeout(() => {
+    reshuffleStrip(cur);
     stripEl.style.visibility = '';
     flies.forEach(f => f.remove());
     allRows.forEach(r => r.style.visibility = '');
@@ -4502,10 +4654,17 @@ function closeDetail() {
 
   // 2. strip comes back up after detail is gone
   setTimeout(() => {
+    // Reshuffle the strip while it's still hidden — the DOM swap happens
+    // off-screen, so the user sees a fresh set of 4 random projects (plus
+    // the pinned one) the next time the strip appears. forceInclude=cur
+    // keeps the currently-playing project in the strip so the bg video
+    // doesn't suddenly change underneath them.
+    reshuffleStrip(cur);
+
     stripEl.classList.remove('hide');
     metaEl.classList.remove('hide');
     hintEl.classList.remove('hide');
-    
+
     metaEl.classList.remove('visible');
     hintEl.classList.remove('visible');
     setTimeout(() => {
@@ -4564,10 +4723,10 @@ window.addEventListener('touchmove', e => {
   videoBg.style.transform = `translateY(${dy}px)`;
 
   // Peek of next/prev project sits edge-to-edge with current,
-  // so they move together like a film strip
+  // so they move together like a film strip. Navigation wraps within the
+  // strip's current ordering, not the full catalog.
   const isSwipeUp = dy < 0;
-  const nextIdx = isSwipeUp ? (cur + 1) % projectData.length
-                            : (cur - 1 + projectData.length) % projectData.length;
+  const nextIdx = isSwipeUp ? nextInStrip(cur) : prevInStrip(cur);
   const nextThumb = projectDetails[nextIdx]?.thumbFrames?.[0];
   if (nextThumb) peekEl.style.backgroundImage = `url('${nextThumb}')`;
 
@@ -4586,9 +4745,7 @@ window.addEventListener('touchend', e => {
     peekEl.classList.remove('swiping');
     const h = window.innerHeight;
     const isSwipeUp = swipeDy < 0;
-    const nextIdx = isSwipeUp
-      ? (cur + 1) % projectData.length
-      : (cur - 1 + projectData.length) % projectData.length;
+    const nextIdx = isSwipeUp ? nextInStrip(cur) : prevInStrip(cur);
 
     // Commit if swiped more than 20% of screen
     if (Math.abs(swipeDy) > h * 0.2) {
@@ -4655,8 +4812,8 @@ document.addEventListener('keydown', e => {
     if (e.key === 'Escape') closeWork();
     return;
   }
-  if (e.key==='ArrowRight' && !detailOpen) { goTo((cur+1) % projectData.length); flashActiveThumb(); }
-  if (e.key==='ArrowLeft'  && !detailOpen) { goTo((cur-1+projectData.length) % projectData.length); flashActiveThumb(); }
+  if (e.key==='ArrowRight' && !detailOpen) { goTo(nextInStrip(cur)); flashActiveThumb(); }
+  if (e.key==='ArrowLeft'  && !detailOpen) { goTo(prevInStrip(cur)); flashActiveThumb(); }
   if (e.key==='Escape' && detailOpen) closeDetail();
   if (e.key===' ' && !detailOpen && !infoOpen) {
     e.preventDefault();
@@ -4690,7 +4847,7 @@ videoBg.addEventListener('click', () => {
   if (isTouch) {
     setPlaying(!playing);
   } else {
-    goTo((cur + 1) % projectData.length);
+    goTo(nextInStrip(cur));
     flashActiveThumb();
   }
 });
@@ -4807,27 +4964,35 @@ window.addEventListener('load', async () => {
   // 1. Load project metadata
   await loadProjects();
 
-  // 2. Preload first video at highest browser priority
-  if (projectData[0]?.src) {
+  // 2. Pick the initial strip order. stripOrder[0] is the pinned project
+  // (or the newest as fallback) — that's the one users see first, so preload
+  // its video and make it the starting `cur`.
+  stripOrder = pickStripOrder();
+  const initialIdx = stripOrder[0] ?? 0;
+  cur = initialIdx;
+
+  // 3. Preload initial video at highest browser priority
+  if (projectData[initialIdx]?.src) {
     const link = document.createElement('link');
     link.rel = 'preload'; link.as = 'video';
-    link.href = projectData[0].src;
+    link.href = projectData[initialIdx].src;
     document.head.appendChild(link);
   }
 
-  // 3. Build strip with color fallbacks, start playing
+  // 4. Build strip with color fallbacks, start playing
   buildStrip();
-  setBg(0); setActiveThumb(0); updateMeta(0); setPlaying(true);
+  setBg(initialIdx); setActiveThumb(initialIdx); updateMeta(initialIdx); setPlaying(true);
 
   // Fade the page in once the initial frame is ready
   requestAnimationFrame(() => {
     requestAnimationFrame(() => document.body.classList.add('loaded'));
   });
 
-  // 4. First project thumbnails — await so strip fills in immediately
-  const firstPd = projectDetails[0];
+  // 5. Initial project thumbnails — await so the first visible thumb
+  // (the pinned project at stripOrder[0]) fills in immediately
+  const firstPd = projectDetails[initialIdx];
   if (!firstPd.thumbFrames?.length) {
-    const result = await loadThumbnailFrames(`${ASSETS_BASE}/${projectData[0].folder}`);
+    const result = await loadThumbnailFrames(`${ASSETS_BASE}/${projectData[initialIdx].folder}`);
     if (result.frames.length > 0) {
       firstPd.thumbFrames = result.frames;
       firstPd.sliceCount  = result.sliceCount;
@@ -4836,9 +5001,10 @@ window.addEventListener('load', async () => {
     }
   }
 
-  // 5. Remaining thumbnails — all in parallel, non-blocking
-  Promise.all(projectData.slice(1).map(async (p, j) => {
-    const i  = j + 1;
+  // 6. Remaining thumbnails — all in parallel, non-blocking. Skip the one
+  // we already loaded in step 5.
+  Promise.all(projectData.map(async (p, i) => {
+    if (i === initialIdx) return;
     const pd = projectDetails[i];
     if (!pd.thumbFrames?.length) {
       const result = await loadThumbnailFrames(`${ASSETS_BASE}/${p.folder}`);
