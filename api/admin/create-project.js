@@ -77,17 +77,28 @@ module.exports = async (req, res) => {
       .digest('hex');
 
     // 3. Return everything the client needs.
-    // The streamUrl is the public HLS playlist URL that will eventually
-    // serve the video once encoding completes — we store this in info.txt
-    // so the portfolio site knows where to fetch the video.
-    const pullZoneHost = video.hostname || `vz-${libraryId}.b-cdn.net`;
-    const streamUrl = `https://${pullZoneHost}/${videoId}/playlist.m3u8`;
+    // Build the URL we'll store in info.txt. Bunny Stream serves the same
+    // video at multiple URLs — we pick the 720p MP4 since that's what the
+    // portfolio's existing videos use and it doesn't require hls.js to play.
+    // Format: https://{stream-cdn-host}/{guid}/play_720p.mp4
+    //
+    // The CDN host is library-specific and looks like "vz-xxxxxxxx-xxx.b-cdn.net"
+    // — we require the exact hostname as an env var rather than guessing, so
+    // the URL is always correct. Find it in Bunny dashboard → Stream →
+    // your library → any video → "MP4 720p" URL (copy the hostname part).
+    const cdnHost = process.env.BUNNY_STREAM_CDN_HOSTNAME;
+    if (!cdnHost) {
+      return res.status(500).json({
+        error: 'BUNNY_STREAM_CDN_HOSTNAME not configured (should be like "vz-xxxxxxxx-xxx.b-cdn.net")'
+      });
+    }
+    const videoUrl = `https://${cdnHost}/${videoId}/play_720p.mp4`;
 
     return res.status(200).json({
       videoId,
       libraryId,
       folder,
-      streamUrl,
+      streamUrl: videoUrl,  // kept under this name for backward-compat with the admin UI
       tusEndpoint: 'https://video.bunnycdn.com/tusupload',
       authorizationSignature: signature,
       authorizationExpire: expire,

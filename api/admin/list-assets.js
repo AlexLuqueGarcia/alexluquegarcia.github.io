@@ -96,7 +96,8 @@ module.exports = async (req, res) => {
       .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
 
     // 5. Extract Stream video GUID from video URL (if it's a Bunny Stream URL).
-    // URL format: https://vz-xxx.b-cdn.net/{guid}/playlist.m3u8
+    // Works for both MP4 URLs (play_720p.mp4) and HLS URLs (playlist.m3u8)
+    // since we just look for the GUID path segment.
     let videoGuid = null;
     const guidMatch = videoUrl.match(/\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\//i);
     if (guidMatch) videoGuid = guidMatch[1];
