@@ -3045,6 +3045,10 @@ function packWindows(specs) {
 
 function buildWindows(p, pd) {
   canvasInner.innerHTML = '';
+  // Defensive cleanup — if stale dock items somehow survived a view transition,
+  // they'd reference .win elements that no longer exist. clearDock wipes the
+  // dock entirely so each fresh windows build starts with no leftover state.
+  if (typeof clearDock === 'function') clearDock();
   topZ = 100;
   const specs  = getWinSpecs(p, pd);
   const layout = packWindows(specs);
@@ -3883,6 +3887,12 @@ function openWork() {
   workOpen = true;
   transitioning = true;
   haptic('medium');
+
+  // Clear any minimized-window dock state — the dock (z-index 180) floats
+  // above the work overlay (z-index 91), so leftover items would visually
+  // leak through. Minimized windows are also un-hidden so that if detail
+  // is re-entered fresh later, they're in a clean state.
+  clearDock();
 
   // Pause landing video while on work page
   workWasPlaying = playing;
