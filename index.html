@@ -583,6 +583,9 @@ nav.hide {
   font-size:1.08rem; color:#fff;
   line-height:1.4;
 }
+/* Corner-bracket frame element lives in the DOM but is hidden by default —
+   the mobile media query below re-enables it via #meta.clickable .m-frame. */
+#meta .m-frame { display: none; }
 
 /* ── SCROLL HINT ── */
 #scroll-hint {
@@ -1676,6 +1679,60 @@ body.is-fullscreen .win-resize { display: none !important; }
   #meta .m-title  { font-size: 1.2rem; }
   #meta .m-role   { font-size: 0.75rem; }
 
+  /* Mobile tap-affordance — extends the site's corner-bracket vocabulary
+     (active thumbnails, window resize handles) to signal the meta region
+     is interactive. The .m-frame element sits absolute inside #meta (which
+     is position:fixed, so it contains positioned children). Four corner
+     brackets are drawn via pseudo-elements — top pair on .m-frame itself,
+     bottom pair on the nested .mf-b span (mirrors the .thumb-corners /
+     .tc-rc pattern used elsewhere). Small left/right/top/bottom negative
+     insets so the brackets hug the text with a little breathing room. */
+  #meta.clickable { padding: 0.65rem 0.95rem 0.75rem; }
+  #meta.clickable .m-frame {
+    display: block;
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.5;
+    transition: opacity 0.3s ease;
+  }
+  #meta.clickable:active .m-frame { opacity: 0.95; }
+  #meta.clickable .m-frame::before,
+  #meta.clickable .m-frame::after,
+  #meta.clickable .m-frame .mf-b::before,
+  #meta.clickable .m-frame .mf-b::after {
+    content: '';
+    position: absolute;
+    width: 0.875rem;
+    height: 0.875rem;
+    border-color: #fff;
+    border-style: solid;
+  }
+  #meta.clickable .m-frame::before       { top:0;    left:0;  border-width: 0.078rem 0 0 0.078rem; }
+  #meta.clickable .m-frame::after        { top:0;    right:0; border-width: 0.078rem 0.078rem 0 0; }
+  #meta.clickable .m-frame .mf-b::before { bottom:0; left:0;  border-width: 0 0 0.078rem 0.078rem; }
+  #meta.clickable .m-frame .mf-b::after  { bottom:0; right:0; border-width: 0 0.078rem 0.078rem 0; }
+
+  /* Pulsing ↗ chevron after the title — directional cue that "tap opens
+     somewhere". Uses ::after on m-title so it stays inline with the project
+     name, moving together with it on animation. */
+  #meta.clickable .m-title::after {
+    content: '↗';
+    display: inline-block;
+    margin-left: 0.45em;
+    font-size: 0.82em;
+    font-weight: 400;
+    opacity: 0.55;
+    animation: metaArrowNudge 2.4s ease-in-out infinite;
+    /* slight vertical tune-in so the arrow sits on the cap-height line */
+    transform-origin: center;
+    vertical-align: 0.02em;
+  }
+  @keyframes metaArrowNudge {
+    0%, 100% { transform: translate(0, 0);    opacity: 0.4; }
+    50%      { transform: translate(3px, -3px); opacity: 0.95; }
+  }
+
   /* Scroll hint — mute button only, in bottom right */
   #scroll-hint {
     right: 1rem;
@@ -1807,6 +1864,12 @@ body.is-fullscreen .win-resize { display: none !important; }
 
 <!-- Meta -->
 <div id="meta">
+  <!-- Mobile-only tap-affordance: four corner brackets (echoing the site's
+       thumbnail/resize-handle vocabulary) frame the meta as a tappable region.
+       The bottom two corners come from the nested .mf-b span (same pattern
+       as thumb-corners .tc-rc). Hidden via display:none outside the mobile
+       media query, so desktop is unaffected. -->
+  <div class="m-frame" aria-hidden="true"><span class="mf-b"></span></div>
   <div class="m-studio" id="m-studio"></div>
   <div class="m-title" id="m-title"></div>
   <div class="m-role" id="m-role"></div>
