@@ -297,7 +297,11 @@ body.cur-hover #cur svg {
   position:fixed;
   inset:0;
   z-index:1;
-  background-size:cover;
+  /* contain (not cover) so the poster image and video always show in their
+     native aspect ratio with black bars where needed — vertical videos no
+     longer crop heavily on landscape viewports. */
+  background-size:contain;
+  background-repeat:no-repeat;
   background-position:center;
   background-color:#000;
   transition: filter 0.8s var(--ease-out), transform 0.8s var(--ease-out);
@@ -325,12 +329,14 @@ body.cur-hover #cur svg {
 }
 #video-bg.blurred #video-bg-inner { animation: none; }
 #video-bg-inner.switching { opacity: 0; }
-/* Peek layer — shows next/prev project thumbnail during swipe */
+/* Peek layer — shows next/prev project thumbnail during swipe.
+   Same contain behavior so the swipe peek matches the landed video. */
 #video-bg-peek {
   position:fixed;
   inset:0;
   z-index:1;
-  background-size:cover;
+  background-size:contain;
+  background-repeat:no-repeat;
   background-position:center;
   background-color:#000;
   opacity:0;
@@ -620,6 +626,10 @@ nav.hide {
   height:var(--strip-h);
   z-index:100;
   display:flex;
+  /* Safety clip — thumb widths are computed as floats and the browser
+     rounds them per-element, so the sum could exceed viewport by a pixel
+     or two. Without this, overflow pushes the rightmost thumb offscreen. */
+  overflow:hidden;
   transition: transform 0.6s var(--ease-smooth);
 }
 #strip-area.hide {
@@ -1084,7 +1094,9 @@ nav.hide {
   background:#000;
   overflow:hidden;
 }
-.mobile-detail-img img { object-fit: cover; }
+/* contain (not cover) so full photos show on mobile detail, with black bars
+   around if the photo's aspect ratio doesn't match the mobile detail slot */
+.mobile-detail-img img { object-fit: contain; }
 
 /* back btn — removed, escape/scroll closes */
 
@@ -1117,7 +1129,9 @@ nav.hide {
 .win-video { background:rgba(10,10,10,0.55); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px); }
 .win-video video {
   width:100%; height:100%;
-  object-fit:cover; display:block;
+  /* contain (not cover) so full video shows — vertical/square videos no
+     longer crop at top/bottom in the detail window */
+  object-fit:contain; display:block;
   pointer-events:none;
 }
 
@@ -1214,7 +1228,8 @@ body.is-fullscreen .win-resize { display: none !important; }
 :-webkit-full-screen .win-video video { object-fit:contain; }
 .win-video video {
   width:100%; height:100%;
-  object-fit:cover; display:block;
+  /* contain so full video shows; see note above the earlier rule */
+  object-fit:contain; display:block;
   pointer-events:none;
 }
 .win-video-label {
@@ -1819,7 +1834,7 @@ body.is-fullscreen .win-resize { display: none !important; }
 
 <!-- Always-fixed video background -->
 <div id="video-bg-peek"></div>
-<div id="video-bg"><video id="video-bg-inner" autoplay muted playsinline crossorigin="anonymous" style="width:100%;height:100%;object-fit:cover;display:block;"></video></div>
+<div id="video-bg"><video id="video-bg-inner" autoplay muted playsinline crossorigin="anonymous" style="width:100%;height:100%;object-fit:contain;display:block;"></video></div>
 
 <!-- Custom cursor -->
 <div id="cur">
@@ -2264,10 +2279,12 @@ function pickStripOrder(forceInclude = null) {
     [pool[i], pool[j]] = [pool[j], pool[i]];
   }
 
-  // Take up to 4 random. On mobile, cap lower so each thumb gets more screen
-  // width (crucial for title readability on narrow viewports). Mobile total:
-  // 1 pinned + 3 random = 4 thumbs @ 25% each. Desktop total: 5 @ 20% each.
-  const randomCount = (window.innerWidth <= 768) ? 3 : 4;
+  // Take up to 4 random. On mobile/narrow viewports, cap lower so each thumb
+  // gets more screen width. Note: 1024 (not 768) is used because phones in
+  // landscape and small tablets exceed 768 but still have insufficient width
+  // for 5 proportional thumbs with readable titles. Mobile total:
+  // 1 pinned + 3 random = 4 thumbs. Desktop total: 5 @ 20% each.
+  const randomCount = (window.innerWidth <= 1024) ? 3 : 4;
   let picks = pool.slice(0, randomCount);
 
   // Continuity preservation: if a "current" project is given (e.g. the one
@@ -2351,7 +2368,11 @@ function buildStrip() {
   // total-viewport budget. This preserves the dense filmstrip aesthetic:
   // longer videos still get more slices packed in, they just happen to render
   // thinner (because they share the same fixed thumb width with more slices).
-  const isMobile = window.innerWidth <= 768;
+  // On mobile/narrow viewports, decouple thumb width from slice rendering.
+  // Widths are compressed-proportional (title-friendly), slice counts stay
+  // dense and proportional to duration. 1024 breakpoint matches the strip
+  // size cap in pickStripOrder — covers landscape phones and small tablets.
+  const isMobile = window.innerWidth <= 1024;
   let thumbWidths, renderSliceCounts;
 
   if (isMobile) {
@@ -3440,8 +3461,13 @@ function buildWindows(p, pd) {
       win.classList.add('win-img');
       if (spec.src) {
         win.style.backgroundImage = `url('${spec.src}')`;
-        win.style.backgroundSize = 'cover';
+        // contain (not cover) so the full photo is visible — with aspect-
+        // ratio-preserving black bars around it when the window shape doesn't
+        // match the photo's aspect. The glass .win-img background fills bars.
+        win.style.backgroundSize = 'contain';
+        win.style.backgroundRepeat = 'no-repeat';
         win.style.backgroundPosition = 'center';
+        win.style.backgroundColor = '#000';
       } else {
         const ci = projectData.indexOf(p);
         win.classList.add(['tc-0','tc-1','tc-2','tc-3','tc-4','tc-5','tc-6','tc-7'][ci % 8]);
