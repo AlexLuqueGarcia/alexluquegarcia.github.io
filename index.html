@@ -3633,6 +3633,11 @@ function goTo(i, skipStripSync = false) {
   // already advanced the window + animated the settle, so syncMobileWindow
   // would just fire a redundant rebuild).
   if (!skipStripSync) syncMobileWindow();
+
+  // Start prefetching the NEW neighbors (relative to new cur) after a
+  // short delay — gives the current project's video initial bandwidth,
+  // then TikTok-style buffering kicks in so the next swipe is instant.
+  scheduleNeighborPreload();
 }
 
 // Haptic feedback — multi-layered tactile response system.
@@ -5528,26 +5533,84 @@ const SWIPE_THRESHOLD = 80; // px to commit to a project change
 
 const peekEl = document.getElementById('video-bg-peek');
 
-// Preload the next/prev project's video as soon as direction is clear in
-// the gesture. Uses <link rel="preload" as="video"> so the browser starts
-// the fetch in parallel with the user's drag — by the time they release,
-// the video is already cached and setBg can play it instantly instead of
-// waiting for a fresh network fetch.
-let preloadLinkEl = null;
-let preloadedVideoUrl = null;
+// ─────────────────────────────────────────────────────────
+// Video neighbor preloading (TikTok-style)
+// ─────────────────────────────────────────────────────────
+// After each navigation, prefetch the 1 prev + 1 next project's videos via
+// <link rel="preload" as="video"> so swiping to them is near-instant. We
+// track all active preloads in a Map and prune any that leave the current
+// neighborhood (keeps bandwidth bounded to ~3 URLs at a time: current +
+// 1 ahead + 1 behind).
+const preloadLinkByUrl = new Map();
+let _neighborPreloadTimer = null;
+
+function preloadVideoUrl(url) {
+  if (!url) return;
+  if (preloadLinkByUrl.has(url)) return;  // already preloading this URL
+  const link = document.createElement('link');
+  link.rel  = 'preload';
+  link.as   = 'video';
+  link.href = url;
+  document.head.appendChild(link);
+  preloadLinkByUrl.set(url, link);
+}
+
+function prunePreloadsKeeping(keepUrls) {
+  for (const [url, link] of preloadLinkByUrl) {
+    if (!keepUrls.has(url)) {
+      link.remove();
+      preloadLinkByUrl.delete(url);
+    }
+  }
+}
+
+// Kept for the drag-time fallback in touchmove — if the user swipes before
+// scheduleNeighborPreload has fired, this ensures the target still gets a
+// preload (idempotent — no-op if already queued).
 function preloadVideoFor(projIdx) {
   if (projIdx === undefined || projIdx === null) return;
   const url = (projectData[projIdx]?.src || '').trim();
-  if (!url) return;
-  if (preloadedVideoUrl === url) return;  // already preloading this URL
-  preloadedVideoUrl = url;
-  if (!preloadLinkEl) {
-    preloadLinkEl = document.createElement('link');
-    preloadLinkEl.rel = 'preload';
-    preloadLinkEl.as  = 'video';
-    document.head.appendChild(preloadLinkEl);
+  preloadVideoUrl(url);
+}
+
+// Preload the 1 prev + 1 next project's videos relative to the current
+// `cur`. Uses nextInStrip/prevInStrip so it works identically on mobile
+// (walks fullSequence) and desktop (cycles through stripOrder).
+function preloadNeighbors() {
+  if (projectData.length === 0 || cur === undefined || cur === null) return;
+  const nextIdx = nextInStrip(cur);
+  const prevIdx = prevInStrip(cur);
+  const keep = new Set();
+
+  // Always keep current video's URL in the set so we don't prune its
+  // preload (which was set up on a prior navigation and is now the active
+  // video — still useful if user swipes back to it)
+  const curUrl = (projectData[cur]?.src || '').trim();
+  if (curUrl) keep.add(curUrl);
+
+  if (nextIdx !== cur) {
+    const u = (projectData[nextIdx]?.src || '').trim();
+    if (u) { preloadVideoUrl(u); keep.add(u); }
   }
-  preloadLinkEl.href = url;
+  if (prevIdx !== cur && prevIdx !== nextIdx) {
+    const u = (projectData[prevIdx]?.src || '').trim();
+    if (u) { preloadVideoUrl(u); keep.add(u); }
+  }
+
+  // Drop preloads that are no longer in the neighborhood — keeps bandwidth
+  // usage bounded as user navigates
+  prunePreloadsKeeping(keep);
+}
+
+// Debounced wrapper — if user swipes rapidly through projects, we don't
+// want to kick off neighbor prefetches for every intermediate project.
+// Wait 400ms after navigation settles, then preload.
+function scheduleNeighborPreload() {
+  if (_neighborPreloadTimer) clearTimeout(_neighborPreloadTimer);
+  _neighborPreloadTimer = setTimeout(() => {
+    preloadNeighbors();
+    _neighborPreloadTimer = null;
+  }, 400);
 }
 
 window.addEventListener('touchstart', e => {
@@ -5875,6 +5938,11 @@ window.addEventListener('load', async () => {
   // 4. Build strip with color fallbacks, start playing
   buildStrip();
   setBg(initialIdx); setActiveThumb(initialIdx); updateMeta(initialIdx); setPlaying(true);
+
+  // Kick off neighbor preload — prev + next projects start fetching in
+  // background so the first swipe feels instant. Debounced 400ms so the
+  // initial video's fetch gets priority bandwidth.
+  scheduleNeighborPreload();
 
   // Fade the page in once the initial frame is ready
   requestAnimationFrame(() => {
