@@ -1104,16 +1104,23 @@ function renderAssets() {
   }
 
   // Thumbs grid — collapsed by default, just renders contents
-  $('thumbs-count').textContent = a.thumbs.length ? `(${a.thumbs.length})` : '';
+  $('thumbs-count').textContent = a.thumbs.length ? `(${a.thumbs.length})` : '(0)';
   const tg = $('thumb-grid');
   tg.innerHTML = '';
-  a.thumbs.forEach((t, i) => {
-    const cell = document.createElement('div');
-    cell.className = 'thumb-cell';
-    cell.style.backgroundImage = `url('${t.url}')`;
-    cell.dataset.idx = String(i).padStart(3, '0');
-    tg.appendChild(cell);
-  });
+  if (!a.thumbs.length) {
+    tg.innerHTML = '<div class="asset-empty">No thumbnail frames found in Bunny Storage at ' +
+      `<code style="color:var(--dim)">${escapeHtml(a.folder)}/thumbnail/</code>. ` +
+      'They\'ll be regenerated automatically when you replace the video.</div>';
+  } else {
+    a.thumbs.forEach((t, i) => {
+      const cell = document.createElement('div');
+      cell.className = 'thumb-cell';
+      cell.style.backgroundImage = `url('${t.url}')`;
+      cell.dataset.idx = String(i).padStart(3, '0');
+      cell.title = t.name;
+      tg.appendChild(cell);
+    });
+  }
 }
 
 async function deletePhoto(filename) {
