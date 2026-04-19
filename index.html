@@ -2319,6 +2319,23 @@ const DESKTOP_CURRENT_SLOT  = 0;
 let desktopSequence   = [];
 let desktopWindowStart = 0;
 
+// Each thumb renders one slice per frame it actually has — using the full
+// set of admin-uploaded thumbnail frames for that project. No duration-
+// based math, no repetition, no budget caps. A project with 30 frames
+// gets 30 slices; a project with 8 frames gets 8 slices. Used everywhere
+// a thumb is built (buildStrip initial render, slide-in during navigation,
+// mobile drag preview). The fallback is only used before frames have
+// finished loading from the network — once they load, buildStrip re-runs
+// and the thumb rebuilds with its real count.
+const FALLBACK_SLICE_COUNT = 12;
+function sliceCountFor(projIdx) {
+  const frames = projectDetails[projIdx]?.thumbFrames;
+  if (frames && frames.length) return frames.length;
+  const sc = projectDetails[projIdx]?.sliceCount;
+  if (sc) return sc;
+  return FALLBACK_SLICE_COUNT;
+}
+
 function buildDesktopSequence() {
   if (projectData.length === 0) return [];
   const pinnedIdx = projectData.findIndex(p => p.pinned);
@@ -2561,25 +2578,14 @@ function buildStrip() {
   const minDur = Math.min(...stripProjects.map(p => p.duration));
   stripEl.innerHTML = '';
 
-  const MIN_SLICES = 4, MAX_SLICES = 20;
-  // sliceCounts parallels stripOrder (indexed by strip position 0..4)
-  let sliceCounts = stripOrder.map((i) => {
-    const sc = projectDetails[i]?.sliceCount;
-    if (sc) return sc;
-    const p = projectData[i];
-    return Math.round(Math.min(MAX_SLICES, Math.max(MIN_SLICES, (p.duration / minDur) * MIN_SLICES)));
-  });
-
-  // Width formula is unified across mobile and desktop: compressed-proportional
-  // to video duration, capped at 150% of equal share (preventing one long-
-  // duration or high-sliceCount project from hogging the strip) and floored at
-  // 75% (preventing title truncation on short titles). This matches
-  // computeMobileProportionalWidths exactly, so the widths set here by
-  // buildStrip are identical to the widths targeted by redistributeThumbWidths
-  // after each slide animation — no visual jump between initial build and
-  // post-slide redistribution.
+  // Width formula — compressed-proportional to video duration, capped at
+  // 150% of equal share (preventing one long-duration project from hogging
+  // the strip) and floored at 75% (preventing title truncation on short
+  // titles). Matches computeMobileProportionalWidths exactly, so widths
+  // set here in buildStrip are identical to widths targeted by
+  // redistributeThumbWidths after each slide — no visual jump between
+  // initial build and post-slide redistribution.
   const durs = stripOrder.map(i => projectData[i].duration || 0);
-  const totalDur2 = durs.reduce((s, d) => s + d, 0);
   const rawMin = Math.min(...durs);
   const rawMax = Math.max(...durs);
   const equalShare = 1 / stripOrder.length;
@@ -2598,27 +2604,15 @@ function buildStrip() {
   }
   let thumbWidths = widthShares.map(s => s * window.innerWidth);
 
-  // Slice count: rendered independent of width so each thumb's filmstrip
-  // density tracks its duration. Mobile uses a global budget (80 slices
-  // spread across the 4-thumb window); desktop uses the per-thumb integer
-  // count computed earlier (bounded MIN_SLICES..MAX_SLICES). Slices flex
-  // inside the thumb via CSS so they always fill the thumb's width.
-  const isMobile = window.innerWidth <= 1024;
-  let renderSliceCounts;
-  if (isMobile) {
-    const TOTAL_MOBILE_SLICES = 80;
-    renderSliceCounts = durs.map(d =>
-      Math.max(MIN_SLICES, Math.round(TOTAL_MOBILE_SLICES * d / (totalDur2 || 1)))
-    );
-    stripEl.style.setProperty('--sw', (window.innerWidth / TOTAL_MOBILE_SLICES) + 'px');
-  } else {
-    renderSliceCounts = sliceCounts.slice();
-    // --sw is used by slice CSS as a fallback sizing hint; use the average
-    // slice width across the strip (each thumb's slices still flex to fill
-    // the thumb regardless of this variable).
-    const totalSlicesDt = sliceCounts.reduce((s, n) => s + n, 0) || 1;
-    stripEl.style.setProperty('--sw', (window.innerWidth / totalSlicesDt) + 'px');
-  }
+  // Slice count per thumb comes from sliceCountFor() — each thumb uses its
+  // own project's full frame set. Slices flex to fill the thumb width via
+  // CSS, so wider thumbs get wider slices.
+  const renderSliceCounts = stripOrder.map(i => sliceCountFor(i));
+  // --sw is a fallback sizing hint (unused when slices flex to fill, which
+  // is the current behavior — see .thumb-slice CSS). Set to a sensible
+  // average so any CSS edge case still looks reasonable.
+  const totalRenderSlices = renderSliceCounts.reduce((s, n) => s + n, 0) || 1;
+  stripEl.style.setProperty('--sw', (window.innerWidth / totalRenderSlices) + 'px');
 
   // Iterate stripOrder. `i` is the projectData index (used for dataset.i,
   // event handlers, goTo, etc.); `sp` is the strip position (0..4) used only
@@ -2835,15 +2829,6 @@ function computeMobileProportionalWidths() {
   return widthShares.map(s => s * window.innerWidth);
 }
 
-// Compute slice count for a single project using the mobile global budget.
-// Mirrors buildStrip: longer videos get denser filmstrips (more slices).
-function computeMobileSliceCount(projIdx) {
-  const TOTAL_MOBILE_SLICES = 80;
-  const totalDurInWindow = stripOrder.reduce((s, i) => s + (projectData[i]?.duration || 0), 0) || 1;
-  const dur = projectData[projIdx]?.duration || 0;
-  return Math.max(4, Math.round(TOTAL_MOBILE_SLICES * dur / totalDurInWindow));
-}
-
 // Apply new proportional widths to the current 4 thumbs with a smooth
 // transition. Called at the end of each slide animation so widths redistribute
 // gracefully from the slide's initial (symmetric) state to the correct
@@ -2930,8 +2915,8 @@ function prepareStripDrag() {
   const lookbackProjIdx  = fullSequence[lookbackSeqIdx];
   const lookaheadProjIdx = fullSequence[lookaheadSeqIdx];
 
-  const lookbackThumb  = buildSingleThumb(lookbackProjIdx,  stripDragLookbackWidth, computeMobileSliceCount(lookbackProjIdx));
-  const lookaheadThumb = buildSingleThumb(lookaheadProjIdx, lastVisibleWidth,       computeMobileSliceCount(lookaheadProjIdx));
+  const lookbackThumb  = buildSingleThumb(lookbackProjIdx,  stripDragLookbackWidth, sliceCountFor(lookbackProjIdx));
+  const lookaheadThumb = buildSingleThumb(lookaheadProjIdx, lastVisibleWidth,       sliceCountFor(lookaheadProjIdx));
   stripEl.insertBefore(lookbackThumb, stripEl.firstChild);
   stripEl.appendChild(lookaheadThumb);
 
@@ -3128,7 +3113,7 @@ function slideStripNext() {
   const incomingThumb = buildSingleThumb(
     incomingIdx,
     shiftPx,
-    computeMobileSliceCount(incomingIdx)
+    sliceCountFor(incomingIdx)
   );
   stripEl.appendChild(incomingThumb);
 
@@ -3181,7 +3166,7 @@ function slideStripPrev() {
   const incomingThumb = buildSingleThumb(
     incomingIdx,
     shiftPx,
-    computeMobileSliceCount(incomingIdx)
+    sliceCountFor(incomingIdx)
   );
   stripEl.insertBefore(incomingThumb, stripEl.firstChild);
 
