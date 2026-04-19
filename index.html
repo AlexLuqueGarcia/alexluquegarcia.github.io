@@ -2398,20 +2398,26 @@ function pickStripOrder(forceInclude = null) {
       && forceInclude >= 0
       && forceInclude < projectData.length) {
     // forceInclude must end up at DESKTOP_CURRENT_SLOT (= 0, leftmost) so
-    // the sliding logic treats it as "current". If forceInclude IS pinned,
-    // we just put pinned first + 4 other randoms.
+    // the sliding logic treats it as "current". Always return exactly
+    // randomCount+1 items (= 5) — this is a 5-thumb strip.
     if (forceInclude === pinned) {
-      return [pinned, ...picks];
+      return [pinned, ...picks];  // pinned + 4 random = 5
     }
-    // Otherwise forceInclude replaces one of the picks (or pushes pinned
-    // into the picks list so the strip still contains it somewhere).
-    const otherPicks = picks.filter(p => p !== forceInclude);
-    const trimmed = otherPicks.slice(0, randomCount - 1);
-    // Ensure pinned is included somewhere (anchor stays visible)
-    if (!trimmed.includes(pinned)) {
-      trimmed[trimmed.length - 1] = pinned;
+    // forceInclude isn't pinned. Build: [forceInclude, ...4 others] where
+    // the 4 others include pinned (anchor stays visible) + 3 random picks
+    // that aren't forceInclude.
+    const others = pool.filter(p => p !== forceInclude).slice(0, randomCount);
+    // Ensure pinned is in there somewhere; if not, drop the last other and
+    // swap pinned in (keeps the length at exactly randomCount).
+    if (!others.includes(pinned) && others.length === randomCount) {
+      others[others.length - 1] = pinned;
+    } else if (!others.includes(pinned)) {
+      // Edge case — projectData too small to fill randomCount distinct
+      // items. Just append pinned; strip will be shorter but at least
+      // won't be broken.
+      others.push(pinned);
     }
-    return [forceInclude, ...trimmed];
+    return [forceInclude, ...others];  // forceInclude + 4 others = 5
   }
 
   return [pinned, ...picks];
@@ -2576,6 +2582,15 @@ function buildStrip() {
   if (!stripOrder || stripOrder.length === 0) {
     stripOrder = pickStripOrder();
   }
+  // DEFENSIVE RESET: if a slide animation was in-flight when we got called
+  // (rapid desktop clicks, cycle-end reshuffle during an active slide, or
+  // anything else that triggers a hard rebuild mid-animation), the stale
+  // `stripAnimating` flag would cause the next slide attempt to silently
+  // fall back to buildStrip, and the stale transform would offset the
+  // freshly-built thumbs leaving visible gaps. Clear both before we proceed.
+  stripAnimating = false;
+  stripEl.style.transition = 'none';
+  stripEl.style.transform  = 'translateX(0px)';
   const firstBuild = !stripEl.dataset.built;
   stripEl.dataset.built = '1';
 
