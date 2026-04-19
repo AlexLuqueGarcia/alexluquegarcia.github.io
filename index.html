@@ -716,8 +716,9 @@ nav.hide {
   filter: brightness(1.05) saturate(1.05);
 }
 .thumb-slice {
-  flex-shrink: 0;
-  width: var(--sw, 40px);
+  flex: 1 1 0;
+  width: auto;
+  min-width: 0;
   height: 100%;
   background-size: cover;
   background-repeat: no-repeat;
