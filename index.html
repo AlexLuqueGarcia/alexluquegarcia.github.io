@@ -701,6 +701,7 @@ nav.hide {
 .thumb-bg {
   width:100%; height:100%;
   display:flex;
+  background:#0a0a0a;  /* fallback for before frames load — prevents transparent slices from letting the #video-bg show through and get picked up by thumb-black's backdrop-filter */
   transition: filter 0.55s var(--ease-out), opacity 0.55s var(--ease-out);
   will-change: filter, opacity;
 }
@@ -793,6 +794,7 @@ nav.hide {
   font-size:1.05rem; color:#fff;
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
   pointer-events:none; z-index:9;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.85), 0 0 2px rgba(0,0,0,0.5);  /* keeps labels readable on light thumbnails */
   transition: opacity 0.25s ease;
 }
 .thumb:hover .thumb-label { opacity: 0.9; }
@@ -2580,15 +2582,19 @@ function buildStrip() {
   if (!stripOrder || stripOrder.length === 0) {
     stripOrder = pickStripOrder();
   }
-  // DEFENSIVE RESET: if a slide animation was in-flight when we got called
-  // (rapid desktop clicks, cycle-end reshuffle during an active slide, or
-  // anything else that triggers a hard rebuild mid-animation), the stale
-  // `stripAnimating` flag would cause the next slide attempt to silently
-  // fall back to buildStrip, and the stale transform would offset the
-  // freshly-built thumbs leaving visible gaps. Clear both before we proceed.
-  stripAnimating = false;
-  stripEl.style.transition = 'none';
-  stripEl.style.transform  = 'translateX(0px)';
+  // DEFENSIVE RESET (desktop-only): if a slide animation was in-flight
+  // when we got called (rapid desktop clicks, anything else that triggers
+  // a hard rebuild mid-animation), stale `stripAnimating` + transform
+  // would poison the freshly-built DOM. Clear both.
+  // Mobile is skipped — its drag/slide flow handles its own cleanup via
+  // finishStripDrag, and running this reset mid-finishStripDrag-settle
+  // would snap the strip back to rest position during the 280ms settle
+  // animation, breaking the swipe.
+  if (window.innerWidth > 1024) {
+    stripAnimating = false;
+    stripEl.style.transition = 'none';
+    stripEl.style.transform  = 'translateX(0px)';
+  }
   const firstBuild = !stripEl.dataset.built;
   stripEl.dataset.built = '1';
 
@@ -2625,15 +2631,32 @@ function buildStrip() {
   }
   let thumbWidths = widthShares.map(s => s * window.innerWidth);
 
-  // Slice count per thumb comes from sliceCountFor() — each thumb uses its
-  // own project's full frame set. Slices flex to fill the thumb width via
-  // CSS, so wider thumbs get wider slices.
-  const renderSliceCounts = stripOrder.map(i => sliceCountFor(i));
-  // --sw is a fallback sizing hint (unused when slices flex to fill, which
-  // is the current behavior — see .thumb-slice CSS). Set to a sensible
-  // average so any CSS edge case still looks reasonable.
-  const totalRenderSlices = renderSliceCounts.reduce((s, n) => s + n, 0) || 1;
-  stripEl.style.setProperty('--sw', (window.innerWidth / totalRenderSlices) + 'px');
+  // Slice count per thumb — branches by viewport to preserve each platform's
+  // intended behavior:
+  //   - Mobile: budget-based (TOTAL_MOBILE_SLICES distributed across the
+  //     4-thumb window proportionally to duration). This is the original
+  //     mobile formula that felt right for narrow screens and dense
+  //     filmstrips, working correctly with the drag/slide animations.
+  //   - Desktop: each thumb uses its own project's full frame count
+  //     (sliceCountFor). Wider screens show the full set of frames without
+  //     repetition.
+  // Slices flex to fill the thumb width via CSS in both cases.
+  const isMobile = window.innerWidth <= 1024;
+  let renderSliceCounts;
+  if (isMobile) {
+    const TOTAL_MOBILE_SLICES = 80;
+    const durs = stripOrder.map(i => projectData[i].duration || 0);
+    const totalDurM = durs.reduce((s, d) => s + d, 0) || 1;
+    const MIN_SLICES = 4;
+    renderSliceCounts = durs.map(d =>
+      Math.max(MIN_SLICES, Math.round(TOTAL_MOBILE_SLICES * d / totalDurM))
+    );
+    stripEl.style.setProperty('--sw', (window.innerWidth / TOTAL_MOBILE_SLICES) + 'px');
+  } else {
+    renderSliceCounts = stripOrder.map(i => sliceCountFor(i));
+    const totalRenderSlices = renderSliceCounts.reduce((s, n) => s + n, 0) || 1;
+    stripEl.style.setProperty('--sw', (window.innerWidth / totalRenderSlices) + 'px');
+  }
 
   // Iterate stripOrder. `i` is the projectData index (used for dataset.i,
   // event handlers, goTo, etc.); `sp` is the strip position (0..4) used only
@@ -2850,6 +2873,17 @@ function computeMobileProportionalWidths() {
   return widthShares.map(s => s * window.innerWidth);
 }
 
+// Compute slice count for a single project using the mobile global budget.
+// Mirrors buildStrip's mobile branch so slide-in thumbs match the density
+// of the visible thumbs they're joining. Mobile-only (desktop has its own
+// sliceCountFor() that uses per-project frame count).
+function computeMobileSliceCount(projIdx) {
+  const TOTAL_MOBILE_SLICES = 80;
+  const totalDurInWindow = stripOrder.reduce((s, i) => s + (projectData[i]?.duration || 0), 0) || 1;
+  const dur = projectData[projIdx]?.duration || 0;
+  return Math.max(4, Math.round(TOTAL_MOBILE_SLICES * dur / totalDurInWindow));
+}
+
 // Apply new proportional widths to the current 4 thumbs with a smooth
 // transition. Called at the end of each slide animation so widths redistribute
 // gracefully from the slide's initial (symmetric) state to the correct
@@ -2936,8 +2970,8 @@ function prepareStripDrag() {
   const lookbackProjIdx  = fullSequence[lookbackSeqIdx];
   const lookaheadProjIdx = fullSequence[lookaheadSeqIdx];
 
-  const lookbackThumb  = buildSingleThumb(lookbackProjIdx,  stripDragLookbackWidth, sliceCountFor(lookbackProjIdx));
-  const lookaheadThumb = buildSingleThumb(lookaheadProjIdx, lastVisibleWidth,       sliceCountFor(lookaheadProjIdx));
+  const lookbackThumb  = buildSingleThumb(lookbackProjIdx,  stripDragLookbackWidth, computeMobileSliceCount(lookbackProjIdx));
+  const lookaheadThumb = buildSingleThumb(lookaheadProjIdx, lastVisibleWidth,       computeMobileSliceCount(lookaheadProjIdx));
   stripEl.insertBefore(lookbackThumb, stripEl.firstChild);
   stripEl.appendChild(lookaheadThumb);
 
@@ -3131,10 +3165,13 @@ function slideStripNext() {
   // redistributeThumbWidths() smoothly adjusts every thumb to its correct
   // new proportional width.
   const shiftPx = firstThumb.offsetWidth;
+  const incomingSliceCount = (window.innerWidth <= 1024)
+    ? computeMobileSliceCount(incomingIdx)
+    : sliceCountFor(incomingIdx);
   const incomingThumb = buildSingleThumb(
     incomingIdx,
     shiftPx,
-    sliceCountFor(incomingIdx)
+    incomingSliceCount
   );
   stripEl.appendChild(incomingThumb);
 
@@ -3184,10 +3221,13 @@ function slideStripPrev() {
   // so the amount that exits right equals the amount that enters left.
   // redistributeThumbWidths runs after cleanup to settle to proportional.
   const shiftPx = lastThumb.offsetWidth;
+  const incomingSliceCount = (window.innerWidth <= 1024)
+    ? computeMobileSliceCount(incomingIdx)
+    : sliceCountFor(incomingIdx);
   const incomingThumb = buildSingleThumb(
     incomingIdx,
     shiftPx,
-    sliceCountFor(incomingIdx)
+    incomingSliceCount
   );
   stripEl.insertBefore(incomingThumb, stripEl.firstChild);
 
