@@ -2678,6 +2678,15 @@ const STRIP_SLIDE_MS = 420;
 let stripDragging = false;
 let stripDragLookbackWidth = 0;
 let stripDragFirstVisibleWidth = 0;
+// Precomputed width targets for BOTH directions, cached at drag prep.
+// During drag these let us interpolate thumb widths in real time so the
+// final widths are ALREADY at the correct proportional values on commit —
+// no post-commit "settle" step. Layout changes continuously with the
+// finger instead of as a separate animation.
+let stripDragOriginalWidths = [];
+let stripDragNextTargets = [];   // widths for [slot1, slot2, slot3, lookahead] (new stripOrder after next commit)
+let stripDragPrevTargets = [];   // widths for [lookback, slot0, slot1, slot2] (new stripOrder after prev commit)
+let stripDragChildrenCache = []; // cached reference to .thumb children for fast per-frame width updates
 
 // Build a single thumb DOM element. Extracted from buildStrip's forEach so
 // slide animations can construct one ad-hoc. All event handlers/behavior
@@ -2800,11 +2809,38 @@ function redistributeThumbWidths() {
    GESTURE-LINKED STRIP DRAG
    ─────────────────────────────────────────────────────────
    When user swipes the bg video, the strip's horizontal translate follows
-   their finger in real time. At drag start we pre-render a lookback
-   (prev) and lookahead (next) thumb — giving the strip 6 thumbs briefly.
-   Direction is determined by dy sign as the user drags. On commit we keep
-   4 (drop lookback+oldSlot0 or lookahead+oldSlot3 depending on direction).
-   On cancel we remove both extras and snap back. */
+   their finger in real time, AND each thumb's width interpolates toward
+   its target-for-the-committed-direction value as the user drags. So by
+   the time a swipe reaches the commit threshold, widths are already at
+   their new proportional values — no visible "redistribute" step is
+   needed on release. Direction is determined by dy sign as the user drags.
+   On commit we keep 4 thumbs (drop lookback+oldSlot0 or lookahead+oldSlot3
+   depending on direction). On cancel we animate widths back to their
+   originals and remove the extras. */
+
+// Compute proportional widths for an arbitrary ordered list of project
+// indices. Same math as buildStrip's mobile branch — kept as a helper so
+// both buildStrip and the drag precompute can share it.
+function computeProportionalWidthsFor(projIndices) {
+  const durs = projIndices.map(i => projectData[i]?.duration || 0);
+  const rawMin = Math.min(...durs);
+  const rawMax = Math.max(...durs);
+  const equalShare = 1 / projIndices.length;
+  const minShare = equalShare * 0.75;
+  const maxShare = equalShare * 1.50;
+  let widthShares;
+  if (rawMax > rawMin) {
+    widthShares = durs.map(d => {
+      const ratio = (d - rawMin) / (rawMax - rawMin);
+      return minShare + ratio * (maxShare - minShare);
+    });
+    const sumShares = widthShares.reduce((s, v) => s + v, 0);
+    widthShares = widthShares.map(s => s / sumShares);
+  } else {
+    widthShares = durs.map(() => equalShare);
+  }
+  return widthShares.map(s => s * window.innerWidth);
+}
 
 function prepareStripDrag() {
   if (stripDragging) return;
@@ -2842,6 +2878,37 @@ function prepareStripDrag() {
   stripEl.style.transition = 'none';
   stripEl.style.transform  = `translateX(-${stripDragLookbackWidth}px)`;
   void stripEl.offsetWidth;  // flush the no-transition state
+
+  // Precompute width targets for BOTH possible commit directions, so
+  // updateStripDragPosition can interpolate per-thumb widths in O(1) each
+  // frame without expensive per-frame math.
+  //
+  // Next commit: new stripOrder = [slot1, slot2, slot3, lookahead]
+  //   These are current DOM thumbs at positions 2, 3, 4, 5 (after lookback
+  //   prepended). On next commit, thumbs 0, 1 are removed.
+  const nextWindowProjs = [
+    fullSequence[(mobileWindowStart + 1) % total],
+    fullSequence[(mobileWindowStart + 2) % total],
+    fullSequence[(mobileWindowStart + 3) % total],
+    lookaheadProjIdx,
+  ];
+  stripDragNextTargets = computeProportionalWidthsFor(nextWindowProjs);
+
+  // Prev commit: new stripOrder = [lookback, slot0, slot1, slot2]
+  //   DOM thumbs 0, 1, 2, 3 remain; 4, 5 are removed.
+  const prevWindowProjs = [
+    lookbackProjIdx,
+    fullSequence[mobileWindowStart],
+    fullSequence[(mobileWindowStart + 1) % total],
+    fullSequence[(mobileWindowStart + 2) % total],
+  ];
+  stripDragPrevTargets = computeProportionalWidthsFor(prevWindowProjs);
+
+  // Cache per-thumb current widths (so interpolation is always relative to
+  // the drag-start widths, not the last frame's interpolated widths — this
+  // keeps direction reversal smooth).
+  stripDragChildrenCache = Array.from(stripEl.children);
+  stripDragOriginalWidths = stripDragChildrenCache.map(t => t.offsetWidth);
 }
 
 function updateStripDragPosition(dy) {
@@ -2854,20 +2921,47 @@ function updateStripDragPosition(dy) {
   // should have fully slid by one thumb width.
   const progress = dy / threshold;
 
+  // ── Translate ── (follows finger lock-step)
   let translate;
   if (progress >= 0) {
-    // Prev direction — interpolate from -lookbackWidth (hidden) to 0 (fully revealed)
-    const clamped = Math.min(progress, 1.1);  // small over-drag allowance
+    const clamped = Math.min(progress, 1.1);
     translate = -stripDragLookbackWidth + stripDragLookbackWidth * clamped;
   } else {
-    // Next direction — interpolate from -lookbackWidth to -(lookbackWidth + firstVisibleWidth)
     const clamped = Math.max(progress, -1.1);
     translate = -stripDragLookbackWidth + stripDragFirstVisibleWidth * clamped;
   }
-
-  // Keep transition off during drag so the strip stays lock-step with finger
   stripEl.style.transition = 'none';
   stripEl.style.transform = `translateX(${translate}px)`;
+
+  // ── Widths ── (interpolate each thumb toward its direction-specific target)
+  // Clamp magnitude to [0, 1] for width interpolation — no over-drag on widths
+  // (user can over-drag translate for elasticity, but widths shouldn't overshoot).
+  const mag = Math.min(1, Math.abs(progress));
+  const isPrev = progress >= 0;
+
+  // DOM layout during drag (6 thumbs):
+  //   [0] lookback      — only interpolates on prev; stays on next (exits anyway)
+  //   [1] slot0         — only interpolates on prev; stays on next (exits)
+  //   [2] slot1         — interpolates in both directions (different targets)
+  //   [3] slot2         — interpolates in both directions (different targets)
+  //   [4] slot3         — only interpolates on next; stays on prev (exits)
+  //   [5] lookahead     — only interpolates on next; stays on prev (exits)
+  for (let i = 0; i < stripDragChildrenCache.length; i++) {
+    const t = stripDragChildrenCache[i];
+    if (!t) continue;
+    const orig = stripDragOriginalWidths[i];
+    let target;
+    if (isPrev) {
+      // Prev targets apply to DOM indices 0..3
+      target = (i <= 3) ? stripDragPrevTargets[i] : orig;
+    } else {
+      // Next targets apply to DOM indices 2..5 → stripDragNextTargets[i-2]
+      target = (i >= 2) ? stripDragNextTargets[i - 2] : orig;
+    }
+    if (target === undefined) target = orig;
+    const w = orig + (target - orig) * mag;
+    t.style.width = w + 'px';
+  }
 }
 
 function finishStripDrag(commit, direction) {
@@ -2885,26 +2979,40 @@ function finishStripDrag(commit, direction) {
   const lastVisible    = children[children.length - 2];
 
   if (!commit || direction === 0) {
-    // Snap back to neutral — lookback hidden left, lookahead hidden right
+    // Snap back to neutral — lookback hidden left, lookahead hidden right.
+    // Also animate widths back to their originals in the same 280ms window
+    // so the entire cancel-snap-back feels like one unified motion.
     stripEl.style.transform = `translateX(-${stripDragLookbackWidth}px)`;
+    children.forEach((t, i) => {
+      if (stripDragOriginalWidths[i] === undefined) return;
+      t.style.transition = `width ${SETTLE_MS}ms cubic-bezier(0.33,1,0.68,1)`;
+      t.style.width = stripDragOriginalWidths[i] + 'px';
+    });
     setTimeout(() => {
       if (lookbackThumb  && lookbackThumb.parentNode)  lookbackThumb.remove();
       if (lookaheadThumb && lookaheadThumb.parentNode) lookaheadThumb.remove();
       stripEl.style.transition = 'none';
       stripEl.style.transform  = 'translateX(0px)';
+      // Clear width transitions on the surviving thumbs
+      Array.from(stripEl.children).forEach(t => { t.style.transition = ''; });
     }, SETTLE_MS);
     return;
   }
 
-  // Commit — advance or reverse mobileWindowStart by one, then settle.
-  // Doing this HERE (instead of relying on syncMobileWindow) means goTo
-  // can be called with skipStripSync=true, so the strip doesn't try to
-  // animate again on top of our drag.
+  // Commit — widths were already being interpolated toward targets during drag.
+  // Snap them to EXACT targets now (in case the commit fires at progress < 1,
+  // e.g. user released a bit past threshold but not quite at 100%).
   const total = fullSequence.length;
   if (direction === 1) {
-    // Next: slide left until oldSlot0 fully exits (along with lookback)
+    // Next commit: settle translate to the fully-shifted position.
     const finalTranslate = -(stripDragLookbackWidth + stripDragFirstVisibleWidth);
     stripEl.style.transform = `translateX(${finalTranslate}px)`;
+    // Snap widths of surviving thumbs to exact next targets
+    for (let i = 2; i <= 5; i++) {
+      if (!children[i] || stripDragNextTargets[i - 2] === undefined) continue;
+      children[i].style.transition = `width ${SETTLE_MS}ms cubic-bezier(0.33,1,0.68,1)`;
+      children[i].style.width = stripDragNextTargets[i - 2] + 'px';
+    }
     mobileWindowStart = (mobileWindowStart + 1) % total;
     stripOrder = getMobileWindow();
     setTimeout(() => {
@@ -2912,13 +3020,18 @@ function finishStripDrag(commit, direction) {
       if (firstVisible  && firstVisible.parentNode)  firstVisible.remove();
       stripEl.style.transition = 'none';
       stripEl.style.transform  = 'translateX(0px)';
-      redistributeThumbWidths();
+      Array.from(stripEl.children).forEach(t => { t.style.transition = ''; });
       setActiveThumb(cur);
       setProgress(localProgress);
     }, SETTLE_MS);
   } else {
-    // Prev: slide right until lookback fully reveals (along with lastVisible exiting right)
+    // Prev commit
     stripEl.style.transform = 'translateX(0px)';
+    for (let i = 0; i <= 3; i++) {
+      if (!children[i] || stripDragPrevTargets[i] === undefined) continue;
+      children[i].style.transition = `width ${SETTLE_MS}ms cubic-bezier(0.33,1,0.68,1)`;
+      children[i].style.width = stripDragPrevTargets[i] + 'px';
+    }
     mobileWindowStart = (mobileWindowStart - 1 + total) % total;
     stripOrder = getMobileWindow();
     setTimeout(() => {
@@ -2926,7 +3039,7 @@ function finishStripDrag(commit, direction) {
       if (lastVisible    && lastVisible.parentNode)    lastVisible.remove();
       stripEl.style.transition = 'none';
       stripEl.style.transform  = 'translateX(0px)';
-      redistributeThumbWidths();
+      Array.from(stripEl.children).forEach(t => { t.style.transition = ''; });
       setActiveThumb(cur);
       setProgress(localProgress);
     }, SETTLE_MS);
