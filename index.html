@@ -3448,9 +3448,16 @@ function buildMobileDetail(p, pd) {
 // close on wheel up
 
 function goHome() {
-  if (detailOpen) closeDetail();
-  if (workOpen) closeWork();
-  if (infoOpen) closeInfo();
+  // goHome is a "decisive" user action — return all the way to landing in
+  // one click. The issue: closeDetail() sets `transitioning = true`, which
+  // makes the subsequent closeWork() bail out via its `if (transitioning)`
+  // early-return — leaving work visible on screen until a second click.
+  // Between each close we reset the flag so back-to-back dismissals can
+  // actually all fire. Each close will set the flag on its own internal
+  // async cleanup timer; that still works for the LAST one called.
+  if (detailOpen) { closeDetail(); transitioning = false; }
+  if (workOpen)   { closeWork();   transitioning = false; }
+  if (infoOpen)     closeInfo();
 }
 
 // ── INFO SHEET ──
@@ -4321,18 +4328,16 @@ function restoreWin(winEl, dockItem) {
   }, 650);
 }
 
-/* Called from closeDetail — wipe any minimized state since buildWindows
-   rebuilds from scratch next time detail opens. */
+/* Called from closeDetail and openWork — wipe dock items so they don't leak
+   across view transitions. We deliberately do NOT touch the .is-minimized
+   class on any leftover windows: removing it would make them visible again
+   during the detail slide-out animation, creating a flash. Windows don't
+   survive view transitions anyway — buildWindows wipes canvasInner on the
+   next openDetail, destroying every .win element fresh. So stale minimized
+   state is harmless and self-cleans. */
 function clearDock() {
   dockEl.innerHTML = '';
   dockEl.classList.remove('has-items');
-  document.querySelectorAll('.win.is-minimized').forEach(w => {
-    w.classList.remove('is-minimized');
-    w.dataset.minimized = '';
-    w.style.transform = '';
-    w.style.opacity   = '';
-    w.style.transformOrigin = '';
-  });
 }
 
 function openDetail() {
