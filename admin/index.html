@@ -1,0 +1,913 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>Admin — Alex Luque Garcia</title>
+
+<!-- TUS client for direct browser → Bunny Stream uploads. 30 KB minified,
+     handles chunking, resumability, and progress for us. -->
+<script src="https://cdn.jsdelivr.net/npm/tus-js-client@4.1.0/dist/tus.min.js"></script>
+
+<style>
+  :root {
+    --bg: #0a0a0a;
+    --fg: #fff;
+    --dim: rgba(255,255,255,0.55);
+    --dim2: rgba(255,255,255,0.25);
+    --line: rgba(255,255,255,0.12);
+    --panel: rgba(255,255,255,0.04);
+    --panel-hi: rgba(255,255,255,0.08);
+    --accent: #fff;
+    --err: #ff5a4e;
+    --ok: #4aff88;
+    --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg); color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+    font-weight: 300;
+    font-size: 15px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+  }
+  body { padding: 2rem 2rem 6rem; max-width: 900px; margin: 0 auto; }
+
+  h1 { font-size: 1.1rem; font-weight: 400; letter-spacing: 0.02em; margin: 0 0 2rem; }
+  h2 { font-size: 0.75rem; font-weight: 500; letter-spacing: 0.16em; text-transform: uppercase; color: var(--dim); margin: 2.5rem 0 1rem; }
+
+  /* Header */
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding-bottom: 1.5rem; border-bottom: 1px solid var(--line); margin-bottom: 2rem;
+  }
+  header .brand { font-size: 0.95rem; letter-spacing: 0.04em; }
+  header .brand b { font-weight: 500; }
+  header nav { display: flex; gap: 1.25rem; font-size: 0.8rem; letter-spacing: 0.08em; text-transform: uppercase; }
+  header nav a {
+    color: var(--dim); cursor: pointer; text-decoration: none;
+    transition: color 0.2s ease;
+  }
+  header nav a:hover, header nav a.active { color: var(--fg); }
+
+  /* Login */
+  #login-view {
+    max-width: 320px; margin: 8rem auto 0; text-align: center;
+  }
+  #login-view h1 { font-size: 1rem; font-weight: 400; letter-spacing: 0.2em; text-transform: uppercase; margin-bottom: 2rem; }
+  #login-view input {
+    width: 100%; padding: 1rem; font: inherit; color: var(--fg);
+    background: var(--panel); border: 1px solid var(--line);
+    outline: none; text-align: center; letter-spacing: 0.05em;
+    transition: border-color 0.2s ease;
+  }
+  #login-view input:focus { border-color: var(--fg); }
+  #login-view button { margin-top: 0.75rem; width: 100%; }
+  #login-view .login-error {
+    color: var(--err); font-size: 0.85rem; margin-top: 1rem; min-height: 1.2em;
+  }
+
+  /* Project list */
+  .project-list { display: flex; flex-direction: column; gap: 0; border-top: 1px solid var(--line); }
+  .project-row {
+    display: flex; align-items: center; gap: 1.25rem;
+    padding: 1rem 0; border-bottom: 1px solid var(--line);
+    cursor: pointer; transition: padding 0.2s var(--ease);
+  }
+  .project-row:hover { padding-left: 0.5rem; }
+  .project-row .pinned-dot {
+    width: 0.5rem; height: 0.5rem; background: var(--fg); flex-shrink: 0;
+    transition: opacity 0.2s ease; opacity: 0;
+  }
+  .project-row.is-pinned .pinned-dot { opacity: 1; }
+  .project-row .p-meta { flex: 1; min-width: 0; }
+  .project-row .p-name { font-size: 1rem; font-weight: 400; margin-bottom: 0.15rem; }
+  .project-row .p-sub { font-size: 0.78rem; color: var(--dim); letter-spacing: 0.04em; }
+  .project-row .p-year { font-size: 0.8rem; color: var(--dim); letter-spacing: 0.1em; flex-shrink: 0; }
+
+  /* Buttons */
+  button {
+    font: inherit; font-weight: 400;
+    color: var(--fg); background: transparent;
+    border: 1px solid var(--fg);
+    padding: 0.7rem 1.5rem; cursor: pointer;
+    letter-spacing: 0.08em; text-transform: uppercase; font-size: 0.78rem;
+    transition: all 0.2s ease;
+  }
+  button:hover:not(:disabled) { background: var(--fg); color: var(--bg); }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  button.ghost { border-color: var(--line); color: var(--dim); }
+  button.ghost:hover:not(:disabled) { border-color: var(--fg); background: transparent; color: var(--fg); }
+  button.danger { border-color: var(--err); color: var(--err); }
+  button.danger:hover:not(:disabled) { background: var(--err); color: var(--bg); }
+
+  .btn-row { display: flex; gap: 0.75rem; margin-top: 2rem; flex-wrap: wrap; }
+
+  /* Form */
+  .field { margin-bottom: 1.25rem; }
+  .field label {
+    display: block; font-size: 0.72rem; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--dim); margin-bottom: 0.5rem;
+  }
+  .field label .hint { color: var(--dim2); font-size: 0.65rem; margin-left: 0.5rem; text-transform: none; letter-spacing: 0; }
+  .field input, .field textarea, .field select {
+    width: 100%; padding: 0.8rem 1rem;
+    font: inherit; color: var(--fg);
+    background: var(--panel); border: 1px solid var(--line);
+    outline: none; transition: border-color 0.2s ease;
+    font-family: inherit;
+  }
+  .field textarea { resize: vertical; min-height: 4.5rem; line-height: 1.6; }
+  .field input:focus, .field textarea:focus, .field select:focus { border-color: var(--fg); }
+  .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  @media (max-width: 520px) { .field-row { grid-template-columns: 1fr; } }
+
+  /* File picker */
+  .file-drop {
+    padding: 2.5rem 1.5rem; text-align: center;
+    background: var(--panel); border: 1px dashed var(--line);
+    cursor: pointer; transition: all 0.2s ease;
+  }
+  .file-drop.drag { border-color: var(--fg); background: var(--panel-hi); }
+  .file-drop .drop-main { font-size: 0.95rem; margin-bottom: 0.3rem; }
+  .file-drop .drop-sub { font-size: 0.78rem; color: var(--dim); }
+  .file-drop.has-file { border-style: solid; border-color: var(--line); }
+  .file-drop.has-file .drop-main { font-weight: 400; }
+
+  /* Checkbox / toggle */
+  .checkbox {
+    display: inline-flex; align-items: center; gap: 0.75rem;
+    cursor: pointer; user-select: none;
+    padding: 0.5rem 0;
+  }
+  .checkbox input { appearance: none; width: 1rem; height: 1rem; border: 1px solid var(--fg); background: transparent; cursor: pointer; position: relative; }
+  .checkbox input:checked::after {
+    content: ''; position: absolute; inset: 2px; background: var(--fg);
+  }
+  .checkbox span { font-size: 0.85rem; letter-spacing: 0.04em; }
+
+  /* Progress */
+  .progress-block { margin: 2rem 0; }
+  .progress-block .stage {
+    display: flex; align-items: center; gap: 0.8rem;
+    padding: 0.7rem 0; font-size: 0.85rem;
+    color: var(--dim); border-bottom: 1px solid var(--line);
+  }
+  .progress-block .stage.active { color: var(--fg); }
+  .progress-block .stage.done { color: var(--ok); }
+  .progress-block .stage.error { color: var(--err); }
+  .progress-block .stage .icon {
+    display: inline-block; width: 0.9rem; height: 0.9rem;
+    border: 1px solid currentColor; flex-shrink: 0; position: relative;
+  }
+  .progress-block .stage.done .icon::after {
+    content: ''; position: absolute;
+    left: 0.15rem; top: 0.05rem; width: 0.3rem; height: 0.5rem;
+    border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor;
+    transform: rotate(45deg);
+  }
+  .progress-block .stage.active .icon {
+    animation: spin 0.9s linear infinite;
+    border-top-color: transparent;
+    border-right-color: transparent;
+  }
+  .progress-block .stage.error .icon::after {
+    content: '×'; position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.9rem; line-height: 1;
+  }
+  .progress-block .stage .label { flex: 1; }
+  .progress-block .stage .detail { font-size: 0.75rem; color: var(--dim); letter-spacing: 0.02em; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Status message line */
+  .status {
+    padding: 0.75rem 1rem; font-size: 0.85rem; margin: 1rem 0;
+    border-left: 2px solid var(--dim);
+  }
+  .status.ok  { border-color: var(--ok);  color: var(--ok);  }
+  .status.err { border-color: var(--err); color: var(--err); }
+
+  /* Hidden by default */
+  .hidden { display: none !important; }
+
+  /* Loader */
+  .loading { color: var(--dim); text-align: center; padding: 3rem 0; font-size: 0.85rem; letter-spacing: 0.1em; text-transform: uppercase; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-thumb { background: var(--line); }
+  ::-webkit-scrollbar-track { background: transparent; }
+</style>
+</head>
+<body>
+
+<!-- Login ─────────────────────────────────────────── -->
+<div id="login-view">
+  <h1>Admin</h1>
+  <input type="password" id="login-pw" placeholder="Password" autocomplete="current-password" autofocus>
+  <button id="login-btn">Enter</button>
+  <div class="login-error" id="login-err"></div>
+</div>
+
+<!-- Main app (hidden until login) ─────────────────── -->
+<div id="app" class="hidden">
+  <header>
+    <div class="brand"><b>AL</b> — Project Manager</div>
+    <nav>
+      <a data-view="list" class="active">Projects</a>
+      <a data-view="new">New</a>
+      <a id="logout-btn">Logout</a>
+    </nav>
+  </header>
+
+  <!-- Project list view ─────────────────────────────── -->
+  <div id="list-view">
+    <div class="loading" id="list-loading">Loading projects…</div>
+    <div class="project-list hidden" id="project-list"></div>
+    <div class="status hidden" id="list-status"></div>
+  </div>
+
+  <!-- New/Edit project view ─────────────────────────── -->
+  <div id="form-view" class="hidden">
+    <h1 id="form-title">New project</h1>
+
+    <!-- Video file picker (only shown for new projects) -->
+    <div id="video-field">
+      <label>Video file <span class="hint">MP4, MOV — will be uploaded to Bunny Stream</span></label>
+      <div class="file-drop" id="file-drop">
+        <input type="file" id="file-input" accept="video/*" class="hidden">
+        <div class="drop-main" id="drop-main">Click or drop a video here</div>
+        <div class="drop-sub" id="drop-sub">Thumbnails will be extracted automatically at 1 fps</div>
+      </div>
+    </div>
+
+    <!-- Metadata fields -->
+    <h2>Metadata</h2>
+    <div class="field">
+      <label>Folder name <span class="hint">e.g. 2025-bold — lowercase, digits, hyphens</span></label>
+      <input type="text" id="f-folder" placeholder="YYYY-shortname">
+    </div>
+    <div class="field">
+      <label>Project name</label>
+      <input type="text" id="f-name" placeholder="BOLD">
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label>Client</label>
+        <input type="text" id="f-client" placeholder="Gentle Monster">
+      </div>
+      <div class="field">
+        <label>Studio</label>
+        <input type="text" id="f-studio" placeholder="Olimpic TV">
+      </div>
+    </div>
+    <div class="field">
+      <label>Role / Type</label>
+      <input type="text" id="f-type" placeholder="VFX Supervisor · CG Lead">
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label>Year</label>
+        <input type="text" id="f-year" placeholder="2025">
+      </div>
+      <div class="field">
+        <label>Duration <span class="hint">seconds, auto-detected from video if blank</span></label>
+        <input type="text" id="f-duration" placeholder="60">
+      </div>
+    </div>
+    <div class="field">
+      <label>Color tag <span class="hint">tc-0 through tc-7 (optional)</span></label>
+      <select id="f-color">
+        <option value="">— auto —</option>
+        <option value="tc-0">tc-0</option>
+        <option value="tc-1">tc-1</option>
+        <option value="tc-2">tc-2</option>
+        <option value="tc-3">tc-3</option>
+        <option value="tc-4">tc-4</option>
+        <option value="tc-5">tc-5</option>
+        <option value="tc-6">tc-6</option>
+        <option value="tc-7">tc-7</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>About</label>
+      <textarea id="f-about" rows="4" placeholder="Description of the project…"></textarea>
+    </div>
+    <div class="field">
+      <label>Team <span class="hint">one entry per line — use em-dash (—), not colon</span></label>
+      <textarea id="f-team" rows="4" placeholder="Alex Luque Garcia — VFX Supervisor&#10;Someone Else — CG Lead"></textarea>
+    </div>
+    <div class="field">
+      <label>Credits <span class="hint">one entry per line — use em-dash (—)</span></label>
+      <textarea id="f-credits" rows="4" placeholder="Direction — Someone&#10;Production — Studio name"></textarea>
+    </div>
+
+    <label class="checkbox">
+      <input type="checkbox" id="f-pinned">
+      <span>Pin this project to first slot in Feed</span>
+    </label>
+
+    <!-- Progress indicator (shown during submit) -->
+    <div id="progress-block" class="progress-block hidden">
+      <h2>Upload Progress</h2>
+      <div class="stage" id="stage-create" data-stage="create">
+        <span class="icon"></span>
+        <span class="label">Creating video entry on Bunny Stream</span>
+        <span class="detail" id="stage-create-detail"></span>
+      </div>
+      <div class="stage" id="stage-upload" data-stage="upload">
+        <span class="icon"></span>
+        <span class="label">Uploading video to Bunny Stream</span>
+        <span class="detail" id="stage-upload-detail"></span>
+      </div>
+      <div class="stage" id="stage-thumbs" data-stage="thumbs">
+        <span class="icon"></span>
+        <span class="label">Extracting + uploading thumbnails</span>
+        <span class="detail" id="stage-thumbs-detail"></span>
+      </div>
+      <div class="stage" id="stage-commit" data-stage="commit">
+        <span class="icon"></span>
+        <span class="label">Committing to GitHub</span>
+        <span class="detail" id="stage-commit-detail"></span>
+      </div>
+    </div>
+
+    <div class="status hidden" id="form-status"></div>
+
+    <div class="btn-row">
+      <button id="submit-btn">Create project</button>
+      <button class="ghost" id="cancel-btn">Cancel</button>
+      <button class="danger hidden" id="delete-btn">Delete project</button>
+    </div>
+  </div>
+</div>
+
+<!-- Hidden scratch video for thumbnail extraction -->
+<video id="scratch-video" class="hidden" muted playsinline preload="metadata"></video>
+<canvas id="scratch-canvas" class="hidden"></canvas>
+
+<script>
+/* ─────────────────────────────────────────────────────────
+   State + helpers
+   ───────────────────────────────────────────────────────── */
+const state = {
+  password: null,      // held in memory only — sessionStorage mirrors this
+  projects: [],        // full list from /list-projects
+  editing: null,       // folder string if editing, null if creating
+  videoFile: null,     // File object picked by the user
+  videoDuration: 0,    // seconds, from loadedmetadata
+};
+
+const api = (path, opts = {}) => {
+  const headers = { ...(opts.headers || {}) };
+  if (state.password) headers.Authorization = `Bearer ${state.password}`;
+  if (opts.body && typeof opts.body === 'object' && !(opts.body instanceof Blob)) {
+    headers['Content-Type'] = 'application/json';
+    opts.body = JSON.stringify(opts.body);
+  }
+  return fetch(`/api/admin/${path}`, { ...opts, headers });
+};
+
+const $ = (id) => document.getElementById(id);
+const show = (el) => el.classList.remove('hidden');
+const hide = (el) => el.classList.add('hidden');
+
+/* ─────────────────────────────────────────────────────────
+   Login
+   ───────────────────────────────────────────────────────── */
+async function doLogin(pw) {
+  const res = await fetch('/api/admin/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password: pw }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Login failed');
+  }
+  return true;
+}
+
+$('login-btn').addEventListener('click', async () => {
+  const pw = $('login-pw').value;
+  if (!pw) return;
+  $('login-btn').disabled = true;
+  $('login-err').textContent = '';
+  try {
+    await doLogin(pw);
+    state.password = pw;
+    try { sessionStorage.setItem('adminPw', pw); } catch {}
+    enterApp();
+  } catch (e) {
+    $('login-err').textContent = e.message;
+  } finally {
+    $('login-btn').disabled = false;
+  }
+});
+$('login-pw').addEventListener('keypress', (e) => {
+  if (e.key === 'Enter') $('login-btn').click();
+});
+
+$('logout-btn').addEventListener('click', () => {
+  state.password = null;
+  try { sessionStorage.removeItem('adminPw'); } catch {}
+  hide($('app'));
+  show($('login-view'));
+  $('login-pw').value = '';
+  $('login-pw').focus();
+});
+
+// Auto-login if password is in sessionStorage
+(async () => {
+  let saved = null;
+  try { saved = sessionStorage.getItem('adminPw'); } catch {}
+  if (saved) {
+    try {
+      await doLogin(saved);
+      state.password = saved;
+      enterApp();
+      return;
+    } catch {
+      try { sessionStorage.removeItem('adminPw'); } catch {}
+    }
+  }
+  $('login-pw').focus();
+})();
+
+function enterApp() {
+  hide($('login-view'));
+  show($('app'));
+  switchView('list');
+  loadProjects();
+}
+
+/* ─────────────────────────────────────────────────────────
+   Nav + view switching
+   ───────────────────────────────────────────────────────── */
+document.querySelectorAll('header nav a[data-view]').forEach(a => {
+  a.addEventListener('click', () => switchView(a.dataset.view));
+});
+
+function switchView(name) {
+  document.querySelectorAll('header nav a[data-view]').forEach(a => {
+    a.classList.toggle('active', a.dataset.view === name);
+  });
+  hide($('list-view'));
+  hide($('form-view'));
+  if (name === 'list') {
+    show($('list-view'));
+    loadProjects();
+  } else if (name === 'new') {
+    startNewProject();
+    show($('form-view'));
+  }
+}
+
+/* ─────────────────────────────────────────────────────────
+   Project list
+   ───────────────────────────────────────────────────────── */
+async function loadProjects() {
+  show($('list-loading'));
+  hide($('project-list'));
+  hide($('list-status'));
+  try {
+    const res = await api('list-projects');
+    if (!res.ok) throw new Error((await res.json()).error || 'Failed to load');
+    const data = await res.json();
+    state.projects = data.projects || [];
+    renderProjects();
+  } catch (e) {
+    hide($('list-loading'));
+    $('list-status').textContent = 'Error: ' + e.message;
+    $('list-status').classList.remove('ok');
+    $('list-status').classList.add('err');
+    show($('list-status'));
+  }
+}
+
+function renderProjects() {
+  const container = $('project-list');
+  container.innerHTML = '';
+  if (!state.projects.length) {
+    container.innerHTML = '<div class="loading">No projects yet — click NEW to add one.</div>';
+  } else {
+    state.projects.forEach(p => {
+      const row = document.createElement('div');
+      row.className = 'project-row' + (p.pinned ? ' is-pinned' : '');
+      row.innerHTML = `
+        <span class="pinned-dot" title="Pinned"></span>
+        <div class="p-meta">
+          <div class="p-name">${escapeHtml(p.name || p.folder)}</div>
+          <div class="p-sub">${escapeHtml([p.studio, p.client].filter(Boolean).join(' — '))} ${p.type ? '· ' + escapeHtml(p.type) : ''}</div>
+        </div>
+        <div class="p-year">${escapeHtml(p.year || '')}</div>
+      `;
+      row.addEventListener('click', () => startEditProject(p.folder));
+      container.appendChild(row);
+    });
+  }
+  hide($('list-loading'));
+  show(container);
+}
+
+function escapeHtml(s) {
+  return String(s || '').replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[c]));
+}
+
+/* ─────────────────────────────────────────────────────────
+   Form — new / edit
+   ───────────────────────────────────────────────────────── */
+const fields = ['folder','name','client','studio','type','year','duration','color','about','team','credits'];
+
+function startNewProject() {
+  state.editing = null;
+  state.videoFile = null;
+  state.videoDuration = 0;
+  $('form-title').textContent = 'New project';
+  $('submit-btn').textContent = 'Create project';
+  fields.forEach(k => $('f-' + k).value = '');
+  $('f-pinned').checked = false;
+  $('f-folder').disabled = false;
+  show($('video-field'));
+  hide($('delete-btn'));
+  hide($('progress-block'));
+  hide($('form-status'));
+  resetDropArea();
+}
+
+function startEditProject(folder) {
+  const p = state.projects.find(x => x.folder === folder);
+  if (!p) return;
+  state.editing = folder;
+  state.videoFile = null;
+  $('form-title').textContent = 'Edit — ' + p.name;
+  $('submit-btn').textContent = 'Save changes';
+  $('f-folder').value = p.folder;
+  $('f-folder').disabled = true;
+  $('f-name').value = p.name || '';
+  $('f-client').value = p.client || '';
+  $('f-studio').value = p.studio || '';
+  $('f-type').value = p.type || '';
+  $('f-year').value = p.year || '';
+  $('f-duration').value = p.duration || '';
+  $('f-color').value = p.color || '';
+  $('f-about').value = (p.about || '').replace(/\\n/g, '\n');
+  $('f-team').value = (p.team || '').replace(/\\n/g, '\n');
+  $('f-credits').value = (p.credits || '').replace(/\\n/g, '\n');
+  $('f-pinned').checked = !!p.pinned;
+  hide($('video-field'));  // don't allow video change on edit
+  show($('delete-btn'));
+  hide($('progress-block'));
+  hide($('form-status'));
+  switchView('form');
+  show($('form-view'));
+  document.querySelectorAll('header nav a[data-view]').forEach(a => a.classList.remove('active'));
+}
+
+$('cancel-btn').addEventListener('click', () => switchView('list'));
+
+/* File drop zone */
+const fileDrop = $('file-drop');
+const fileInput = $('file-input');
+fileDrop.addEventListener('click', () => fileInput.click());
+fileDrop.addEventListener('dragover', (e) => { e.preventDefault(); fileDrop.classList.add('drag'); });
+fileDrop.addEventListener('dragleave', () => fileDrop.classList.remove('drag'));
+fileDrop.addEventListener('drop', (e) => {
+  e.preventDefault();
+  fileDrop.classList.remove('drag');
+  if (e.dataTransfer.files[0]) handleFilePick(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', (e) => {
+  if (e.target.files[0]) handleFilePick(e.target.files[0]);
+});
+
+function resetDropArea() {
+  fileDrop.classList.remove('has-file');
+  $('drop-main').textContent = 'Click or drop a video here';
+  $('drop-sub').textContent = 'Thumbnails will be extracted automatically at 1 fps';
+}
+
+function handleFilePick(file) {
+  if (!file.type.startsWith('video/')) {
+    alert('Please pick a video file');
+    return;
+  }
+  state.videoFile = file;
+  fileDrop.classList.add('has-file');
+  $('drop-main').textContent = file.name;
+  const mb = (file.size / (1024*1024)).toFixed(1);
+  $('drop-sub').textContent = `${mb} MB — ready to upload`;
+
+  // Probe video duration so we can pre-populate the duration field
+  const scratch = $('scratch-video');
+  scratch.src = URL.createObjectURL(file);
+  scratch.addEventListener('loadedmetadata', () => {
+    state.videoDuration = scratch.duration;
+    if (!$('f-duration').value) {
+      $('f-duration').value = Math.round(scratch.duration);
+    }
+  }, { once: true });
+}
+
+/* ─────────────────────────────────────────────────────────
+   Submit — create OR edit
+   ───────────────────────────────────────────────────────── */
+$('submit-btn').addEventListener('click', async () => {
+  if (state.editing) return submitEdit();
+  return submitCreate();
+});
+
+function gatherInfo() {
+  return {
+    name:     $('f-name').value.trim(),
+    client:   $('f-client').value.trim(),
+    studio:   $('f-studio').value.trim(),
+    type:     $('f-type').value.trim(),
+    year:     $('f-year').value.trim(),
+    duration: $('f-duration').value.trim(),
+    color:    $('f-color').value.trim(),
+    about:    $('f-about').value.trim(),
+    team:     $('f-team').value.trim(),
+    credits:  $('f-credits').value.trim(),
+  };
+}
+
+function setStage(id, status, detail) {
+  const el = $('stage-' + id);
+  el.classList.remove('active', 'done', 'error');
+  if (status) el.classList.add(status);
+  const d = $('stage-' + id + '-detail');
+  if (d) d.textContent = detail || '';
+}
+
+function setStatus(msg, kind) {
+  const el = $('form-status');
+  el.textContent = msg;
+  el.classList.remove('ok', 'err');
+  if (kind) el.classList.add(kind);
+  show(el);
+}
+
+async function submitCreate() {
+  const folder = $('f-folder').value.trim();
+  const name = $('f-name').value.trim();
+  if (!folder) return alert('Folder name is required');
+  if (!name) return alert('Project name is required');
+  if (!state.videoFile) return alert('Please pick a video file');
+
+  // Warn if folder already exists
+  if (state.projects.some(p => p.folder === folder)) {
+    return alert('A project with this folder name already exists');
+  }
+
+  $('submit-btn').disabled = true;
+  hide($('form-status'));
+  show($('progress-block'));
+  ['create','upload','thumbs','commit'].forEach(s => setStage(s, '', ''));
+
+  try {
+    // 1. Create Stream video entry
+    setStage('create', 'active', '');
+    const cr = await api('create-project', {
+      method: 'POST',
+      body: { title: name, folder },
+    });
+    if (!cr.ok) throw new Error((await cr.json()).error || 'Create failed');
+    const create = await cr.json();
+    setStage('create', 'done', create.videoId);
+
+    // 2. Upload video via TUS direct to Bunny
+    setStage('upload', 'active', '0%');
+    await tusUpload(state.videoFile, create, (pct, bytesUp, bytesTotal) => {
+      const mbUp = (bytesUp / (1024*1024)).toFixed(1);
+      const mbTotal = (bytesTotal / (1024*1024)).toFixed(1);
+      setStage('upload', 'active', `${pct}% · ${mbUp}/${mbTotal} MB`);
+    });
+    setStage('upload', 'done', 'complete');
+
+    // 3. Extract + upload thumbnails
+    setStage('thumbs', 'active', '0 frames');
+    const frameList = await extractAndUploadThumbs(state.videoFile, folder, (done, total) => {
+      setStage('thumbs', 'active', `${done}/${total} frames`);
+    });
+    setStage('thumbs', 'done', `${frameList.length} frames`);
+
+    // 4. Commit info.txt + projects.json
+    setStage('commit', 'active', '');
+    const info = gatherInfo();
+    info.video  = create.streamUrl;
+    info.frames = frameList.join(', ');
+    const fin = await api('finalize-project', {
+      method: 'POST',
+      body: {
+        folder,
+        pinned: $('f-pinned').checked,
+        info,
+      },
+    });
+    if (!fin.ok) throw new Error((await fin.json()).error || 'Finalize failed');
+    setStage('commit', 'done', '');
+
+    setStatus('Project created. Vercel will redeploy in ~30 seconds.', 'ok');
+    setTimeout(() => {
+      switchView('list');
+    }, 1800);
+  } catch (e) {
+    ['create','upload','thumbs','commit'].forEach(s => {
+      const el = $('stage-' + s);
+      if (el.classList.contains('active')) el.classList.remove('active'), el.classList.add('error');
+    });
+    setStatus('Error: ' + e.message, 'err');
+  } finally {
+    $('submit-btn').disabled = false;
+  }
+}
+
+async function submitEdit() {
+  $('submit-btn').disabled = true;
+  hide($('form-status'));
+  hide($('progress-block'));
+  try {
+    const info = gatherInfo();
+    const res = await api('update-project', {
+      method: 'POST',
+      body: {
+        folder: state.editing,
+        pinned: $('f-pinned').checked,
+        info,
+      },
+    });
+    if (!res.ok) throw new Error((await res.json()).error || 'Update failed');
+    setStatus('Saved. Vercel will redeploy in ~30 seconds.', 'ok');
+    setTimeout(() => switchView('list'), 1500);
+  } catch (e) {
+    setStatus('Error: ' + e.message, 'err');
+  } finally {
+    $('submit-btn').disabled = false;
+  }
+}
+
+$('delete-btn').addEventListener('click', async () => {
+  if (!state.editing) return;
+  if (!confirm(`Delete project "${state.editing}"?\n\nThis removes it from the site and deletes the folder from GitHub. The Bunny Stream video and Storage thumbnails remain.`)) return;
+  const alsoBunny = confirm('Also delete Bunny Storage thumbnails for this project?');
+  $('delete-btn').disabled = true;
+  try {
+    const res = await api('delete-project', {
+      method: 'POST',
+      body: { folder: state.editing, deleteBunnyAssets: alsoBunny },
+    });
+    if (!res.ok) throw new Error((await res.json()).error || 'Delete failed');
+    const result = await res.json();
+    if (result.errors) {
+      setStatus('Deleted with warnings: ' + result.errors.join('; '), 'ok');
+    } else {
+      setStatus('Deleted. Site will redeploy shortly.', 'ok');
+    }
+    setTimeout(() => switchView('list'), 1500);
+  } catch (e) {
+    setStatus('Error: ' + e.message, 'err');
+  } finally {
+    $('delete-btn').disabled = false;
+  }
+});
+
+/* ─────────────────────────────────────────────────────────
+   TUS upload to Bunny Stream
+   ───────────────────────────────────────────────────────── */
+function tusUpload(file, authInfo, onProgress) {
+  return new Promise((resolve, reject) => {
+    const upload = new tus.Upload(file, {
+      endpoint: authInfo.tusEndpoint,
+      retryDelays: [0, 1000, 3000, 5000, 10000],
+      headers: {
+        AuthorizationSignature: authInfo.authorizationSignature,
+        AuthorizationExpire:    String(authInfo.authorizationExpire),
+        VideoId:                authInfo.videoId,
+        LibraryId:              String(authInfo.libraryId),
+      },
+      metadata: {
+        filetype: file.type || 'video/mp4',
+        title: file.name,
+      },
+      chunkSize: 5 * 1024 * 1024,
+      onError: (err) => reject(err),
+      onProgress: (bytesUploaded, bytesTotal) => {
+        const pct = Math.round((bytesUploaded / bytesTotal) * 100);
+        onProgress && onProgress(pct, bytesUploaded, bytesTotal);
+      },
+      onSuccess: () => resolve(),
+    });
+    upload.start();
+  });
+}
+
+/* ─────────────────────────────────────────────────────────
+   Thumbnail extraction + upload
+   Uses a hidden <video> element. Seeks to each whole-second
+   mark, draws to canvas at max 400px wide (preserving aspect),
+   exports as JPG 0.85, uploads via /api/admin/upload-thumb.
+   ───────────────────────────────────────────────────────── */
+async function extractAndUploadThumbs(file, folder, onProgress) {
+  const video = $('scratch-video');
+  const canvas = $('scratch-canvas');
+  const ctx = canvas.getContext('2d');
+
+  // If already loaded (user picked the file earlier), good. Otherwise load.
+  if (!video.src || video.src !== URL.createObjectURL(file)) {
+    video.src = URL.createObjectURL(file);
+    await new Promise((res, rej) => {
+      video.addEventListener('loadedmetadata', res, { once: true });
+      video.addEventListener('error', () => rej(new Error('Failed to load video for thumbnail extraction')), { once: true });
+    });
+  }
+
+  const duration = video.duration;
+  if (!duration || isNaN(duration)) throw new Error('Could not read video duration');
+
+  // Size the canvas once based on video dimensions — scaled to max 400 wide
+  const srcW = video.videoWidth;
+  const srcH = video.videoHeight;
+  const targetW = Math.min(400, srcW);
+  const targetH = Math.round(srcH * (targetW / srcW));
+  canvas.width = targetW;
+  canvas.height = targetH;
+
+  const totalFrames = Math.ceil(duration);
+  onProgress && onProgress(0, totalFrames);
+
+  // Extract frames one at a time (seeking is inherently sequential in
+  // <video> elements — you can't reliably parallelize seeks on one element).
+  // But UPLOAD each frame async so the next extraction can overlap with
+  // the previous upload. Cap in-flight uploads with a small pool.
+  const uploadQueue = [];
+  const CONCURRENCY = 6;
+  const frameList = [];
+
+  for (let i = 0; i < totalFrames; i++) {
+    const timestamp = Math.min(i, duration - 0.05); // stay just inside end
+    await seekTo(video, timestamp);
+    ctx.drawImage(video, 0, 0, targetW, targetH);
+
+    const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.85));
+    if (!blob) throw new Error(`Failed to encode frame ${i}`);
+
+    const filename = `video_${String(i).padStart(3, '0')}.jpg`;
+    frameList.push(filename);
+
+    // Wait for a slot in the upload pool
+    while (uploadQueue.length >= CONCURRENCY) {
+      await Promise.race(uploadQueue);
+    }
+    const p = uploadThumb(folder, filename, blob).then(() => {
+      // Remove self from queue when done
+      const idx = uploadQueue.indexOf(p);
+      if (idx >= 0) uploadQueue.splice(idx, 1);
+      onProgress && onProgress(frameList.length - uploadQueue.length, totalFrames);
+    });
+    uploadQueue.push(p);
+  }
+
+  // Wait for all remaining uploads
+  await Promise.all(uploadQueue);
+  onProgress && onProgress(totalFrames, totalFrames);
+
+  return frameList;
+}
+
+function seekTo(video, time) {
+  return new Promise((res, rej) => {
+    const onSeeked = () => { video.removeEventListener('seeked', onSeeked); res(); };
+    const onErr = () => { video.removeEventListener('error', onErr); rej(new Error('Video seek error')); };
+    video.addEventListener('seeked', onSeeked, { once: true });
+    video.addEventListener('error', onErr, { once: true });
+    video.currentTime = time;
+  });
+}
+
+async function uploadThumb(folder, filename, blob) {
+  const url = `/api/admin/upload-thumb?folder=${encodeURIComponent(folder)}&filename=${encodeURIComponent(filename)}`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${state.password}`,
+      'Content-Type': 'image/jpeg',
+    },
+    body: blob,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `Thumb upload failed for ${filename}`);
+  }
+}
+</script>
+</body>
+</html>
