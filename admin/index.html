@@ -196,6 +196,99 @@
   /* Hidden by default */
   .hidden { display: none !important; }
 
+  /* ──────────── MEDIA SECTION ──────────── */
+  #media-section { margin-top: 3rem; padding-top: 0.5rem; border-top: 1px solid var(--line); }
+
+  .h2-count { font-weight: 300; color: var(--dim2); letter-spacing: 0; margin-left: 0.5rem; font-size: 0.7rem; }
+
+  /* Current video block */
+  .media-video {
+    display: flex; align-items: center; gap: 1rem;
+    padding: 1rem; background: var(--panel); border: 1px solid var(--line);
+  }
+  .media-video .mv-poster {
+    width: 6rem; height: 3.75rem; flex-shrink: 0;
+    background-color: #000; background-size: cover; background-position: center;
+    border: 1px solid var(--line);
+    position: relative;
+  }
+  .media-video .mv-poster::after {
+    content: '▶'; position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    color: rgba(255,255,255,0.85); font-size: 1rem;
+    text-shadow: 0 0 8px rgba(0,0,0,0.8);
+  }
+  .media-video .mv-info { flex: 1; min-width: 0; }
+  .media-video .mv-label { font-size: 0.72rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--dim); margin-bottom: 0.3rem; }
+  .media-video .mv-url {
+    font-size: 0.72rem; color: var(--dim); font-family: monospace;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+
+  /* Photo grid */
+  .photo-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(7rem, 1fr));
+    gap: 0.5rem; margin-top: 1rem;
+  }
+  .photo-grid .asset {
+    position: relative; aspect-ratio: 16/10;
+    background: var(--panel); border: 1px solid var(--line);
+    background-size: cover; background-position: center;
+    cursor: default; transition: border-color 0.2s ease, transform 0.2s ease;
+  }
+  .photo-grid .asset:hover { border-color: var(--dim); }
+  .photo-grid .asset .asset-delete {
+    position: absolute; top: 0.25rem; right: 0.25rem;
+    width: 1.5rem; height: 1.5rem; padding: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.9rem; line-height: 1;
+    background: rgba(0,0,0,0.75); border: 1px solid var(--dim);
+    color: var(--fg); cursor: pointer;
+    opacity: 0; transition: opacity 0.15s ease;
+  }
+  .photo-grid .asset:hover .asset-delete { opacity: 1; }
+  .photo-grid .asset .asset-delete:hover { background: var(--err); border-color: var(--err); }
+  .photo-grid .asset .asset-name {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    padding: 0.3rem 0.5rem; background: rgba(0,0,0,0.7);
+    font-size: 0.65rem; font-family: monospace; color: var(--dim);
+    letter-spacing: 0.02em;
+  }
+  .photo-grid .asset.uploading { opacity: 0.5; }
+  .photo-grid .asset.uploading::after {
+    content: 'UPLOADING'; position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.5); font-size: 0.65rem; letter-spacing: 0.2em;
+  }
+
+  /* Thumb grid (denser, smaller) */
+  .thumb-details summary {
+    cursor: pointer; font-size: 0.78rem; color: var(--dim);
+    padding: 0.5rem 0; list-style: none; letter-spacing: 0.05em;
+  }
+  .thumb-details summary::before { content: '▸ '; display: inline-block; transition: transform 0.2s ease; }
+  .thumb-details[open] summary::before { transform: rotate(90deg); }
+  .thumb-details summary:hover { color: var(--fg); }
+  .thumb-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(4rem, 1fr));
+    gap: 0.25rem; margin-top: 0.5rem;
+  }
+  .thumb-grid .thumb-cell {
+    aspect-ratio: 16/9; background: var(--panel);
+    background-size: cover; background-position: center;
+    border: 1px solid var(--line);
+    position: relative;
+  }
+  .thumb-grid .thumb-cell::after {
+    content: attr(data-idx); position: absolute;
+    bottom: 2px; right: 3px; font-family: monospace;
+    font-size: 0.55rem; color: rgba(255,255,255,0.55);
+    text-shadow: 0 0 3px rgba(0,0,0,0.9);
+  }
+
+  .asset-loading { color: var(--dim); font-size: 0.82rem; padding: 1.5rem 0; }
+  .asset-empty { color: var(--dim2); font-size: 0.82rem; padding: 1.5rem 0; }
+
   /* Loader */
   .loading { color: var(--dim); text-align: center; padding: 3rem 0; font-size: 0.85rem; letter-spacing: 0.1em; text-transform: uppercase; }
 
@@ -313,6 +406,35 @@
       <span>Pin this project to first slot in Feed</span>
     </label>
 
+    <!-- ──────────── MEDIA SECTION (edit mode only) ──────────── -->
+    <div id="media-section" class="hidden">
+      <h2>Video</h2>
+      <div class="media-video" id="media-video">
+        <div class="mv-poster" id="mv-poster"></div>
+        <div class="mv-info">
+          <div class="mv-label" id="mv-label">Current video</div>
+          <div class="mv-url" id="mv-url"></div>
+        </div>
+        <button class="ghost" id="replace-video-btn">Replace</button>
+      </div>
+      <input type="file" id="replace-video-input" accept="video/*" class="hidden">
+
+      <h2>Photos <span class="h2-count" id="photos-count"></span></h2>
+      <div class="photo-grid" id="photo-grid">
+        <div class="asset-loading">Loading…</div>
+      </div>
+      <div class="btn-row" style="margin-top: 1rem;">
+        <button class="ghost" id="add-photos-btn">+ Add photos</button>
+        <input type="file" id="add-photos-input" accept="image/*" multiple class="hidden">
+      </div>
+
+      <h2>Thumbnail frames <span class="h2-count" id="thumbs-count"></span></h2>
+      <details class="thumb-details">
+        <summary>Show thumbnail frames</summary>
+        <div class="thumb-grid" id="thumb-grid"></div>
+      </details>
+    </div>
+
     <!-- Progress indicator (shown during submit) -->
     <div id="progress-block" class="progress-block hidden">
       <h2>Upload Progress</h2>
@@ -362,6 +484,7 @@ const state = {
   editing: null,       // folder string if editing, null if creating
   videoFile: null,     // File object picked by the user
   videoDuration: 0,    // seconds, from loadedmetadata
+  assets: null,        // {photos, thumbs, videoUrl, videoGuid} from list-assets
 };
 
 const api = (path, opts = {}) => {
@@ -531,6 +654,7 @@ function startNewProject() {
   state.editing = null;
   state.videoFile = null;
   state.videoDuration = 0;
+  state.assets = null;
   $('form-title').textContent = 'New project';
   $('submit-btn').textContent = 'Create project';
   fields.forEach(k => $('f-' + k).value = '');
@@ -540,6 +664,7 @@ function startNewProject() {
   hide($('delete-btn'));
   hide($('progress-block'));
   hide($('form-status'));
+  hide($('media-section'));   // not relevant for a new project
   resetDropArea();
 }
 
@@ -548,6 +673,7 @@ function startEditProject(folder) {
   if (!p) return;
   state.editing = folder;
   state.videoFile = null;
+  state.assets = null;       // populated by loadAssets
   $('form-title').textContent = 'Edit — ' + p.name;
   $('submit-btn').textContent = 'Save changes';
   $('f-folder').value = p.folder;
@@ -563,14 +689,22 @@ function startEditProject(folder) {
   $('f-team').value = (p.team || '').replace(/\\n/g, '\n');
   $('f-credits').value = (p.credits || '').replace(/\\n/g, '\n');
   $('f-pinned').checked = !!p.pinned;
-  hide($('video-field'));  // don't allow video change on edit
+  hide($('video-field'));        // don't allow video pick on edit (uses Replace btn)
   show($('delete-btn'));
   hide($('progress-block'));
   hide($('form-status'));
+  show($('media-section'));      // NEW — show media management block
   switchView('form');
   show($('form-view'));
   document.querySelectorAll('header nav a[data-view]').forEach(a => a.classList.remove('active'));
+  // Kick off async load of the project's current assets. Renders into the
+  // media-section placeholders as data arrives, so the rest of the form
+  // stays interactive in the meantime.
+  loadAssets(folder);
 }
+
+// Hide media section whenever we switch to a non-edit view
+function hideMediaSection() { hide($('media-section')); }
 
 $('cancel-btn').addEventListener('click', () => switchView('list'));
 
@@ -908,6 +1042,367 @@ async function uploadThumb(folder, filename, blob) {
     throw new Error(err.error || `Thumb upload failed for ${filename}`);
   }
 }
+
+/* ─────────────────────────────────────────────────────────
+   ASSET MANAGEMENT — load, display, add, delete photos + frames
+   ───────────────────────────────────────────────────────── */
+
+async function loadAssets(folder) {
+  // Reset placeholders to "loading" state
+  $('photo-grid').innerHTML = '<div class="asset-loading">Loading photos…</div>';
+  $('thumb-grid').innerHTML = '';
+  $('mv-poster').style.backgroundImage = '';
+  $('mv-url').textContent = '';
+  $('photos-count').textContent = '';
+  $('thumbs-count').textContent = '';
+
+  try {
+    const res = await api(`list-assets?folder=${encodeURIComponent(folder)}`);
+    if (!res.ok) throw new Error((await res.json()).error || 'Failed to load assets');
+    const data = await res.json();
+    state.assets = data;
+    renderAssets();
+  } catch (e) {
+    $('photo-grid').innerHTML = `<div class="asset-empty">Error loading assets: ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function renderAssets() {
+  const a = state.assets;
+  if (!a) return;
+
+  // Video preview — use first thumbnail frame as the poster
+  const firstThumb = a.thumbs[0];
+  if (firstThumb) {
+    $('mv-poster').style.backgroundImage = `url('${firstThumb.url}')`;
+  } else {
+    $('mv-poster').style.backgroundImage = '';
+  }
+  $('mv-url').textContent = a.videoUrl || '(no video URL set)';
+
+  // Photos grid
+  $('photos-count').textContent = a.photos.length ? `(${a.photos.length})` : '';
+  const pg = $('photo-grid');
+  if (!a.photos.length) {
+    pg.innerHTML = '<div class="asset-empty">No photos yet — use Add photos to upload.</div>';
+  } else {
+    pg.innerHTML = '';
+    a.photos.forEach(photo => {
+      const el = document.createElement('div');
+      el.className = 'asset';
+      el.style.backgroundImage = `url('${photo.url}')`;
+      el.innerHTML = `
+        <button class="asset-delete" title="Delete">×</button>
+        <div class="asset-name">${escapeHtml(photo.name)}</div>
+      `;
+      el.querySelector('.asset-delete').addEventListener('click', (e) => {
+        e.stopPropagation();
+        deletePhoto(photo.name);
+      });
+      pg.appendChild(el);
+    });
+  }
+
+  // Thumbs grid — collapsed by default, just renders contents
+  $('thumbs-count').textContent = a.thumbs.length ? `(${a.thumbs.length})` : '';
+  const tg = $('thumb-grid');
+  tg.innerHTML = '';
+  a.thumbs.forEach((t, i) => {
+    const cell = document.createElement('div');
+    cell.className = 'thumb-cell';
+    cell.style.backgroundImage = `url('${t.url}')`;
+    cell.dataset.idx = String(i).padStart(3, '0');
+    tg.appendChild(cell);
+  });
+}
+
+async function deletePhoto(filename) {
+  if (!confirm(`Delete photo "${filename}"?`)) return;
+  try {
+    const res = await api('delete-asset', {
+      method: 'POST',
+      body: { folder: state.editing, path: filename },
+    });
+    if (!res.ok) throw new Error((await res.json()).error || 'Delete failed');
+    // Remove from in-memory state + re-render (faster than re-fetching)
+    state.assets.photos = state.assets.photos.filter(p => p.name !== filename);
+    renderAssets();
+  } catch (e) {
+    alert('Error: ' + e.message);
+  }
+}
+
+/* Photo upload. Determines the next available NN.jpg slot, loads each file,
+   and uploads in parallel with a small concurrency cap. Photos are re-encoded
+   to JPG in-browser (max 1600px wide, 0.88 quality) to keep sizes reasonable
+   on Bunny. */
+$('add-photos-btn').addEventListener('click', () => $('add-photos-input').click());
+$('add-photos-input').addEventListener('change', async (e) => {
+  const files = Array.from(e.target.files || []);
+  if (!files.length) return;
+  await uploadPhotos(files);
+  e.target.value = '';  // allow re-picking same file
+});
+
+function nextPhotoSlots(count) {
+  // Find used numeric slots (01, 02, ...) from current photos, then return
+  // the lowest `count` unused slots — or sequential past the max if there
+  // are no gaps. Keeps numbering tidy when photos are added/removed.
+  const used = new Set();
+  (state.assets?.photos || []).forEach(p => {
+    const m = p.name.match(/^(\d{2})\./);
+    if (m) used.add(parseInt(m[1], 10));
+  });
+  const slots = [];
+  let n = 1;
+  while (slots.length < count) {
+    if (!used.has(n)) { slots.push(n); used.add(n); }
+    n++;
+    if (n > 99) break;
+  }
+  return slots;
+}
+
+async function uploadPhotos(files) {
+  const folder = state.editing;
+  if (!folder) return;
+
+  const slots = nextPhotoSlots(files.length);
+  if (slots.length < files.length) {
+    alert(`Cannot add ${files.length} photos — only ${slots.length} slots available (max 99)`);
+    return;
+  }
+
+  // Add placeholder "uploading" cells to the grid while we work
+  const pg = $('photo-grid');
+  if (pg.querySelector('.asset-empty')) pg.innerHTML = '';
+  const placeholders = files.map((f, i) => {
+    const slot = slots[i];
+    const name = `${String(slot).padStart(2, '0')}.jpg`;
+    const el = document.createElement('div');
+    el.className = 'asset uploading';
+    el.innerHTML = `<div class="asset-name">${name}</div>`;
+    pg.appendChild(el);
+    return { el, name, slot, file: f };
+  });
+
+  const CONCURRENCY = 3;
+  const queue = [...placeholders];
+  const newPhotos = [];
+
+  async function worker() {
+    while (queue.length) {
+      const item = queue.shift();
+      try {
+        const blob = await encodePhotoForUpload(item.file);
+        await uploadPhotoBlob(folder, item.name, blob);
+        const localUrl = URL.createObjectURL(blob);
+        item.el.classList.remove('uploading');
+        item.el.style.backgroundImage = `url('${localUrl}')`;
+        item.el.innerHTML = `
+          <button class="asset-delete" title="Delete">×</button>
+          <div class="asset-name">${item.name}</div>
+        `;
+        item.el.querySelector('.asset-delete').addEventListener('click', (e) => {
+          e.stopPropagation();
+          deletePhoto(item.name);
+        });
+        const photoObj = {
+          name: item.name,
+          size: blob.size,
+          url: localUrl,
+        };
+        newPhotos.push(photoObj);
+      } catch (e) {
+        item.el.remove();
+        console.error(`Upload failed for ${item.name}:`, e);
+        alert(`Upload failed for ${item.name}: ${e.message}`);
+      }
+    }
+  }
+
+  // Run workers in parallel
+  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, files.length) }, worker));
+
+  // Merge uploaded photos into state and re-render count
+  state.assets.photos = [...state.assets.photos, ...newPhotos]
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+  $('photos-count').textContent = state.assets.photos.length ? `(${state.assets.photos.length})` : '';
+}
+
+// Re-encode a picked image as a JPG, max 1600px wide, 0.88 quality. Keeps
+// Bunny sizes reasonable and ensures a consistent format on the server.
+function encodePhotoForUpload(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const objUrl = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(objUrl);
+      const MAX_W = 1600;
+      const scale = Math.min(1, MAX_W / img.naturalWidth);
+      const w = Math.round(img.naturalWidth  * scale);
+      const h = Math.round(img.naturalHeight * scale);
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, w, h);
+      ctx.drawImage(img, 0, 0, w, h);
+      canvas.toBlob(
+        b => b ? resolve(b) : reject(new Error('Encoding failed')),
+        'image/jpeg',
+        0.88
+      );
+    };
+    img.onerror = () => { URL.revokeObjectURL(objUrl); reject(new Error('Failed to load image')); };
+    img.src = objUrl;
+  });
+}
+
+async function uploadPhotoBlob(folder, filename, blob) {
+  const url = `/api/admin/upload-photo?folder=${encodeURIComponent(folder)}&filename=${encodeURIComponent(filename)}`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${state.password}`,
+      'Content-Type': 'image/jpeg',
+    },
+    body: blob,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Upload failed');
+  }
+}
+
+/* ─────────────────────────────────────────────────────────
+   VIDEO REPLACEMENT
+   Pick a new video → create new Stream entry → delete old thumbs + upload
+   new ones → finalize info.txt changes + delete old Stream video.
+   ───────────────────────────────────────────────────────── */
+$('replace-video-btn').addEventListener('click', () => $('replace-video-input').click());
+$('replace-video-input').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  e.target.value = '';  // allow re-picking same file
+  if (!file.type.startsWith('video/')) { alert('Please pick a video file'); return; }
+  if (!confirm(`Replace video for "${state.editing}"?\n\nThe old video will be deleted from Bunny Stream and all thumbnail frames will be regenerated. This takes a minute or two.`)) return;
+  await replaceVideoFlow(file);
+});
+
+async function replaceVideoFlow(file) {
+  const folder = state.editing;
+  const oldAssets = state.assets;
+  const oldGuid = oldAssets?.videoGuid || null;
+
+  $('submit-btn').disabled = true;
+  $('delete-btn').disabled = true;
+  $('replace-video-btn').disabled = true;
+  $('add-photos-btn').disabled = true;
+  hide($('form-status'));
+  show($('progress-block'));
+  $('progress-block').querySelector('h2').textContent = 'Replacing video';
+  ['create','upload','thumbs','commit'].forEach(s => setStage(s, '', ''));
+  // Override stage labels to reflect replacement flow
+  $('stage-create').querySelector('.label').textContent = 'Creating new video entry on Bunny Stream';
+  $('stage-upload').querySelector('.label').textContent = 'Uploading new video';
+  $('stage-thumbs').querySelector('.label').textContent = 'Deleting old thumbs + uploading new ones';
+  $('stage-commit').querySelector('.label').textContent = 'Updating info.txt + cleaning up old video';
+
+  try {
+    // 1. Create new Stream video entry + get TUS signature
+    setStage('create', 'active', '');
+    const name = $('f-name').value.trim() || folder;
+    const cr = await api('create-project', {
+      method: 'POST',
+      body: { title: name, folder },
+    });
+    if (!cr.ok) throw new Error((await cr.json()).error || 'Create failed');
+    const create = await cr.json();
+    setStage('create', 'done', create.videoId);
+
+    // 2. Upload new video via TUS direct to Bunny
+    setStage('upload', 'active', '0%');
+    await tusUpload(file, create, (pct, bytesUp, bytesTotal) => {
+      const mbUp = (bytesUp / (1024*1024)).toFixed(1);
+      const mbTotal = (bytesTotal / (1024*1024)).toFixed(1);
+      setStage('upload', 'active', `${pct}% · ${mbUp}/${mbTotal} MB`);
+    });
+    setStage('upload', 'done', 'complete');
+
+    // 3. Delete old thumbnail files (parallel) + extract + upload new ones
+    setStage('thumbs', 'active', 'deleting old thumbs…');
+    const oldThumbs = oldAssets?.thumbs || [];
+    const delConcurrency = 6;
+    let delDone = 0;
+    await runPool(oldThumbs.length, delConcurrency, async (i) => {
+      const t = oldThumbs[i];
+      try {
+        await api('delete-asset', {
+          method: 'POST',
+          body: { folder, path: `thumbnail/${t.name}` },
+        });
+      } catch (e) {
+        // Non-fatal — worst case the file stays in storage
+        console.warn(`Failed to delete old thumb ${t.name}:`, e);
+      }
+      delDone++;
+      setStage('thumbs', 'active', `deleted ${delDone}/${oldThumbs.length} old thumbs`);
+    });
+
+    // Extract + upload new thumbs
+    setStage('thumbs', 'active', '0 new frames');
+    const frameList = await extractAndUploadThumbs(file, folder, (done, total) => {
+      setStage('thumbs', 'active', `${done}/${total} new frames`);
+    });
+    setStage('thumbs', 'done', `${frameList.length} frames`);
+
+    // 4. Finalize — update info.txt + delete old Stream video
+    setStage('commit', 'active', '');
+    const fin = await api('replace-video-finalize', {
+      method: 'POST',
+      body: {
+        folder,
+        newVideoUrl: create.streamUrl,
+        newFrames: frameList.join(', '),
+        oldVideoGuid: oldGuid,
+      },
+    });
+    if (!fin.ok) throw new Error((await fin.json()).error || 'Finalize failed');
+    const result = await fin.json();
+    setStage('commit', 'done', result.warnings ? 'with warnings' : 'done');
+
+    setStatus('Video replaced. Site will redeploy in ~30 seconds.', 'ok');
+    // Reload assets from server so the UI reflects reality
+    await loadAssets(folder);
+  } catch (e) {
+    ['create','upload','thumbs','commit'].forEach(s => {
+      const el = $('stage-' + s);
+      if (el.classList.contains('active')) { el.classList.remove('active'); el.classList.add('error'); }
+    });
+    setStatus('Error: ' + e.message, 'err');
+  } finally {
+    $('submit-btn').disabled = false;
+    $('delete-btn').disabled = false;
+    $('replace-video-btn').disabled = false;
+    $('add-photos-btn').disabled = false;
+  }
+}
+
+// Simple concurrency pool — runs `total` tasks with at most `concurrency` in
+// flight at any time. `task(i)` returns a promise for the i-th item.
+async function runPool(total, concurrency, task) {
+  let next = 0;
+  const workers = Array.from({ length: Math.min(concurrency, total) }, async () => {
+    while (true) {
+      const i = next++;
+      if (i >= total) return;
+      await task(i);
+    }
+  });
+  await Promise.all(workers);
+}
+
 </script>
 </body>
 </html>
