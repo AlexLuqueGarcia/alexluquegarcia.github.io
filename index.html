@@ -1303,12 +1303,12 @@ body.is-fullscreen .win-resize { display: none !important; }
 */
 
 /* Minimize button — hidden by default, fades in on parent window hover.
-   Sits above the resize bracket layer (z:10) so clicks always register. */
+   Sits above the resize bracket layer (z:10) so clicks always register.
+   Square (not circular) to match the site's sharp-edged design language. */
 .win-min {
   position: absolute;
   top: 14px; left: 14px;
   width: 14px; height: 14px;
-  border-radius: 50%;
   background: rgba(255,255,255,0.2);
   border: 1px solid rgba(255,255,255,0.35);
   cursor: pointer;
@@ -1342,7 +1342,6 @@ body.is-fullscreen .win-resize { display: none !important; }
   content: '';
   width: 7px; height: 1.5px;
   background: transparent;
-  border-radius: 1px;
   transition: background 0.18s;
 }
 .win-min:hover::before { background: rgba(0,0,0,0.82); }
@@ -1368,7 +1367,8 @@ body.is-fullscreen .win-resize { display: none !important; }
 }
 
 /* The dock itself — floats above #detail-footer, below nav/info.
-   Shows only when it has items. Glass pill, slight tint + blur. */
+   Shows only when it has items. Glass rectangle, slight tint + blur.
+   Sharp corners (no border-radius) to match the site's design language. */
 #win-dock {
   position: fixed;
   bottom: 4.2rem;   /* clears #detail-footer (~3rem tall) + breathing room */
@@ -1382,7 +1382,6 @@ body.is-fullscreen .win-resize { display: none !important; }
   backdrop-filter: blur(30px) saturate(1.6);
   -webkit-backdrop-filter: blur(30px) saturate(1.6);
   border: 1px solid rgba(255,255,255,0.12);
-  border-radius: 18px;
   box-shadow: 0 20px 50px rgba(0,0,0,0.4),
               0 6px 18px rgba(0,0,0,0.25);
   opacity: 0;
@@ -1405,7 +1404,6 @@ body.is-fullscreen .win-resize { display: none !important; }
   position: relative;
   width: 54px;
   height: 54px;
-  border-radius: 11px;
   overflow: hidden;
   cursor: pointer;
   padding: 0;
@@ -1457,7 +1455,6 @@ body.is-fullscreen .win-resize { display: none !important; }
   font-family: 'NM', sans-serif;
   font-size: 0.78rem;
   padding: 4px 10px;
-  border-radius: 8px;
   white-space: nowrap;
   opacity: 0;
   pointer-events: none;
