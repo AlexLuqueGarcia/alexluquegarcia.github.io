@@ -317,18 +317,34 @@ body.cur-hover #cur svg {
 #video-bg-inner {
   width:100%; height:100%;
   background:transparent;
-  transition: opacity 0.6s var(--ease-smooth);
+  transform-origin: center center;
+}
+/* Video element pool — 3 stacked <video> elements, only .bg-active is
+   visible. Pre-decoded neighbor videos live in the non-active slots; on
+   navigation we swap id + active class rather than changing src, which is
+   what eliminates the decode latency on every swipe. See initVideoPool().
+   Ambient breath animation lives on the class (not the id) so all pool
+   members animate in sync — swap doesn't re-start the animation. */
+.bg-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  background: transparent;
+  visibility: hidden;
   animation: ambientBreath 24s ease-in-out infinite;
   transform-origin: center center;
 }
+.bg-video.bg-active { visibility: visible; }
 /* Very subtle ambient scale — 1% drift across 24s. Adds filmic aliveness
    without being distracting. Pauses when detail is open (page blurred). */
 @keyframes ambientBreath {
   0%,100% { transform: scale(1); }
   50%     { transform: scale(1.01); }
 }
-#video-bg.blurred #video-bg-inner { animation: none; }
-#video-bg-inner.switching { opacity: 0; }
+#video-bg.blurred .bg-video { animation: none; }
 /* Peek layer — shows next/prev project thumbnail during swipe */
 #video-bg-peek {
   position:fixed;
@@ -1842,7 +1858,7 @@ body.is-fullscreen .win-resize { display: none !important; }
 
 <!-- Always-fixed video background -->
 <div id="video-bg-peek"></div>
-<div id="video-bg"><video id="video-bg-inner" autoplay muted playsinline preload="auto" crossorigin="anonymous" style="width:100%;height:100%;object-fit:contain;display:block;"></video></div>
+<div id="video-bg"><video id="video-bg-inner" class="bg-video bg-active" autoplay muted playsinline preload="auto" crossorigin="anonymous"></video></div>
 
 <!-- Custom cursor -->
 <div id="cur">
@@ -3197,8 +3213,12 @@ function buildThumbSlices(frames, fallbackTc, sliceCount) {
   ).join('');
 }
 
-// Refs
-const videoBgInner = document.getElementById('video-bg-inner');
+// Refs — videoBgInner is reassigned by activateSlot() on each project swap
+// since the "active" element rotates through the pool. Use `let` instead
+// of `const` to allow reassignment. `document.getElementById('video-bg-inner')`
+// calls elsewhere also work because the id attribute moves with the active
+// element.
+let videoBgInner   = document.getElementById('video-bg-inner');
 const videoBg      = document.getElementById('video-bg');
 const isTouch = window.matchMedia('(pointer: coarse)').matches;
 
@@ -3211,7 +3231,7 @@ const isTouch = window.matchMedia('(pointer: coarse)').matches;
 // kept in sync so the brief poster flash matches the incoming video.
 function updateVideoFit() {
   const v = videoBgInner;
-  if (!v.videoWidth || !v.videoHeight) return;
+  if (!v || !v.videoWidth || !v.videoHeight) return;
   const isPortrait = v.videoHeight > v.videoWidth;
   const isMobileVp = window.innerWidth <= 768;
   const fit = isMobileVp ? 'cover' : (isPortrait ? 'contain' : 'cover');
@@ -3222,15 +3242,200 @@ function updateVideoFit() {
   // (image always fills), but setting it unconditionally is harmless.
   videoBg.style.backgroundRepeat = 'no-repeat';
 }
-videoBgInner.addEventListener('loadedmetadata', updateVideoFit);
 // Re-evaluate on viewport resize (e.g. phone rotation) — aspect decision
 // may flip between mobile and desktop rules.
 window.addEventListener('resize', updateVideoFit);
+// NOTE: loadedmetadata and ended listeners are attached per-pool-slot
+// inside initVideoPool() (rather than just on videoBgInner) so they fire
+// correctly after pool swaps.
 
-// When video ends, advance to next project (within the strip's current order)
-videoBgInner.addEventListener('ended', () => {
-  if (!detailOpen && !workOpen) goTo(nextInStrip(cur));
-});
+// ─────────────────────────────────────────────────────────
+// Video element pool — the "real magic" for instant swipes
+// ─────────────────────────────────────────────────────────
+// Why: setting video.src = newUrl triggers fetch + parse + decode + first
+// frame before playback can start, which takes 200-600ms even when bytes
+// are in cache. Hidden-element preload helps with the FETCH, but DECODE
+// state doesn't transfer between elements — each <video> decodes its own.
+//
+// Fix: keep a pool of 3 <video> elements in the DOM. Each holds a
+// different project's video, already loaded AND decoded to first frame
+// (via preload="auto" + paused state after canplay). Only one is visible
+// at a time (the one with class .bg-active + id="video-bg-inner"). On
+// navigation, we find which slot has the target project, swap id+class,
+// and call .play(). Because that element is already decoded, playback
+// starts on the next video frame — truly instant.
+//
+// Pool layout:
+//   videoPool[i] = { element, projIdx, ready, hlsInstance }
+//   - element:     the <video> DOM element
+//   - projIdx:     which project's video this slot currently holds
+//   - ready:       has 'canplay' fired on this src
+//   - hlsInstance: per-slot hls.js instance (only for .m3u8 URLs)
+// activeSlotIdx: which slot is currently visible/playing
+const VIDEO_POOL_SIZE = 3;
+const videoPool = [];
+let activeSlotIdx = -1;
+
+function initVideoPool() {
+  // Adopt the HTML-seed element as slot 0 (it already has id+class). Create
+  // two more siblings for the other pool members.
+  const seed = document.getElementById('video-bg-inner');
+  videoPool.push({ element: seed, projIdx: null, ready: false, hlsInstance: null });
+  activeSlotIdx = 0;
+
+  for (let i = 1; i < VIDEO_POOL_SIZE; i++) {
+    const v = document.createElement('video');
+    v.muted = true;
+    v.playsInline = true;
+    v.setAttribute('playsinline', '');  // iOS Safari needs the attribute, not just the property
+    v.preload = 'auto';
+    v.crossOrigin = 'anonymous';
+    v.loop = false;
+    v.classList.add('bg-video');
+    videoBg.appendChild(v);
+    videoPool.push({ element: v, projIdx: null, ready: false, hlsInstance: null });
+  }
+
+  // Attach shared listeners to each pool element — guarded by active check
+  // so only the visible video drives UI state (autoplay-next, fit updates).
+  videoPool.forEach(slot => {
+    const el = slot.element;
+    el.addEventListener('loadedmetadata', () => {
+      if (el === videoBgInner) updateVideoFit();
+    });
+    el.addEventListener('canplay', () => {
+      slot.ready = true;
+    });
+    el.addEventListener('ended', () => {
+      if (el !== videoBgInner) return;
+      if (!detailOpen && !workOpen) goTo(nextInStrip(cur));
+    });
+  });
+}
+
+// Returns the pool slot index that currently holds this project's video,
+// or -1 if not in the pool.
+function slotForProj(projIdx) {
+  return videoPool.findIndex(s => s.projIdx === projIdx);
+}
+
+// Helper — returns the active slot's hls.js instance (for scrub code).
+function activeHls() {
+  if (activeSlotIdx < 0) return null;
+  return videoPool[activeSlotIdx].hlsInstance;
+}
+
+// Load a project's video into a specific pool slot. Does NOT activate it —
+// the slot remains hidden until activateSlot() is called. This is how we
+// pre-decode neighbor videos in the background.
+function loadSlot(slotIdx, projIdx) {
+  const slot = videoPool[slotIdx];
+  if (!slot) return;
+  const url = (projectData[projIdx]?.src || '').trim();
+  if (!url) return;
+  // No-op if this slot already holds this project and has a src set
+  if (slot.projIdx === projIdx && slot.element.src) return;
+
+  // Clean up previous state on this slot
+  if (slot.hlsInstance) {
+    try { slot.hlsInstance.destroy(); } catch {}
+    slot.hlsInstance = null;
+  }
+
+  slot.projIdx = projIdx;
+  slot.ready = false;
+
+  const el = slot.element;
+  // Poster covers any brief flash if this slot is activated before canplay
+  const firstThumb = projectDetails[projIdx]?.thumbFrames?.[0];
+  if (firstThumb) el.poster = firstThumb;
+
+  const isHLS = url.includes('.m3u8');
+  if (isHLS) {
+    if (typeof Hls !== 'undefined' && Hls.isSupported()) {
+      const hls = new Hls({ autoStartLoad: true, startLevel: -1 });
+      hls.loadSource(url);
+      hls.attachMedia(el);
+      slot.hlsInstance = hls;
+    } else if (el.canPlayType('application/vnd.apple.mpegurl')) {
+      el.src = url;
+      el.load();
+    }
+  } else {
+    el.src = url;
+    el.load();
+  }
+}
+
+// Make a specific pool slot the visible/playing one. This is the hot path
+// on every swipe — it needs to be as cheap as possible. The slot's video
+// is (usually) already decoded, so play() starts playback instantly.
+function activateSlot(slotIdx) {
+  if (slotIdx < 0 || slotIdx >= videoPool.length) return;
+
+  if (activeSlotIdx === slotIdx) {
+    // Already active — just ensure it's playing (e.g. first-time setBg)
+    const el = videoPool[slotIdx].element;
+    if (typeof playing === 'undefined' || playing !== false) {
+      el.play().catch(() => {});
+    }
+    return;
+  }
+
+  // Deactivate old active. Order: remove id FIRST so any id-scoped CSS
+  // (transitions, filters) stops applying, then remove bg-active class
+  // which triggers visibility:hidden instantly.
+  if (activeSlotIdx >= 0) {
+    const oldSlot = videoPool[activeSlotIdx];
+    const oldEl = oldSlot.element;
+    oldEl.removeAttribute('id');
+    oldEl.classList.remove('bg-active');
+    try { oldEl.pause(); } catch {}
+    // Persist old project's currentTime so if the user navigates back
+    // we could resume — not used right now but cheap to track.
+    oldSlot._savedTime = oldEl.currentTime;
+  }
+
+  // Activate new. Order: add bg-active FIRST (visibility changes while
+  // there's no id-scoped transition), then set id.
+  const slot = videoPool[slotIdx];
+  const el = slot.element;
+  el.classList.add('bg-active');
+  el.id = 'video-bg-inner';
+  try { el.currentTime = 0; } catch {}
+  el.play().catch(() => {});
+
+  activeSlotIdx = slotIdx;
+  // Update the cached refs so code reading them (scrub handlers, lnd
+  // controls) sees the new active element immediately.
+  videoBgInner = el;
+  lndVideo = el;
+
+  // Sync the #video-bg background-image to the new project's thumbnail
+  // — covers any frame gap if the slot somehow isn't canplay yet.
+  const firstThumb = projectDetails[slot.projIdx]?.thumbFrames?.[0];
+  if (firstThumb) {
+    videoBg.style.backgroundImage = `url('${firstThumb}')`;
+  }
+
+  updateVideoFit();
+  sampleBgBrightness();
+}
+
+// Pick a slot to use for loading a new project. Prefers empty slots, then
+// slots not holding any of the projects we want to keep preloaded.
+function pickLoadSlot(protectedProjIndices) {
+  // Empty first
+  let idx = videoPool.findIndex(s => s.projIdx === null);
+  if (idx >= 0) return idx;
+  // Then a non-active slot whose project isn't in the protected set
+  idx = videoPool.findIndex((s, i) =>
+    i !== activeSlotIdx && !protectedProjIndices.includes(s.projIdx)
+  );
+  if (idx >= 0) return idx;
+  // Last resort — any non-active
+  return videoPool.findIndex((s, i) => i !== activeSlotIdx);
+}
 const metaEl       = document.getElementById('meta');
 if (isTouch) {
   metaEl.classList.add('clickable');
@@ -3370,7 +3575,8 @@ async function scrubEndMobile(vid, finalPct, wasPlaying, myToken) {
 
   const requestHlsLoad = (t) => {
     try {
-      if (_hlsInstance) _hlsInstance.startLoad(t);
+      const hls = activeHls();
+      if (hls) hls.startLoad(t);
     } catch {}
   };
 
@@ -3452,97 +3658,34 @@ let transitioning = false;
 
 function allThumbs() { return Array.from(document.getElementById('strip-area').querySelectorAll('.thumb')); }
 
-let _hlsInstance = null;
-
+// setBg — activates the pool slot holding `i`'s video. If i isn't in the
+// pool yet (e.g. cold jump from URL, or neighbor preload hasn't fetched
+// yet), loads it into a free slot first. For the common case where the
+// user swipes to a neighbor that was preloaded, this is an instant
+// id+class swap with no fetch/decode latency.
 function setBg(i) {
-  const vid    = document.getElementById('video-bg-inner');
-  const bgEl   = document.getElementById('video-bg');
-  if (!vid || vid.tagName !== 'VIDEO') return;
-  const newSrc = (projectData[i]?.src || '').trim();
-  if (!newSrc) return;
-  // Bail if this exact source is already the current one — prevents
-  // re-loading HLS stream on accidental re-triggers (keyboard spam, etc.)
-  if (vid._currentSrc === newSrc) return;
-  vid._currentSrc = newSrc;
+  // Already active on this project — nothing to do
+  if (activeSlotIdx >= 0 && videoPool[activeSlotIdx].projIdx === i) return;
 
-  // Use first thumbnail frame as background placeholder — shows instantly, behind video
+  // Sync thumbnail BG up-front — covers the 1 frame before the swap lands
   const firstThumb = projectDetails[i]?.thumbFrames?.[0];
-  if (firstThumb && bgEl) {
-    bgEl.style.backgroundImage = `url('${firstThumb}')`;
-  }
-  if (firstThumb) vid.poster = firstThumb;
-
-  // Fade the video while loading — background thumbnail fills in visually
-  vid.classList.add('switching');
-  const unfade = () => {
-    vid.classList.remove('switching');
-    vid.removeEventListener('playing', unfade);
-    vid.removeEventListener('canplay', unfade);
-    // Re-sample background brightness on the fresh video frame so detail-view
-    // project swipes update nav/footer colors to match the new project. On
-    // landing, sampling still runs but has no visual effect — the .is-on-light
-    // classes are gated on `#video-bg.blurred` (nav) or on elements only
-    // visible inside the detail view (footer, mobile-detail-text).
-    sampleBgBrightness();
-  };
-  vid.addEventListener('playing', unfade);
-  vid.addEventListener('canplay', unfade);
-
-  const isHLS = newSrc.includes('.m3u8');
-
-  // Remove any leftover <source> children — they interfere with hls.js
-  while (vid.firstChild) vid.removeChild(vid.firstChild);
-
-  if (isHLS) {
-    if (_hlsInstance) { _hlsInstance.destroy(); _hlsInstance = null; }
-
-    if (typeof Hls !== 'undefined' && Hls.isSupported()) {
-      _hlsInstance = new Hls({ autoStartLoad: true, startLevel: -1 });
-      _hlsInstance.loadSource(newSrc);
-      _hlsInstance.attachMedia(vid);
-      _hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => { vid.play().catch(e => console.warn('play:', e)); });
-      _hlsInstance.on(Hls.Events.ERROR, (e, d) => console.warn('hls error', d));
-    } else if (vid.canPlayType('application/vnd.apple.mpegurl')) {
-      vid.src = newSrc;
-      vid.play().catch(e => console.warn('play:', e));
-    } else {
-      console.warn('HLS not supported in this browser');
-    }
-  } else {
-    if (_hlsInstance) { _hlsInstance.destroy(); _hlsInstance = null; }
-    vid.src = newSrc;
-    vid.play().catch(e => console.warn('play:', e));
+  if (firstThumb) {
+    videoBg.style.backgroundImage = `url('${firstThumb}')`;
   }
 
-  // TikTok-style prefetch: after a short delay (letting the current video
-  // start playing first), kick off a tiny HEAD/fetch on the next and previous
-  // project manifests. Browser caches the m3u8 so when user swipes, HLS.js
-  // parses it instantly instead of waiting for the network round-trip.
-  clearTimeout(_prefetchTimer);
-  _prefetchTimer = setTimeout(() => prefetchAdjacentManifests(i), 1500);
-}
+  let slotIdx = slotForProj(i);
+  if (slotIdx < 0) {
+    // Cold path — project not in pool. Load it into a slot, then activate.
+    // We still get *some* speedup because preload="auto" is set.
+    const neighborsOfTarget = [nextInStrip(i), prevInStrip(i)];
+    slotIdx = pickLoadSlot(neighborsOfTarget);
+    if (slotIdx < 0) slotIdx = 0;
+    loadSlot(slotIdx, i);
+  }
 
-let _prefetchTimer = null;
-const _prefetchedSrcs = new Set();
-function prefetchAdjacentManifests(currentIdx) {
-  const n = projectData.length;
-  if (n < 2) return;
-  const nextIdx = (currentIdx + 1) % n;
-  const prevIdx = (currentIdx - 1 + n) % n;
-  [nextIdx, prevIdx].forEach(i => {
-    const src = (projectData[i]?.src || '').trim();
-    if (!src || _prefetchedSrcs.has(src)) return;
-    _prefetchedSrcs.add(src);
-    // For HLS, fetching the manifest primes the cache. For MP4, we fetch
-    // a small Range to warm up connection + first bytes.
-    try {
-      if (src.includes('.m3u8')) {
-        fetch(src, { method: 'GET', mode: 'cors', credentials: 'omit' }).catch(() => {});
-      } else {
-        fetch(src, { method: 'GET', headers: { Range: 'bytes=0-524288' }, mode: 'cors', credentials: 'omit' }).catch(() => {});
-      }
-    } catch {}
-  });
+  activateSlot(slotIdx);
+  // Keep the pool populated with the NEW cur's neighbors
+  scheduleNeighborPreload();
 }
 
 function updateMeta(i) {
@@ -5476,8 +5619,9 @@ function closeDetail() {
   // last decoded frame briefly then freezes waiting for unloaded data.
   if (isLndVideo && playing) {
     const savedTime = lndVideo._savedTime || 0;
-    if (_hlsInstance) {
-      try { _hlsInstance.startLoad(savedTime); } catch {}
+    const hls = activeHls();
+    if (hls) {
+      try { hls.startLoad(savedTime); } catch {}
       lndVideo.currentTime = savedTime;
       // Small settle so hls.js can fetch the segment before we play
       setTimeout(() => {
@@ -5534,99 +5678,63 @@ const SWIPE_THRESHOLD = 80; // px to commit to a project change
 const peekEl = document.getElementById('video-bg-peek');
 
 // ─────────────────────────────────────────────────────────
-// Video neighbor preloading (TikTok-style)
+// Video neighbor preloading — pool-based
 // ─────────────────────────────────────────────────────────
-// After each navigation, prefetch the 1 prev + 1 next project's videos via
-// HIDDEN <video preload="auto"> elements. Unlike <link rel="preload">, which
-// is unreliable for videos (Range mismatches, Safari doesn't honor it well),
-// a real <video> element's preload="auto" reliably downloads the bytes into
-// the browser cache. When setBg later sets the MAIN video element's src to
-// the same URL, the browser serves it from cache near-instantly.
-//
-// We use a Map keyed by URL so the same hidden video is reused if the user
-// swipes back and forth. Preloaders outside the current neighborhood are
-// removed to bound memory + bandwidth.
-const preloadVideosByUrl = new Map();
+// Old approach: hidden <video preload="auto"> elements outside the pool
+// cached bytes but a second decode was still needed when the main element
+// picked up the URL. New approach: load neighbors directly into free pool
+// SLOTS. Those elements stay in the pool, fully decoded. On navigation,
+// activateSlot() swaps id+class and plays — truly instant.
 let _neighborPreloadTimer = null;
 
-function preloadVideoUrl(url) {
-  if (!url) return;
-  if (preloadVideosByUrl.has(url)) return;  // already preloading this URL
-  const v = document.createElement('video');
-  v.muted = true;
-  v.playsInline = true;
-  v.preload = 'auto';     // tell the browser to fetch aggressively
-  v.crossOrigin = 'anonymous';
-  // Must be in-flow (not display:none) for iOS Safari to actually preload.
-  // Position way off-screen with 1x1 size so it doesn't render or affect layout.
-  v.style.cssText = 'position:absolute;width:1px;height:1px;top:-9999px;left:-9999px;opacity:0;pointer-events:none;';
-  v.src = url;
-  v.load();
-  document.body.appendChild(v);
-  preloadVideosByUrl.set(url, v);
-}
-
-function prunePreloadsKeeping(keepUrls) {
-  for (const [url, v] of preloadVideosByUrl) {
-    if (!keepUrls.has(url)) {
-      try {
-        v.pause();
-        v.removeAttribute('src');
-        v.load();  // frees the loaded buffer
-      } catch {}
-      v.remove();
-      preloadVideosByUrl.delete(url);
-    }
-  }
-}
-
-// Kept for the drag-time fallback in touchmove — if the user swipes before
-// scheduleNeighborPreload has fired, this ensures the target still gets a
-// preload (idempotent — no-op if already queued).
+// Called from touchmove with the projIdx the user is heading toward. Makes
+// sure that target is loaded in the pool even if the debounced neighbor
+// preload hasn't fired yet. Idempotent.
 function preloadVideoFor(projIdx) {
   if (projIdx === undefined || projIdx === null) return;
-  const url = (projectData[projIdx]?.src || '').trim();
-  preloadVideoUrl(url);
+  if (slotForProj(projIdx) >= 0) return;  // already in pool
+  // Keep the other neighbor + active slot untouched
+  const other = projIdx === nextInStrip(cur) ? prevInStrip(cur) : nextInStrip(cur);
+  const protect = [other];
+  const slotIdx = pickLoadSlot(protect);
+  if (slotIdx >= 0) loadSlot(slotIdx, projIdx);
 }
 
-// Preload the 1 prev + 1 next project's videos relative to the current
-// `cur`. Uses nextInStrip/prevInStrip so it works identically on mobile
-// (walks fullSequence) and desktop (cycles through stripOrder).
+// After each navigation: ensure both prev and next projects (relative to
+// the new `cur`) are loaded into pool slots. Uses nextInStrip/prevInStrip
+// so it works identically on mobile (walks fullSequence) and desktop
+// (cycles through stripOrder).
 function preloadNeighbors() {
   if (projectData.length === 0 || cur === undefined || cur === null) return;
+  if (activeSlotIdx < 0) return;
   const nextIdx = nextInStrip(cur);
   const prevIdx = prevInStrip(cur);
-  const keep = new Set();
 
-  // Always keep current video's URL in the set so we don't prune its
-  // preload (which was set up on a prior navigation and is now the active
-  // video — still useful if user swipes back to it)
-  const curUrl = (projectData[cur]?.src || '').trim();
-  if (curUrl) keep.add(curUrl);
+  // For each neighbor that isn't already in the pool, pick a slot and load.
+  // We protect the OTHER needed neighbor when picking — so we don't
+  // accidentally evict the prev we just loaded while loading next.
+  const toLoad = [];
+  if (nextIdx !== cur && slotForProj(nextIdx) < 0) toLoad.push(nextIdx);
+  if (prevIdx !== cur && prevIdx !== nextIdx && slotForProj(prevIdx) < 0) toLoad.push(prevIdx);
 
-  if (nextIdx !== cur) {
-    const u = (projectData[nextIdx]?.src || '').trim();
-    if (u) { preloadVideoUrl(u); keep.add(u); }
-  }
-  if (prevIdx !== cur && prevIdx !== nextIdx) {
-    const u = (projectData[prevIdx]?.src || '').trim();
-    if (u) { preloadVideoUrl(u); keep.add(u); }
-  }
-
-  // Drop preloads that are no longer in the neighborhood — keeps bandwidth
-  // usage bounded as user navigates
-  prunePreloadsKeeping(keep);
+  toLoad.forEach(pIdx => {
+    // Protect: the current project (activeSlot will reject anyway) and any
+    // neighbor already in the pool or about to be loaded
+    const keep = [cur, nextIdx, prevIdx].filter(x => x !== pIdx);
+    const slotIdx = pickLoadSlot(keep);
+    if (slotIdx >= 0) loadSlot(slotIdx, pIdx);
+  });
 }
 
-// Debounced wrapper — if user swipes rapidly through projects, we don't
-// want to kick off neighbor prefetches for every intermediate project.
-// Wait 400ms after navigation settles, then preload.
+// Debounced wrapper — rapid swipes don't spam the pool. 100ms is plenty
+// since "preload" is now just a slot assignment + src set, no network
+// waterfall logic.
 function scheduleNeighborPreload() {
   if (_neighborPreloadTimer) clearTimeout(_neighborPreloadTimer);
   _neighborPreloadTimer = setTimeout(() => {
     preloadNeighbors();
     _neighborPreloadTimer = null;
-  }, 400);
+  }, 100);
 }
 
 window.addEventListener('touchstart', e => {
@@ -5704,26 +5812,26 @@ window.addEventListener('touchend', e => {
       // skipStripSync=true below tells goTo not to re-animate the strip.
       finishStripDrag(true, isSwipeUp ? 1 : -1);
 
-      // Fire goTo IMMEDIATELY so the new video starts loading/decoding in
-      // parallel with the peek animation. By the time the peek finishes
-      // covering (280ms later) and we reveal the video, it's had 280ms of
-      // head start instead of starting cold. The peek animation visually
-      // covers any src-change transition artifacts on videoBg-inner.
-      // skipStripSync since finishStripDrag already advanced the strip.
-      goTo(nextIdx, true);
-
-      // 280ms (not 350ms) so the peek animation ends sooner.
+      // Peek animates to fully cover the screen. During this 280ms, the
+      // OLD video slides off with videoBg — user sees a clean "push away"
+      // transition. The actual project swap happens at t=280ms behind the
+      // peek's cover, so the swap itself is invisible.
       videoBg.style.transition = 'transform 0.28s cubic-bezier(0.33,1,0.68,1)';
       peekEl.style.transition  = 'transform 0.28s cubic-bezier(0.33,1,0.68,1)';
       videoBg.style.transform  = `translateY(${isSwipeUp ? -h : h}px)`;
       peekEl.style.transform   = 'translateY(0)';
       setTimeout(() => {
-        // Peek is now covering the screen — snap video back to its resting
-        // position (hidden behind peek), then next frame hide peek to
-        // reveal the new video (which should be playing by now).
+        // Peek is covering the screen. Reset videoBg to its resting
+        // position (still hidden behind peek) and do the pool swap.
         videoBg.style.transition = 'none';
         videoBg.style.transform  = '';
         peekEl.style.transition  = 'none';
+        // Pool swap — instant thanks to pre-decoded neighbor elements.
+        // skipStripSync since finishStripDrag already advanced the strip.
+        goTo(nextIdx, true);
+        // Two frames later, hide peek — gives the newly-active video
+        // element a couple of frames to start rendering its first play
+        // frame before it's revealed.
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
             peekEl.classList.remove('visible');
@@ -5783,12 +5891,15 @@ document.addEventListener('keydown', e => {
 });
 
 // ── LANDING VIDEO CONTROLS ──
-const lndVideo    = document.getElementById('video-bg-inner');
+// lndVideo is reassigned by activateSlot() on each project swap — use `let`.
+// isLndVideo is always true in the pool model (we only ever create <video>
+// elements in the pool), but keep the variable name for readability.
+let   lndVideo    = document.getElementById('video-bg-inner');
 const lndPlayBtn  = document.getElementById('lnd-play');
 const lndPlayIcon = document.getElementById('lnd-play-icon');
 const lndMuteBtn  = document.getElementById('lnd-mute');
 const lndWaves    = document.getElementById('lnd-waves');
-const isLndVideo  = lndVideo && lndVideo.tagName === 'VIDEO';
+const isLndVideo  = true;
 
 // Video starts muted — reflect that in the icon
 if (lndWaves) lndWaves.style.opacity = '0.15';
@@ -5817,8 +5928,12 @@ lndMuteBtn.addEventListener('click', (e) => {
   e.stopPropagation();
   e.currentTarget.blur();
   if (!isLndVideo) return;
-  lndVideo.muted = !lndVideo.muted;
-  lndWaves.style.opacity = lndVideo.muted ? '0.15' : '1';
+  // Mute state has to propagate to EVERY pool element — otherwise, when the
+  // user unmutes and then swipes to a preloaded neighbor, the new active
+  // element is still muted (its own muted state) and sound disappears.
+  const nextMuted = !lndVideo.muted;
+  videoPool.forEach(s => { s.element.muted = nextMuted; });
+  lndWaves.style.opacity = nextMuted ? '0.15' : '1';
 });
 
 // ── NAV YEAR ──
@@ -5957,11 +6072,15 @@ window.addEventListener('load', async () => {
 
   // 4. Build strip with color fallbacks, start playing
   buildStrip();
+  // Initialize the video element pool — adopts the seed <video> in the HTML
+  // as slot 0 (already has id + bg-active class) and creates 2 more siblings
+  // inside #video-bg. Must run BEFORE setBg so the pool exists when we try
+  // to activate a slot.
+  initVideoPool();
   setBg(initialIdx); setActiveThumb(initialIdx); updateMeta(initialIdx); setPlaying(true);
 
-  // Kick off neighbor preload — prev + next projects start fetching in
-  // background so the first swipe feels instant. Debounced 400ms so the
-  // initial video's fetch gets priority bandwidth.
+  // Kick off neighbor preload — loads prev + next projects into the other
+  // pool slots so they're pre-decoded and instant on first swipe.
   scheduleNeighborPreload();
 
   // Fade the page in once the initial frame is ready
