@@ -1329,6 +1329,13 @@ body.is-fullscreen .win-resize { display: none !important; }
   display: flex;
   align-items: center;
   justify-content: center;
+  /* Double drop-shadow keeps the white dash legible when the window's glass
+     tint lets a bright video frame bleed through underneath. The first shadow
+     is a soft halo for ambient separation, the second sharpens the edge. On
+     dark backgrounds both shadows are invisible since they're black — so this
+     only "activates" visually when actually needed. */
+  filter: drop-shadow(0 0 3px rgba(0, 0, 0, 0.75))
+          drop-shadow(0 0 1px rgba(0, 0, 0, 0.9));
   transition: opacity 0.25s var(--ease-out),
               transform 0.25s var(--ease-out);
 }
