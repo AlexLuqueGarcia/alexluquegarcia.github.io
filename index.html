@@ -2169,6 +2169,17 @@ async function loadProjects() {
           thumbFrames: info.frames
             ? info.frames.split(',').map(f => `${mediaBase}/thumbnail/${f.trim()}`)
             : [],
+          // When info.txt lists frames explicitly (admin-created projects),
+          // use that count as sliceCount so the strip sizes the thumb
+          // proportionally to video length. Without this, loadThumbnailFrames
+          // is skipped (because thumbFrames is already populated), leaving
+          // sliceCount undefined — which makes buildStrip fall back to
+          // duration-based math capped at MAX_SLICES=20. Legacy projects
+          // (no `frames:` line) still get their sliceCount set later by
+          // loadThumbnailFrames via binary-search probing.
+          sliceCount:  info.frames
+            ? info.frames.split(',').filter(s => s.trim()).length || undefined
+            : undefined,
           get thumb()  { return this.images[0] || null; }
         }
       };
