@@ -1711,6 +1711,42 @@ body.is-fullscreen .win-resize { display: none !important; }
 }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.7/hls.min.js"></script>
+<script>
+/* ── WINDOWS OS-SCALING NORMALIZATION ──
+   The design was built on a Windows laptop at 100% display scaling. On
+   machines with 125%/150%/175% OS scaling (Windows default on many modern
+   laptops), the CSS viewport shrinks proportionally while rem-based text
+   sizes stay the same, making typography feel oversized relative to the
+   design intent.
+
+   Fix: inversely scale the root font-size so rem-based sizes compensate.
+   Example — Windows at 150% scaling:
+     devicePixelRatio = 1.5
+     root font-size   = 16 / 1.5 = 10.67px
+     1rem renders at  10.67 CSS px × 1.5 OS scale = 16 physical px ✓
+     (identical physical size to the designer's 100% setup)
+
+   Scope: only Windows. Mac Retina (dpr=2) and Linux HiDPI use integer dpr
+   to represent genuinely dense displays that the OS already renders at
+   design-intent physical size — shrinking there would make text tiny.
+   Mobile (which has its own viewport meta + media queries) is also skipped.
+
+   Side effects intentionally limited: only rem-based CSS is affected.
+   Pixel-based sizes (thumbnails, window positions from JS, etc.) still
+   follow OS scaling. The dominant visual issue was typography, so this
+   targeted fix handles the "looks too big" complaint without disturbing
+   positional math or drag/resize coordinate systems.
+
+   User browser zoom (Ctrl+/-) stacks on top of this normally — we run once
+   on load and don't react to resize, so intentional user zoom isn't fought. */
+(function normalizeDisplayScale() {
+  var isWindows = /Windows/.test(navigator.userAgent);
+  var dpr = window.devicePixelRatio || 1;
+  if (isWindows && dpr > 1.01) {
+    document.documentElement.style.fontSize = (16 / dpr).toFixed(3) + 'px';
+  }
+})();
+</script>
 </head>
 <body>
 
