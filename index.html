@@ -2564,6 +2564,17 @@ function buildStrip() {
     setTimeout(buildStrip, 300);
     return;
   }
+  // Same deal for an in-flight mobile drag swipe — if a resize event
+  // (mobile browser chrome animating, keyboard opening, etc.) fires while
+  // the user is still dragging, a mid-drag buildStrip would destroy the
+  // 6-thumb drag DOM (lookback + 4 visible + lookahead) and snap transform
+  // to 0, while stripDragging is still true. updateStripDragPosition then
+  // reads the new 4-thumb DOM with stale precomputed targets for the old
+  // 6-thumb layout, causing visible gap + jerky animation.
+  if (typeof stripDragging !== 'undefined' && stripDragging) {
+    setTimeout(buildStrip, 300);
+    return;
+  }
   // Ensure we have a strip order to render. First-ever build (or any build
   // where someone forgot to call reshuffleStrip) bootstraps one here.
   if (!stripOrder || stripOrder.length === 0) {
@@ -3332,6 +3343,12 @@ function initVideoPool() {
     v.crossOrigin = 'anonymous';
     v.loop = false;
     v.classList.add('bg-video');
+    // Inline styles as a safety net — iOS's native <video> compositor sometimes
+    // paints one frame at intrinsic size before class-based CSS settles,
+    // causing a brief "small video" overlay. Inline style wins the race.
+    v.style.cssText =
+      'position:absolute;inset:0;width:100%;height:100%;object-fit:contain;' +
+      'display:block;visibility:hidden;opacity:0;pointer-events:none;';
     videoBg.appendChild(v);
     videoPool.push({ element: v, projIdx: null, ready: false, hlsInstance: null });
   }
@@ -3423,6 +3440,10 @@ function loadSlot(slotIdx, projIdx) {
 // Make a specific pool slot the visible/playing one. This is the hot path
 // on every swipe — it needs to be as cheap as possible. The slot's video
 // is (usually) already decoded, so play() starts playback instantly.
+// Visibility is controlled via INLINE STYLES (not just the bg-active class)
+// because iOS's native video compositor sometimes paints one frame at
+// intrinsic size before class-based CSS settles, causing a brief "small
+// video" overlay. Inline style wins the race.
 function activateSlot(slotIdx) {
   if (slotIdx < 0 || slotIdx >= videoPool.length) return;
 
@@ -3436,48 +3457,54 @@ function activateSlot(slotIdx) {
     return;
   }
 
+  const hideInline =
+    'position:absolute;inset:0;width:100%;height:100%;object-fit:contain;' +
+    'display:block;visibility:hidden;opacity:0;pointer-events:none;';
+
   // Deactivate old active. Order: remove id FIRST so any id-scoped CSS
-  // (transitions, filters) stops applying, then remove bg-active class
-  // which triggers visibility:hidden instantly.
+  // stops applying, then hide via inline style (rock-solid vs class-based).
   if (activeSlotIdx >= 0) {
     const oldSlot = videoPool[activeSlotIdx];
     const oldEl = oldSlot.element;
     oldEl.removeAttribute('id');
     oldEl.classList.remove('bg-active');
+    oldEl.style.cssText = hideInline;
     try { oldEl.pause(); } catch {}
     oldEl.muted = true;  // prevent any future autoplay attempts from making audio
-    // Persist old project's currentTime so if the user navigates back
-    // we could resume — not used right now but cheap to track.
     oldSlot._savedTime = oldEl.currentTime;
   }
 
-  // Belt-and-suspenders: pause + mute every OTHER pool slot too. If any
-  // slot somehow slipped into play state (browser autoplay heuristics,
-  // loadSlot race, etc.), this guarantees exactly one playing video.
+  // Belt-and-suspenders: pause + mute + hide every OTHER pool slot too.
+  // If any slot somehow slipped into play state (browser autoplay
+  // heuristics, loadSlot race, etc.), this guarantees exactly one playing
+  // and exactly one visible video.
   videoPool.forEach((s, i) => {
     if (i === slotIdx) return;
     try { s.element.pause(); } catch {}
     s.element.muted = true;
+    if (i !== activeSlotIdx) {  // don't re-hide the slot we just hid above
+      s.element.style.cssText = hideInline;
+    }
   });
 
-  // Activate new. Order: add bg-active FIRST (visibility changes while
-  // there's no id-scoped transition), then set id.
+  // Activate new. Clear inline hide styles so the slot becomes visible.
+  // updateVideoFit will reapply any needed object-fit inline style below.
   const slot = videoPool[slotIdx];
   const el = slot.element;
   el.classList.add('bg-active');
   el.id = 'video-bg-inner';
+  el.style.cssText =
+    'position:absolute;inset:0;width:100%;height:100%;object-fit:contain;' +
+    'display:block;visibility:visible;opacity:1;pointer-events:auto;';
   el.muted = globalMuted;  // restore user's mute preference
   try { el.currentTime = 0; } catch {}
   el.play().catch(() => {});
 
   activeSlotIdx = slotIdx;
-  // Update the cached refs so code reading them (scrub handlers, lnd
-  // controls) sees the new active element immediately.
   videoBgInner = el;
   lndVideo = el;
 
   // Sync the #video-bg background-image to the new project's thumbnail
-  // — covers any frame gap if the slot somehow isn't canplay yet.
   const firstThumb = projectDetails[slot.projIdx]?.thumbFrames?.[0];
   if (firstThumb) {
     videoBg.style.backgroundImage = `url('${firstThumb}')`;
