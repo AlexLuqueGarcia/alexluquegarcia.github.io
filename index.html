@@ -2309,14 +2309,39 @@ const MOBILE_CURRENT_SLOT  = 1;   // 0-indexed: 1 past + cur + 2 upcoming
 
 // Desktop gets a parallel sliding-strip setup so clicking the video advances
 // the strip with the same slide animation as mobile swipes. Unlike mobile
-// (which walks fullSequence — every project in order, forever), desktop
-// cycles through a random batch of 5. After each full cycle through those 5,
-// the batch reshuffles to a new random 5. CURRENT_SLOT = 0 keeps the active
-// thumb at the leftmost position, matching the current desktop layout where
-// pinned sits at slot 0 on first load.
+// (which walks fullSequence newest-first), desktop walks desktopSequence
+// which is shuffled once at bootstrap — each click brings in a genuinely
+// new project from the right, looping through all projects continuously
+// with no reset moment. CURRENT_SLOT = 0 keeps the active thumb leftmost,
+// matching the current desktop layout where pinned sits at slot 0.
 const DESKTOP_STRIP_SIZE    = 5;
 const DESKTOP_CURRENT_SLOT  = 0;
-let   desktopClicksInCycle  = 0;   // resets to 0 on reshuffle
+let desktopSequence   = [];
+let desktopWindowStart = 0;
+
+function buildDesktopSequence() {
+  if (projectData.length === 0) return [];
+  const pinnedIdx = projectData.findIndex(p => p.pinned);
+  const pinned = pinnedIdx >= 0 ? pinnedIdx : 0;
+  const rest = projectData.map((_, i) => i).filter(i => i !== pinned);
+  // Fisher-Yates shuffle of the non-pinned pool
+  for (let i = rest.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [rest[i], rest[j]] = [rest[j], rest[i]];
+  }
+  return [pinned, ...rest];
+}
+
+function getDesktopWindow() {
+  const total = desktopSequence.length;
+  if (total === 0) return [];
+  const size = Math.min(DESKTOP_STRIP_SIZE, total);
+  const win = [];
+  for (let i = 0; i < size; i++) {
+    win.push(desktopSequence[(desktopWindowStart + i) % total]);
+  }
+  return win;
+}
 
 function buildFullSequence() {
   if (projectData.length === 0) return [];
@@ -2367,61 +2392,24 @@ function pickStripOrder(forceInclude = null) {
     return getMobileWindow();
   }
 
-  // ── Desktop: existing random-with-pinned logic ──
-
-  // Find the pinned project. Fallback: newest (index 0 after year-desc sort)
-  // so the strip still has a stable anchor even if projects.json doesn't mark
-  // anything as pinned.
-  const pinnedIdx = projectData.findIndex(p => p.pinned);
-  const pinned = pinnedIdx >= 0 ? pinnedIdx : 0;
-
-  // Fisher-Yates shuffle of the non-pinned pool
-  const pool = projectData.map((_, i) => i).filter(i => i !== pinned);
-  for (let i = pool.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [pool[i], pool[j]] = [pool[j], pool[i]];
+  // ── Desktop: sliding window through a shuffled-once sequence ──
+  // Mirrors mobile's logic but uses desktopSequence (random order) instead
+  // of fullSequence (newest-first). Sequence is built lazily on first use
+  // so it's stable across navigations — no jarring reshuffles mid-session.
+  if (desktopSequence.length === 0) {
+    desktopSequence = buildDesktopSequence();
   }
-
-  // Take up to 4 random (5-thumb strip: 1 pinned + 4 random).
-  // This branch only runs on desktop (viewport > 1024) since mobile takes
-  // the sliding-window early-return above.
-  const randomCount = 4;
-  let picks = pool.slice(0, randomCount);
-
-  // Continuity preservation: if a "current" project is given (e.g. the one
-  // the user was just viewing in detail), make sure it lands in the strip.
-  // Otherwise the bg video would suddenly swap to a different project when
-  // detail closes — jarring.
-  // Fresh strip = fresh cycle, reset the click counter.
-  desktopClicksInCycle = 0;
-
   if (forceInclude !== null
       && forceInclude >= 0
       && forceInclude < projectData.length) {
-    // forceInclude must end up at DESKTOP_CURRENT_SLOT (= 0, leftmost) so
-    // the sliding logic treats it as "current". Always return exactly
-    // randomCount+1 items (= 5) — this is a 5-thumb strip.
-    if (forceInclude === pinned) {
-      return [pinned, ...picks];  // pinned + 4 random = 5
+    const pos = desktopSequence.indexOf(forceInclude);
+    if (pos >= 0) {
+      const total = desktopSequence.length;
+      // Position forceInclude at DESKTOP_CURRENT_SLOT in the new window
+      desktopWindowStart = (pos - DESKTOP_CURRENT_SLOT + total) % total;
     }
-    // forceInclude isn't pinned. Build: [forceInclude, ...4 others] where
-    // the 4 others include pinned (anchor stays visible) + 3 random picks
-    // that aren't forceInclude.
-    const others = pool.filter(p => p !== forceInclude).slice(0, randomCount);
-    // Ensure pinned is in there somewhere; if not, drop the last other and
-    // swap pinned in (keeps the length at exactly randomCount).
-    if (!others.includes(pinned) && others.length === randomCount) {
-      others[others.length - 1] = pinned;
-    } else if (!others.includes(pinned)) {
-      // Edge case — projectData too small to fill randomCount distinct
-      // items. Just append pinned; strip will be shorter but at least
-      // won't be broken.
-      others.push(pinned);
-    }
-    return [forceInclude, ...others];  // forceInclude + 4 others = 5
   }
-
-  return [pinned, ...picks];
+  return getDesktopWindow();
 }
 
 // Advance helper for autoplay / swipe-next. On mobile, "next" means advance
@@ -2439,11 +2427,12 @@ function nextInStrip(fromIdx) {
     if (curPos < 0) return fromIdx;
     return fullSequence[(curPos + 1) % fullSequence.length];
   }
-  // Desktop: cycle through stripOrder
-  if (!stripOrder || stripOrder.length === 0) return fromIdx;
-  const pos = stripOrder.indexOf(fromIdx);
-  if (pos < 0) return stripOrder[0];
-  return stripOrder[(pos + 1) % stripOrder.length];
+  // Desktop: walk desktopSequence (shuffled-once continuous feed)
+  if (desktopSequence.length === 0) desktopSequence = buildDesktopSequence();
+  if (desktopSequence.length === 0) return fromIdx;
+  const curPos = desktopSequence.indexOf(fromIdx);
+  if (curPos < 0) return fromIdx;
+  return desktopSequence[(curPos + 1) % desktopSequence.length];
 }
 
 // Reverse counterpart for swipe-back / ArrowLeft. Also non-mutating.
@@ -2456,11 +2445,12 @@ function prevInStrip(fromIdx) {
     if (curPos < 0) return fromIdx;
     return fullSequence[(curPos - 1 + fullSequence.length) % fullSequence.length];
   }
-  // Desktop: cycle
-  if (!stripOrder || stripOrder.length === 0) return fromIdx;
-  const pos = stripOrder.indexOf(fromIdx);
-  if (pos < 0) return stripOrder[0];
-  return stripOrder[(pos - 1 + stripOrder.length) % stripOrder.length];
+  // Desktop: walk desktopSequence backward
+  if (desktopSequence.length === 0) desktopSequence = buildDesktopSequence();
+  if (desktopSequence.length === 0) return fromIdx;
+  const curPos = desktopSequence.indexOf(fromIdx);
+  if (curPos < 0) return fromIdx;
+  return desktopSequence[(curPos - 1 + desktopSequence.length) % desktopSequence.length];
 }
 
 // Re-center the mobile sliding window so `cur` sits at MOBILE_CURRENT_SLOT.
@@ -2502,63 +2492,32 @@ function syncMobileWindow() {
   }
 }
 
-// Desktop counterpart — rotates stripOrder so cur lands at DESKTOP_CURRENT_SLOT.
-// stripOrder acts as both the "sequence" and the "window" (they're the same
-// size on desktop), so each rotation sends the leftmost thumb off-screen and
-// brings it back in from the right (same project both sides during the slide
-// — a minor visual artifact inherent to a window-size-equals-batch-size model).
-// After desktopClicksInCycle reaches stripOrder.length (a full rotation has
-// returned the batch to its starting configuration), we reshuffle to a new
-// random batch of 5 and hard-rebuild the strip.
+// Desktop counterpart — shifts desktopWindowStart so cur lands at
+// DESKTOP_CURRENT_SLOT. This mirrors syncMobileWindow exactly; the only
+// difference is the source sequence (desktopSequence is shuffled-once
+// vs fullSequence which is newest-first). Each ±1 navigation brings in
+// a genuinely new project from the right (or left), continuously
+// looping through desktopSequence with no "reshuffle" / reset moment.
 function syncDesktopWindow() {
-  if (!stripOrder || stripOrder.length === 0) return;
-  const n = stripOrder.length;
-  const curPos = stripOrder.indexOf(cur);
+  if (desktopSequence.length === 0) desktopSequence = buildDesktopSequence();
+  if (desktopSequence.length === 0) return;
+  const curPos = desktopSequence.indexOf(cur);
   if (curPos < 0) return;
+  const total = desktopSequence.length;
+  const oldStart = desktopWindowStart;
+  const newStart = (curPos - DESKTOP_CURRENT_SLOT + total) % total;
+  if (newStart === oldStart) return;  // window already correct
 
-  // Shortest-direction shift — equivalent values like 4 and -1 for n=5
-  // both rotate to the same result, but shift=-1 animates as slidePrev
-  // (the intuitive "going back" direction).
-  let shift = curPos - DESKTOP_CURRENT_SLOT;
-  if (shift >  n / 2) shift -= n;
-  if (shift < -n / 2) shift += n;
-  if (shift === 0) return;
+  // Shortest signed delta with wrap-around handling
+  let delta = newStart - oldStart;
+  if (delta >  total / 2) delta -= total;
+  if (delta < -total / 2) delta += total;
 
-  desktopClicksInCycle++;
+  desktopWindowStart = newStart;
+  stripOrder = getDesktopWindow();
 
-  // Full cycle completed — reshuffle the non-cur slots with new random
-  // projects. cur stays at slot 0 so the video we're showing doesn't
-  // suddenly change. Hard rebuild (no slide) so the refresh is obvious.
-  if (desktopClicksInCycle >= n) {
-    const pinnedIdx = projectData.findIndex(p => p.pinned);
-    const pinned = pinnedIdx >= 0 ? pinnedIdx : 0;
-    const pool = projectData.map((_, i) => i).filter(i => i !== cur);
-    // Fisher-Yates shuffle of the pool
-    for (let i = pool.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [pool[i], pool[j]] = [pool[j], pool[i]];
-    }
-    const picks = pool.slice(0, n - 1);
-    // If the pinned project got shuffled out, force it back in (ensures
-    // the user's anchor is always visible somewhere in the strip).
-    if (pinned !== cur && !picks.includes(pinned)) {
-      picks[picks.length - 1] = pinned;
-    }
-    stripOrder = [cur, ...picks];
-    desktopClicksInCycle = 0;
-    buildStrip();
-    return;
-  }
-
-  // Rotate stripOrder so cur ends up at DESKTOP_CURRENT_SLOT (= 0)
-  const rotated = [];
-  for (let i = 0; i < n; i++) {
-    rotated.push(stripOrder[(i + shift + n) % n]);
-  }
-  stripOrder = rotated;
-
-  if (shift === 1) slideStripNext();
-  else if (shift === -1) slideStripPrev();
+  if (delta === 1) slideStripNext();
+  else if (delta === -1) slideStripPrev();
   else buildStrip();  // multi-position jump (thumb-click) — no slide
 }
 
