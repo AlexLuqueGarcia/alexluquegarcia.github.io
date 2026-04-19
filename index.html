@@ -108,8 +108,12 @@
 }
 
 :root {
-  --strip-h: 100px;
-  --pad-b: 14px;
+  /* Layout units in rem so they compensate with the Windows-scaling root
+     font-size adjustment. At default 16px root: 6.25rem = 100px, 0.875rem = 14px.
+     On a scaled display where root is 10.67px: same rem values produce smaller
+     CSS px, which OS then scales UP to the same physical size as 100% display. */
+  --strip-h: 6.25rem;   /* was 100px */
+  --pad-b: 0.875rem;    /* was 14px */
   --dim: rgba(255,255,255,0.38);
   --ease-out: cubic-bezier(0.33, 1, 0.68, 1);
   --ease-smooth: cubic-bezier(0.76, 0, 0.24, 1);
@@ -261,7 +265,7 @@ nav, #meta, #scroll-hint, #strip-area, .work-row, #detail-footer,
 #cur {
   position:fixed;
   top:0; left:0;
-  width:32px; height:32px;
+  width: 2rem; height: 2rem;   /* was 32px */
   pointer-events:none;
   z-index:99999;
   transform:translate(-50%,-50%) scale(1);
@@ -552,7 +556,7 @@ nav.hide {
 #meta {
   position:fixed;
   left:1.6rem;
-  bottom:calc(var(--strip-h) + var(--pad-b) + 18px);
+  bottom:calc(var(--strip-h) + var(--pad-b) + 1.125rem);
   z-index:100;
   opacity:0;
   transition: opacity 0.5s ease, transform 0.6s var(--ease-smooth);
@@ -560,7 +564,7 @@ nav.hide {
 }
 #meta.visible { opacity:1; }
 #meta.hide {
-  transform: translateY(calc(var(--strip-h) + var(--pad-b) + 60px));
+  transform: translateY(calc(var(--strip-h) + var(--pad-b) + 3.75rem));
   opacity:0;
 }
 #meta.clickable { pointer-events: auto; cursor: pointer; transition: opacity 0.5s ease, transform 0.6s var(--ease-smooth); }
@@ -584,7 +588,7 @@ nav.hide {
 #scroll-hint {
   position:fixed;
   right:1.6rem;
-  bottom:calc(var(--strip-h) + var(--pad-b) + 18px);
+  bottom:calc(var(--strip-h) + var(--pad-b) + 1.125rem);
   z-index:100;
   opacity:0;
   transition: opacity 0.5s ease, transform 0.6s var(--ease-smooth);
@@ -594,7 +598,7 @@ nav.hide {
 }
 #scroll-hint.visible { opacity:1; pointer-events:all; }
 #scroll-hint.hide {
-  transform: translateY(calc(var(--strip-h) + var(--pad-b) + 60px));
+  transform: translateY(calc(var(--strip-h) + var(--pad-b) + 3.75rem));
   opacity:0;
 }
 #scroll-hint .vid-btn { color:#fff; }
@@ -619,7 +623,7 @@ nav.hide {
   transition: transform 0.6s var(--ease-smooth);
 }
 #strip-area.hide {
-  transform: translateY(calc(100% + var(--pad-b) + 20px));
+  transform: translateY(calc(100% + var(--pad-b) + 1.25rem));
 }
 
 .thumb {
@@ -699,14 +703,16 @@ nav.hide {
 .thumb-corners .tc-rc::after {
   content:'';
   position:absolute;
-  width:21px; height:21px;
+  /* Corner bracket L-shape — converted to rem so the visual size stays
+     consistent across OS display scaling (Windows 150% etc). */
+  width: 1.3125rem; height: 1.3125rem;  /* was 21px */
   border-color:#fff;
   border-style:solid;
 }
-.thumb-corners::before        { top:0;    left:0;  border-width:2.25px 0 0 2.25px; }
-.thumb-corners::after         { top:0;    right:0; border-width:2.25px 2.25px 0 0; }
-.thumb-corners .tc-rc::before { bottom:0; left:0;  border-width:0 0 2.25px 2.25px; }
-.thumb-corners .tc-rc::after  { bottom:0; right:0; border-width:0 2.25px 2.25px 0; }
+.thumb-corners::before        { top:0;    left:0;  border-width:0.14rem 0 0 0.14rem; }
+.thumb-corners::after         { top:0;    right:0; border-width:0.14rem 0.14rem 0 0; }
+.thumb-corners .tc-rc::before { bottom:0; left:0;  border-width:0 0 0.14rem 0.14rem; }
+.thumb-corners .tc-rc::after  { bottom:0; right:0; border-width:0 0.14rem 0.14rem 0; }
 
 /* Thinner corners on mobile */
 @media (max-width: 768px) {
@@ -714,12 +720,12 @@ nav.hide {
   .thumb-corners::after,
   .thumb-corners .tc-rc::before,
   .thumb-corners .tc-rc::after {
-    width: 14px; height: 14px;
+    width: 0.875rem; height: 0.875rem;   /* was 14px */
   }
-  .thumb-corners::before        { border-width: 1.25px 0 0 1.25px; }
-  .thumb-corners::after         { border-width: 1.25px 1.25px 0 0; }
-  .thumb-corners .tc-rc::before { border-width: 0 0 1.25px 1.25px; }
-  .thumb-corners .tc-rc::after  { border-width: 0 1.25px 1.25px 0; }
+  .thumb-corners::before        { border-width: 0.078rem 0 0 0.078rem; }
+  .thumb-corners::after         { border-width: 0.078rem 0.078rem 0 0; }
+  .thumb-corners .tc-rc::before { border-width: 0 0 0.078rem 0.078rem; }
+  .thumb-corners .tc-rc::after  { border-width: 0 0.078rem 0.078rem 0; }
 }
 .thumb-black {
   position:absolute; inset:0;
@@ -865,7 +871,7 @@ nav.hide {
 .work-row {
   position:relative;
   width:100%;
-  flex: 0 0 var(--row-h, 140px);
+  flex: 0 0 var(--row-h, 8.75rem);   /* default 8.75rem = 140px at root 16 */
   overflow:hidden;
   cursor:pointer;
   display:flex;
@@ -965,7 +971,7 @@ nav.hide {
 #nav-blur-header {
   position:fixed;
   top:0; left:0; right:0;
-  height:180px;
+  height: 11.25rem;   /* was 180px */
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   -webkit-mask-image: linear-gradient(to bottom, black 30%, rgba(0,0,0,0.5) 65%, transparent 100%);
@@ -1157,19 +1163,21 @@ nav.hide {
 .win-resize .rc::after {
   content:'';
   position:absolute;
-  width:21px; height:21px;
+  /* Rem-based so brackets stay the same physical size across OS scaling */
+  width: 1.3125rem; height: 1.3125rem;  /* was 21px */
   border-color:#fff;
   border-style:solid;
 }
-.win-resize::before  { top:0;    left:0;  border-width:2.25px 0 0 2.25px; }
-.win-resize::after   { top:0;    right:0; border-width:2.25px 2.25px 0 0; }
-.win-resize .rc::before { bottom:0; left:0;  border-width:0 0 2.25px 2.25px; }
-.win-resize .rc::after  { bottom:0; right:0; border-width:0 2.25px 2.25px 0; }
+.win-resize::before  { top:0;    left:0;  border-width:0.14rem 0 0 0.14rem; }
+.win-resize::after   { top:0;    right:0; border-width:0.14rem 0.14rem 0 0; }
+.win-resize .rc::before { bottom:0; left:0;  border-width:0 0 0.14rem 0.14rem; }
+.win-resize .rc::after  { bottom:0; right:0; border-width:0 0.14rem 0.14rem 0; }
 
-/* invisible drag zones — one per corner, generous hit area */
+/* invisible drag zones — one per corner, generous hit area. Rem so the hit
+   region scales consistently with the visible bracket. */
 .win-resize-drag {
   position:absolute;
-  width:48px; height:48px;
+  width: 3rem; height: 3rem;   /* was 48px */
   z-index:12;
   pointer-events:all;
 }
@@ -1182,10 +1190,10 @@ nav.hide {
 /* centered bottom controls on detail video window */
 .win-vid-controls {
   position:absolute;
-  bottom:14px; left:50%;
+  bottom: 0.875rem; left:50%;       /* was 14px */
   transform:translateX(-50%);
   display:flex; flex-direction:row;
-  align-items:center; gap:33px;
+  align-items:center; gap: 2.0625rem;   /* was 33px */
   opacity:0; transition:opacity 0.2s;
   z-index:20;
   pointer-events:all;
@@ -1309,9 +1317,9 @@ body.is-fullscreen .win-resize { display: none !important; }
    Top-RIGHT position — more intuitive for minimize/close UI pattern. */
 .win-min {
   position: absolute;
-  top: 16px; right: 16px;
-  width: 16px;
-  height: 16px;
+  top: 1rem; right: 1rem;           /* was 16px each */
+  width: 1rem;                       /* was 16px */
+  height: 1rem;                      /* was 16px */
   background: transparent;
   border: none;
   cursor: pointer;
@@ -1338,10 +1346,10 @@ body.is-fullscreen .win-resize { display: none !important; }
 }
 /* The dash itself — a 10×1.5px white bar, always visible when the button is
    visible (the button IS the glyph, there's no idle/hover icon state like on
-   a framed button). */
+   a framed button). Hairline height stays px for crispness; width in rem. */
 .win-min::before {
   content: '';
-  width: 10px;
+  width: 0.625rem;      /* was 10px */
   height: 1.5px;
   background: #fff;
 }
@@ -1377,7 +1385,7 @@ body.is-fullscreen .win-resize { display: none !important; }
   transform: translateX(-50%) translateY(14px);
   z-index: 180;
   display: flex;
-  gap: 14px;
+  gap: 0.875rem;   /* was 14px */
   padding: 0;
   background: transparent;
   border: none;
@@ -1405,8 +1413,8 @@ body.is-fullscreen .win-resize { display: none !important; }
    is readable on any video bg. */
 .dock-item {
   position: relative;
-  width: 54px;
-  height: 54px;
+  width: 3.375rem;    /* was 54px — rem so items scale with root font-size */
+  height: 3.375rem;
   overflow: hidden;
   cursor: pointer;
   padding: 0;
@@ -1462,7 +1470,7 @@ body.is-fullscreen .win-resize { display: none !important; }
    labels on the site float without a backing (win-video-label pattern). */
 .dock-item .di-tip {
   position: absolute;
-  bottom: calc(100% + 12px);
+  bottom: calc(100% + 0.75rem);   /* was 12px */
   left: 50%;
   transform: translateX(-50%) translateY(4px);
   background: transparent;
@@ -1628,8 +1636,8 @@ body.is-fullscreen .win-resize { display: none !important; }
   display: none;
   position: fixed;
   top: 50%; left: 50%;
-  width: 90px;
-  height: 90px;
+  width: 5.625rem;    /* was 90px */
+  height: 5.625rem;
   transform: translate(-50%, -50%) scale(0.9);
   z-index: 101;
   pointer-events: none;
@@ -1663,7 +1671,7 @@ body.is-fullscreen .win-resize { display: none !important; }
   .nav-brand .name, .nav-brand .tagline { font-size: 0.85rem; }
 
   /* Meta */
-  #meta { left: 1rem; bottom: calc(var(--strip-h) + var(--pad-b) + 14px); }
+  #meta { left: 1rem; bottom: calc(var(--strip-h) + var(--pad-b) + 0.875rem); }
   #meta .m-studio { font-size: 0.75rem; }
   #meta .m-title  { font-size: 1.2rem; }
   #meta .m-role   { font-size: 0.75rem; }
@@ -1671,7 +1679,7 @@ body.is-fullscreen .win-resize { display: none !important; }
   /* Scroll hint — mute button only, in bottom right */
   #scroll-hint {
     right: 1rem;
-    bottom: calc(var(--strip-h) + var(--pad-b) + 14px);
+    bottom: calc(var(--strip-h) + var(--pad-b) + 0.875rem);
     top: auto;
     height: auto;
     flex-direction: row;
@@ -1680,7 +1688,7 @@ body.is-fullscreen .win-resize { display: none !important; }
     padding: 0;
     gap: 12px;
   }
-  #scroll-hint.hide { transform: translateY(calc(var(--strip-h) + var(--pad-b) + 60px)); opacity: 0; }
+  #scroll-hint.hide { transform: translateY(calc(var(--strip-h) + var(--pad-b) + 3.75rem)); opacity: 0; }
   #scroll-hint span,
   #scroll-hint .scroll-arrow { display: none; }
   #lnd-play { display: none; }
@@ -4122,19 +4130,34 @@ const dockEl = document.getElementById('win-dock');
    Used by minimizeWin to compute the translate destination. If the dock
    is empty the slot falls back to an approximate bottom-center position
    (dock width = padding + item + padding). */
+/* Returns current dock sizes in CSS px, derived from root font-size. This
+   matters because all CSS sizes are now rem-based, so the dock item is 3.375rem
+   — which resolves to different CSS px values depending on Windows OS scaling.
+   Keeping the JS in sync means the minimize animation always lands precisely
+   on where the dock item will appear. */
+function getDockMetrics() {
+  const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+  return {
+    itemW: 3.375 * rem,   // .dock-item width/height
+    gap:   0.875 * rem,   // #win-dock gap
+    pad:   0,             // #win-dock has no padding
+    bottomOffset: 4.5 * rem, // #win-dock bottom (for y-position math)
+  };
+}
+
 function getDockSlotPos(slotIdx) {
   const dockRect = dockEl.getBoundingClientRect();
-  const ITEM_W = 54, GAP = 10, PAD = 10;
+  const { itemW, gap, pad, bottomOffset } = getDockMetrics();
   if (dockRect.width < 20) {
     // Dock is hidden/empty — estimate where it WILL be once it materializes
-    const futureWidth = PAD * 2 + ITEM_W + (slotIdx * (ITEM_W + GAP));
+    const futureWidth = pad * 2 + itemW + (slotIdx * (itemW + gap));
     const futureLeft  = (window.innerWidth - futureWidth) / 2;
-    const slotX = futureLeft + PAD + slotIdx * (ITEM_W + GAP) + ITEM_W / 2;
-    const slotY = window.innerHeight - 4.2 * 16 - (70 / 2); // matches bottom:4.2rem + ~70px dock height
+    const slotX = futureLeft + pad + slotIdx * (itemW + gap) + itemW / 2;
+    const slotY = window.innerHeight - bottomOffset - (itemW / 2);
     return { x: slotX, y: slotY };
   }
   return {
-    x: dockRect.left + PAD + slotIdx * (ITEM_W + GAP) + ITEM_W / 2,
+    x: dockRect.left + pad + slotIdx * (itemW + gap) + itemW / 2,
     y: dockRect.top + dockRect.height / 2,
   };
 }
@@ -4192,12 +4215,13 @@ function minimizeWin(winEl) {
   const slotIdx = dockEl.children.length;
   const target  = getDockSlotPos(slotIdx);
   const rect    = winEl.getBoundingClientRect();
+  const { itemW } = getDockMetrics();
 
   // Compute deltas so the window's CENTER ends at the slot center.
   // transform-origin is 'center center' during the animation.
   const dx = target.x - (rect.left + rect.width  / 2);
   const dy = target.y - (rect.top  + rect.height / 2);
-  const finalScale = 54 / rect.width;
+  const finalScale = itemW / rect.width;   // dock item size / current window size
 
   winEl.classList.add('minimizing');
   winEl.style.transformOrigin = 'center center';
@@ -4250,7 +4274,8 @@ function restoreWin(winEl, dockItem) {
 
   const dx = itemCX - winCX;
   const dy = itemCY - winCY;
-  const startScale = 54 / winRect.width;
+  const { itemW } = getDockMetrics();
+  const startScale = itemW / winRect.width;
 
   // Step 1: jump window to dock position with NO transition
   winEl.style.transition      = 'none';
