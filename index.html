@@ -330,36 +330,42 @@ body.cur-hover #cur svg {
    visible. Pre-decoded neighbor videos live in the non-active slots; on
    navigation we swap id + active class rather than changing src, which is
    what eliminates the decode latency on every swipe. See initVideoPool().
-   Ambient breath animation lives on the class (not the id) so all pool
-   members animate in sync — swap doesn't re-start the animation.
-   BULLETPROOF HIDDEN STATE: non-active pool videos are physically
-   positioned OFF-SCREEN (top:-200vh) instead of only visibility:hidden.
-   iOS Safari's native video compositor sometimes ignores visibility:hidden
-   when a new src decodes — briefly painting the video at its intrinsic
-   size ("small video flash" bug). Off-screen positioning guarantees no
-   paint in the visible viewport regardless of compositor behavior. The
-   video still preloads/decodes normally (it's in the document tree,
-   just not in the visible viewport). */
+   BULLETPROOF HIDDEN STATE: non-active pool videos use MULTIPLE redundant
+   hide techniques stacked so iOS Safari's native video compositor cannot
+   paint them regardless of its quirks:
+     - top:-200vh / left:-200vw → off-screen position
+     - transform: translate + scale(0.001) → compositor-level off-screen + near-zero size
+     - visibility:hidden → standard hide
+     - opacity:0 → alpha hide
+     - clip-path: inset(100%) → clip content to nothing
+     - pointer-events:none → can't receive events
+   The ambient-breath animation moved to .bg-active so it doesn't
+   override the inline transform on hidden elements. */
 .bg-video {
   position: absolute;
   top: -200vh;
-  left: 0;
+  left: -200vw;
   width: 100%;
   height: 100%;
+  transform: translate(-200%, -200%) scale(0.001);
   object-fit: contain;
   display: block;
   background: transparent;
   visibility: hidden;
   opacity: 0;
   pointer-events: none;
-  animation: ambientBreath 24s ease-in-out infinite;
+  clip-path: inset(100%);
   transform-origin: center center;
 }
 .bg-video.bg-active {
   top: 0;
+  left: 0;
+  transform: none;
   visibility: visible;
   opacity: 1;
   pointer-events: auto;
+  clip-path: none;
+  animation: ambientBreath 24s ease-in-out infinite;
 }
 /* Very subtle ambient scale — 1% drift across 24s. Adds filmic aliveness
    without being distracting. Pauses when detail is open (page blurred). */
@@ -3583,18 +3589,16 @@ function initVideoPool() {
     v.crossOrigin = 'anonymous';
     v.loop = false;
     v.classList.add('bg-video');
-    // BULLETPROOF HIDDEN: physically position OFF-SCREEN (top:-200vh) rather
-    // than relying on visibility:hidden alone. iOS Safari's native video
-    // compositor occasionally ignores visibility:hidden when a new src
-    // decodes, briefly painting the video at its intrinsic size — the
-    // "small video flash" bug. Off-screen positioning guarantees no paint
-    // in the visible viewport regardless of compositor behavior. Element
-    // still preloads/decodes normally (it's in the document, just not
-    // visible).
+    // BULLETPROOF HIDDEN — multiple redundant techniques so iOS cannot
+    // paint this element regardless of native video compositor quirks.
+    // See activateSlot's hideInline comment for the full breakdown.
     v.style.cssText =
-      'position:absolute;top:-200vh;left:0;width:100%;height:100%;' +
+      'position:absolute;top:-200vh;left:-200vw;' +
+      'width:100%;height:100%;' +
+      'transform:translate(-200%,-200%) scale(0.001);' +
       'object-fit:contain;display:block;' +
-      'visibility:hidden;opacity:0;pointer-events:none;';
+      'visibility:hidden;opacity:0;pointer-events:none;' +
+      'clip-path:inset(100%);animation:none;';
     videoBg.appendChild(v);
     videoPool.push({ element: v, projIdx: null, ready: false, hlsInstance: null });
   }
@@ -3721,14 +3725,25 @@ function activateSlot(slotIdx) {
     return;
   }
 
-  // Off-screen position for hidden slots. iOS Safari's native video
-  // compositor sometimes paints videos at their intrinsic size when frames
-  // decode, IGNORING visibility:hidden — producing a brief "small video
-  // flash". Positioning physically off-viewport (top:-200vh) is bulletproof.
+  // BULLETPROOF HIDE — six redundant techniques stacked:
+  //   1. top:-200vh         → off-screen position
+  //   2. transform          → compositor-level off-screen (beats native paint)
+  //   3. scale(0.001)       → near-zero rendered size
+  //   4. visibility:hidden  → standard hide
+  //   5. opacity:0          → alpha hide
+  //   6. clip-path          → clip rendered content to nothing
+  //   7. pointer-events:none → can't be clicked
+  // For iOS to show a hidden video, it would have to ignore ALL of these
+  // simultaneously. The ambient-breath animation has been moved from
+  // .bg-video to .bg-video.bg-active so it doesn't override our inline
+  // transform on hidden elements.
   const hideInline =
-    'position:absolute;top:-200vh;left:0;width:100%;height:100%;' +
+    'position:absolute;top:-200vh;left:-200vw;' +
+    'width:100%;height:100%;' +
+    'transform:translate(-200%,-200%) scale(0.001);' +
     'object-fit:contain;display:block;' +
-    'visibility:hidden;opacity:0;pointer-events:none;';
+    'visibility:hidden;opacity:0;pointer-events:none;' +
+    'clip-path:inset(100%);animation:none;';
 
   const showInline =
     'position:absolute;top:0;left:0;width:100%;height:100%;' +
@@ -3736,7 +3751,7 @@ function activateSlot(slotIdx) {
     'visibility:visible;opacity:1;pointer-events:auto;';
 
   // Deactivate old active. Order: remove id FIRST so any id-scoped CSS
-  // stops applying, then hide via inline style (rock-solid vs class-based).
+  // stops applying, then hide via inline style.
   if (activeSlotIdx >= 0) {
     const oldSlot = videoPool[activeSlotIdx];
     const oldEl = oldSlot.element;
@@ -3744,31 +3759,27 @@ function activateSlot(slotIdx) {
     oldEl.classList.remove('bg-active');
     oldEl.style.cssText = hideInline;
     try { oldEl.pause(); } catch {}
-    oldEl.muted = true;  // prevent any future autoplay attempts from making audio
+    oldEl.muted = true;
     oldSlot._savedTime = oldEl.currentTime;
   }
 
   // Belt-and-suspenders: pause + mute + hide every OTHER pool slot too.
-  // If any slot somehow slipped into play state (browser autoplay
-  // heuristics, loadSlot race, etc.), this guarantees exactly one playing
-  // and exactly one visible video.
   videoPool.forEach((s, i) => {
     if (i === slotIdx) return;
     try { s.element.pause(); } catch {}
     s.element.muted = true;
-    if (i !== activeSlotIdx) {  // don't re-hide the slot we just hid above
+    if (i !== activeSlotIdx) {
       s.element.style.cssText = hideInline;
     }
   });
 
-  // Activate new. Clear inline hide styles so the slot becomes visible.
-  // updateVideoFit will reapply any needed object-fit inline style below.
+  // Activate new. Single-step — set cssText, add class, play.
   const slot = videoPool[slotIdx];
   const el = slot.element;
   el.classList.add('bg-active');
   el.id = 'video-bg-inner';
   el.style.cssText = showInline;
-  el.muted = globalMuted;  // restore user's mute preference
+  el.muted = globalMuted;
   try { el.currentTime = 0; } catch {}
   el.play().catch(() => {});
 
