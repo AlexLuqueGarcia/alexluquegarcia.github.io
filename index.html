@@ -332,13 +332,18 @@ body.cur-hover #cur svg {
    what eliminates the decode latency on every swipe. See initVideoPool().
    Ambient breath animation lives on the class (not the id) so all pool
    members animate in sync — swap doesn't re-start the animation.
-   Hidden state uses visibility + opacity + pointer-events together: iOS
-   Safari renders <video> in a native compositor layer that sometimes
-   doesn't honor visibility:hidden alone (inactive videos can flash at
-   their intrinsic size mid-swap). Triple combo is reliable. */
+   BULLETPROOF HIDDEN STATE: non-active pool videos are physically
+   positioned OFF-SCREEN (top:-200vh) instead of only visibility:hidden.
+   iOS Safari's native video compositor sometimes ignores visibility:hidden
+   when a new src decodes — briefly painting the video at its intrinsic
+   size ("small video flash" bug). Off-screen positioning guarantees no
+   paint in the visible viewport regardless of compositor behavior. The
+   video still preloads/decodes normally (it's in the document tree,
+   just not in the visible viewport). */
 .bg-video {
   position: absolute;
-  inset: 0;
+  top: -200vh;
+  left: 0;
   width: 100%;
   height: 100%;
   object-fit: contain;
@@ -351,6 +356,7 @@ body.cur-hover #cur svg {
   transform-origin: center center;
 }
 .bg-video.bg-active {
+  top: 0;
   visibility: visible;
   opacity: 1;
   pointer-events: auto;
@@ -3577,12 +3583,18 @@ function initVideoPool() {
     v.crossOrigin = 'anonymous';
     v.loop = false;
     v.classList.add('bg-video');
-    // Inline styles as a safety net — iOS's native <video> compositor sometimes
-    // paints one frame at intrinsic size before class-based CSS settles,
-    // causing a brief "small video" overlay. Inline style wins the race.
+    // BULLETPROOF HIDDEN: physically position OFF-SCREEN (top:-200vh) rather
+    // than relying on visibility:hidden alone. iOS Safari's native video
+    // compositor occasionally ignores visibility:hidden when a new src
+    // decodes, briefly painting the video at its intrinsic size — the
+    // "small video flash" bug. Off-screen positioning guarantees no paint
+    // in the visible viewport regardless of compositor behavior. Element
+    // still preloads/decodes normally (it's in the document, just not
+    // visible).
     v.style.cssText =
-      'position:absolute;inset:0;width:100%;height:100%;object-fit:contain;' +
-      'display:block;visibility:hidden;opacity:0;pointer-events:none;';
+      'position:absolute;top:-200vh;left:0;width:100%;height:100%;' +
+      'object-fit:contain;display:block;' +
+      'visibility:hidden;opacity:0;pointer-events:none;';
     videoBg.appendChild(v);
     videoPool.push({ element: v, projIdx: null, ready: false, hlsInstance: null });
   }
@@ -3709,9 +3721,19 @@ function activateSlot(slotIdx) {
     return;
   }
 
+  // Off-screen position for hidden slots. iOS Safari's native video
+  // compositor sometimes paints videos at their intrinsic size when frames
+  // decode, IGNORING visibility:hidden — producing a brief "small video
+  // flash". Positioning physically off-viewport (top:-200vh) is bulletproof.
   const hideInline =
-    'position:absolute;inset:0;width:100%;height:100%;object-fit:contain;' +
-    'display:block;visibility:hidden;opacity:0;pointer-events:none;';
+    'position:absolute;top:-200vh;left:0;width:100%;height:100%;' +
+    'object-fit:contain;display:block;' +
+    'visibility:hidden;opacity:0;pointer-events:none;';
+
+  const showInline =
+    'position:absolute;top:0;left:0;width:100%;height:100%;' +
+    'object-fit:contain;display:block;' +
+    'visibility:visible;opacity:1;pointer-events:auto;';
 
   // Deactivate old active. Order: remove id FIRST so any id-scoped CSS
   // stops applying, then hide via inline style (rock-solid vs class-based).
@@ -3745,9 +3767,7 @@ function activateSlot(slotIdx) {
   const el = slot.element;
   el.classList.add('bg-active');
   el.id = 'video-bg-inner';
-  el.style.cssText =
-    'position:absolute;inset:0;width:100%;height:100%;object-fit:contain;' +
-    'display:block;visibility:visible;opacity:1;pointer-events:auto;';
+  el.style.cssText = showInline;
   el.muted = globalMuted;  // restore user's mute preference
   try { el.currentTime = 0; } catch {}
   el.play().catch(() => {});
