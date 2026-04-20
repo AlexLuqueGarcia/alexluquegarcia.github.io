@@ -105,10 +105,74 @@
     transition: opacity 0.2s ease; opacity: 0;
   }
   .project-row.is-pinned .pinned-dot { opacity: 1; }
+  /* Hidden indicator: small "HIDDEN" label in muted color — appears
+     when the project is flagged hidden:true in projects.json (won't
+     show on the landing page Feed, but still visible in Work tab). */
+  .project-row .hidden-badge {
+    display: none; font-size: 0.6rem; letter-spacing: 0.15em;
+    color: var(--dim); border: 1px solid var(--line);
+    padding: 0.1rem 0.45rem; margin-left: 0.5rem; text-transform: uppercase;
+    flex-shrink: 0;
+  }
+  .project-row.is-hidden .hidden-badge { display: inline-block; }
+  .project-row.is-hidden .p-name,
+  .project-row.is-hidden .p-sub,
+  .project-row.is-hidden .p-year { opacity: 0.55; }
   .project-row .p-meta { flex: 1; min-width: 0; }
   .project-row .p-name { font-size: 1rem; font-weight: 400; margin-bottom: 0.15rem; }
   .project-row .p-sub { font-size: 0.78rem; color: var(--dim); letter-spacing: 0.04em; }
   .project-row .p-year { font-size: 0.8rem; color: var(--dim); letter-spacing: 0.1em; flex-shrink: 0; }
+
+  /* ── FEED ORDER VIEW ── Reorder panel for pinned projects.
+     Two sections: pinned (draggable/up-down reorder) and unpinned
+     (informational). Order of pinned entries here = order on landing. */
+  .feed-order-intro {
+    font-size: 0.85rem; color: var(--dim); line-height: 1.5;
+    margin-bottom: 2rem; max-width: 620px;
+  }
+  .feed-section-label {
+    font-size: 0.7rem; letter-spacing: 0.2em; text-transform: uppercase;
+    color: var(--dim); margin-bottom: 0.75rem; margin-top: 2rem;
+  }
+  .feed-section-label:first-child { margin-top: 0; }
+  .fo-list { display: flex; flex-direction: column; border-top: 1px solid var(--line); }
+  .fo-row {
+    display: flex; align-items: center; gap: 0.75rem;
+    padding: 0.9rem 0; border-bottom: 1px solid var(--line);
+  }
+  .fo-row.is-dragging { opacity: 0.4; }
+  .fo-row.drop-target { border-top: 2px solid var(--fg); }
+  .fo-row .fo-num {
+    font-size: 0.75rem; color: var(--dim); letter-spacing: 0.1em;
+    width: 1.5rem; text-align: right; font-variant-numeric: tabular-nums;
+  }
+  .fo-row .fo-meta { flex: 1; min-width: 0; }
+  .fo-row .fo-name { font-size: 0.95rem; }
+  .fo-row .fo-sub { font-size: 0.72rem; color: var(--dim); letter-spacing: 0.03em; }
+  .fo-row .fo-controls { display: flex; gap: 0.35rem; flex-shrink: 0; }
+  .fo-btn {
+    font-family: inherit; background: transparent;
+    border: 1px solid var(--line); color: var(--dim);
+    width: 1.9rem; height: 1.9rem; padding: 0;
+    cursor: pointer; font-size: 0.9rem; line-height: 1;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s ease;
+    text-transform: none; letter-spacing: 0;
+  }
+  .fo-btn:hover:not(:disabled) { border-color: var(--fg); color: var(--fg); background: transparent; }
+  .fo-btn:disabled { opacity: 0.25; cursor: not-allowed; }
+  .fo-empty {
+    color: var(--dim); font-size: 0.85rem; padding: 2rem 0;
+    border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+  }
+  .fo-actions {
+    margin-top: 2.5rem; display: flex; gap: 0.75rem; align-items: center;
+  }
+  .fo-saved {
+    font-size: 0.78rem; color: var(--ok); opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+  .fo-saved.visible { opacity: 1; }
 
   /* Buttons */
   button {
@@ -349,6 +413,7 @@
     <div class="brand"><b>AL</b> — Project Manager</div>
     <nav>
       <a data-view="list" class="active">Projects</a>
+      <a data-view="feed-order">Feed Order</a>
       <a data-view="new">New</a>
       <a id="logout-btn">Logout</a>
     </nav>
@@ -359,6 +424,41 @@
     <div class="loading" id="list-loading">Loading projects…</div>
     <div class="project-list hidden" id="project-list"></div>
     <div class="status hidden" id="list-status"></div>
+  </div>
+
+  <!-- Feed Order view ─────────────────────────────────
+       Reorder pinned projects. The displayed order here IS the display
+       order on the landing page (pinned section). Unpinned projects are
+       shown below for context but aren't user-reorderable (they appear
+       in a random Fisher-Yates order on every page load by design). -->
+  <div id="feed-order-view" class="hidden">
+    <h1>Feed Order</h1>
+    <p class="feed-order-intro">
+      Drag or use the arrows to reorder pinned projects. The order here is the order
+      visitors see on the landing page — top of the list appears first. Projects marked
+      <em>Hidden from Feed</em> never appear on the landing page (they still show in Work).
+    </p>
+
+    <div class="loading" id="fo-loading">Loading…</div>
+
+    <div id="fo-content" class="hidden">
+      <div class="feed-section-label">Pinned — on landing page in this order</div>
+      <div class="fo-list" id="fo-pinned-list"></div>
+
+      <div class="feed-section-label">Unpinned, visible — appear below pinned, randomized order</div>
+      <div class="fo-list" id="fo-unpinned-list"></div>
+
+      <div class="feed-section-label">Hidden from Feed — only visible in Work tab</div>
+      <div class="fo-list" id="fo-hidden-list"></div>
+
+      <div class="fo-actions">
+        <button id="fo-save-btn">Save order</button>
+        <button class="ghost" id="fo-revert-btn">Revert</button>
+        <span class="fo-saved" id="fo-saved">Saved. Vercel will redeploy in ~30 seconds.</span>
+      </div>
+    </div>
+
+    <div class="status hidden" id="fo-status"></div>
   </div>
 
   <!-- New/Edit project view ─────────────────────────── -->
@@ -450,7 +550,12 @@
 
     <label class="checkbox">
       <input type="checkbox" id="f-pinned">
-      <span>Pin this project to first slot in Feed</span>
+      <span>Pin to landing Feed <span class="hint" style="display:inline;margin-left:0.5rem;">— multiple projects can be pinned; reorder them in Feed Order view</span></span>
+    </label>
+
+    <label class="checkbox">
+      <input type="checkbox" id="f-hidden">
+      <span>Hidden from Feed <span class="hint" style="display:inline;margin-left:0.5rem;">— project stays visible in Work tab, but never appears on the landing page</span></span>
     </label>
 
     <!-- ──────────── MEDIA SECTION (edit mode only) ──────────── -->
@@ -738,12 +843,16 @@ function switchView(name) {
   });
   hide($('list-view'));
   hide($('form-view'));
+  hide($('feed-order-view'));
   if (name === 'list') {
     show($('list-view'));
     loadProjects();
   } else if (name === 'new') {
     startNewProject();
     show($('form-view'));
+  } else if (name === 'feed-order') {
+    show($('feed-order-view'));
+    loadFeedOrder();
   }
 }
 
@@ -777,13 +886,16 @@ function renderProjects() {
   } else {
     state.projects.forEach(p => {
       const row = document.createElement('div');
-      row.className = 'project-row' + (p.pinned ? ' is-pinned' : '');
+      row.className = 'project-row' +
+        (p.pinned ? ' is-pinned' : '') +
+        (p.hidden ? ' is-hidden' : '');
       row.innerHTML = `
         <span class="pinned-dot" title="Pinned"></span>
         <div class="p-meta">
           <div class="p-name">${escapeHtml(p.name || p.folder)}</div>
           <div class="p-sub">${escapeHtml([p.studio, p.client].filter(Boolean).join(' — '))} ${p.type ? '· ' + escapeHtml(p.type) : ''}</div>
         </div>
+        <span class="hidden-badge" title="Not shown on landing page">Hidden</span>
         <div class="p-year">${escapeHtml(p.year || '')}</div>
       `;
       row.addEventListener('click', () => startEditProject(p.folder));
@@ -815,6 +927,7 @@ function startNewProject() {
   $('submit-btn').textContent = 'Create project';
   fields.forEach(k => $('f-' + k).value = '');
   $('f-pinned').checked = false;
+  $('f-hidden').checked = false;
   $('f-folder').disabled = false;
   show($('video-field'));
   show($('photo-field'));      // photo picker visible only for new projects
@@ -847,6 +960,7 @@ function startEditProject(folder) {
   $('f-team').value = (p.team || '').replace(/\\n/g, '\n');
   $('f-credits').value = (p.credits || '').replace(/\\n/g, '\n');
   $('f-pinned').checked = !!p.pinned;
+  $('f-hidden').checked = !!p.hidden;
   hide($('video-field'));        // don't allow video pick on edit (uses Replace btn)
   hide($('photo-field'));        // photo picker is new-project-only (edit uses media-section)
   show($('delete-btn'));
@@ -1068,6 +1182,7 @@ async function submitCreate() {
       body: {
         folder,
         pinned: $('f-pinned').checked,
+        hidden: $('f-hidden').checked,
         info,
       },
     });
@@ -1121,6 +1236,7 @@ async function submitEdit() {
       body: {
         folder: state.editing,
         pinned: $('f-pinned').checked,
+        hidden: $('f-hidden').checked,
         info,
       },
     });
