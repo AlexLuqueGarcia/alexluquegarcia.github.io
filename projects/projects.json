@@ -20,5 +20,8 @@
     "hidden": true
   },
   "2025-mine",
-  "2023-tcs-visuals"
+  {
+    "folder": "2023-tcs-visuals",
+    "hidden": true
+  }
 ]
