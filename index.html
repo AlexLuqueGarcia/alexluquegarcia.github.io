@@ -3396,6 +3396,79 @@ window.addEventListener('resize', updateVideoFit);
 // inside initVideoPool() (rather than just on videoBgInner) so they fire
 // correctly after pool swaps.
 
+// Programmatic version of the swipe-up commit flow — used by video-ended
+// auto-advance. Swipe + tap both produce clean strip state; auto-advance
+// going through goTo + slideStripNext keeps leaving the strip translated.
+// This reuses the EXACT same mechanics as a manual swipe-up commit
+// (prepareStripDrag → finishStripDrag + peek/videoBg animation), giving
+// auto-advance the same guaranteed-clean outcome.
+//
+// On desktop (non-mobile), the peek+prepareStripDrag machinery doesn't
+// exist — desktop uses a simpler goTo-based flow, which works fine there.
+function performAutoAdvance() {
+  const isMobile = window.innerWidth <= 1024;
+  const nextIdx = nextInStrip(cur);
+  if (nextIdx === cur) return;
+
+  if (!isMobile) {
+    // Desktop path — unchanged from before, works correctly
+    goTo(nextIdx);
+    return;
+  }
+
+  // ── Mobile: replicate swipe-up commit exactly ──
+  const h = window.innerHeight;
+
+  // 1. Set up peek with the incoming project's first frame, positioned
+  //    below screen (as if user was swiping up from the bottom)
+  const nextThumb = projectDetails[nextIdx]?.thumbFrames?.[0];
+  if (nextThumb) peekEl.style.backgroundImage = `url('${nextThumb}')`;
+  peekEl.style.transition = 'none';
+  peekEl.style.transform  = `translateY(${h}px)`;
+  peekEl.classList.add('visible');
+  // Force reflow so the starting peek position is committed before we
+  // apply the commit-animation transition below
+  void peekEl.offsetWidth;
+
+  // 2. Prepare the strip drag (adds lookback + lookahead thumbs and sets
+  //    transform=-lookbackWidth so the visible strip looks unchanged).
+  //    Without this, finishStripDrag has no lookback/lookahead refs to
+  //    work with.
+  prepareStripDrag();
+
+  // 3. Commit the strip drag (direction=1 = next). This animates the
+  //    strip to its final "after-next" position via a 280ms CSS transition,
+  //    matching what swipe does. finishStripDrag also handles its own
+  //    setTimeout cleanup to remove transitional thumbs + reset transform.
+  finishStripDrag(true, 1);
+
+  // 4. Animate videoBg off-top and peek up-from-bottom — the same 280ms
+  //    visual that swipe uses to cover the project swap.
+  videoBg.style.transition = 'transform 0.28s cubic-bezier(0.33,1,0.68,1)';
+  peekEl.style.transition  = 'transform 0.28s cubic-bezier(0.33,1,0.68,1)';
+  videoBg.style.transform  = `translateY(-${h}px)`;
+  peekEl.style.transform   = 'translateY(0)';
+
+  // 5. At 280ms (peek fully covers screen, hiding the actual project swap),
+  //    do the pool swap via goTo(…, skipStripSync=true) — strip has
+  //    already been advanced by finishStripDrag so we skip sync.
+  setTimeout(() => {
+    videoBg.style.transition = 'none';
+    videoBg.style.transform  = '';
+    peekEl.style.transition  = 'none';
+    goTo(nextIdx, true);
+    // Two frames later, hide peek — gives the newly-active video a
+    // couple of frames to render its first play frame before it's revealed.
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        peekEl.classList.remove('visible');
+        peekEl.style.transform = '';
+      });
+    });
+    flashActiveThumb();
+  }, 280);
+}
+
 // ─────────────────────────────────────────────────────────
 // Video element pool — the "real magic" for instant swipes
 // ─────────────────────────────────────────────────────────
@@ -3462,39 +3535,24 @@ function initVideoPool() {
     el.addEventListener('ended', () => {
       if (el !== videoBgInner) return;
       if (detailOpen || workOpen) return;
-      // If the strip is still mid-animation (previous slide or redistribute
-      // hasn't finished), defer the next goTo until it settles. Firing a new
-      // slide on top of a running one creates visible artifacts — the second
-      // slide's transform translation is measured against transitioning
-      // widths and ends up misaligned → gap at right, strip looks shifted.
-      const fireAdvance = () => {
-        goTo(nextInStrip(cur));
-        // SELF-HEAL: after the slide should have fully settled, verify the
-        // strip is in a valid final state. If transform is non-zero or the
-        // thumb count doesn't match stripOrder, force a hard rebuild.
-        // Catches whatever subtle race the auto-advance path triggers — the
-        // slide mechanics work for swipe + tap, but auto-advance repeatedly
-        // shows a stuck-left strip after the slide. This guarantees the
-        // final state is clean regardless of what the animation did.
-        setTimeout(() => {
-          if (detailOpen || workOpen) return;
-          if (window.innerWidth > 1024) return;  // mobile only
-          const transform = stripEl.style.transform || '';
-          const stuckTranslated = transform && transform !== 'translateX(0px)' && !transform.includes('translateX(0px)');
-          const wrongCount = stripEl.children.length !== stripOrder.length;
-          if (stuckTranslated || wrongCount) {
-            buildStrip();
-          }
-        }, STRIP_SLIDE_MS + 200);
-      };
+      // Use the same peek-and-swap mechanism as swipe commit. This path
+      // is battle-tested (swipe + finishStripDrag are working perfectly),
+      // whereas the direct goTo → slideStripNext path keeps leaving the
+      // strip translated on auto-advance. Reusing the swipe-commit flow
+      // guarantees identical behavior between a user's swipe-up and an
+      // auto-advance.
+      //
+      // If user has a finger on screen (stripDragging=true or a swipe is
+      // being processed elsewhere), defer — don't step on their gesture.
+      if (stripDragging) return;
       if (stripAnimating) {
-        // Wait for the current slide to finish (420ms) + a small buffer.
-        // redistributeThumbWidths after is fine to run in parallel with the
-        // new slide since snapThumbWidths at slide start freezes it.
-        setTimeout(fireAdvance, STRIP_SLIDE_MS + 100);
-      } else {
-        fireAdvance();
+        // Previous strip animation still in progress — defer until settled.
+        setTimeout(() => {
+          if (!detailOpen && !workOpen) performAutoAdvance();
+        }, STRIP_SLIDE_MS + 100);
+        return;
       }
+      performAutoAdvance();
     });
   });
 }
