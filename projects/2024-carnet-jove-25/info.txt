@@ -1,0 +1,24 @@
+name: Carnet Jove 25
+client: Generalitat de Catalunya
+studio: Olimpic
+type: CG Lead
+year: 2024
+duration: 60
+video: https://vz-114da70f-2b3.b-cdn.net/e3a8b461-0a51-460a-801f-427b82530d54/play_720p.mp4
+frames: video_000.jpg, video_001.jpg, video_002.jpg, video_003.jpg, video_004.jpg, video_005.jpg, video_006.jpg, video_007.jpg, video_008.jpg, video_009.jpg, video_010.jpg, video_011.jpg, video_012.jpg, video_013.jpg, video_014.jpg, video_015.jpg, video_016.jpg, video_017.jpg, video_018.jpg, video_019.jpg, video_020.jpg, video_021.jpg, video_022.jpg, video_023.jpg, video_024.jpg, video_025.jpg, video_026.jpg, video_027.jpg, video_028.jpg, video_029.jpg, video_030.jpg, video_031.jpg, video_032.jpg, video_033.jpg, video_034.jpg, video_035.jpg, video_036.jpg, video_037.jpg, video_038.jpg, video_039.jpg, video_040.jpg, video_041.jpg, video_042.jpg, video_043.jpg, video_044.jpg, video_045.jpg, video_046.jpg, video_047.jpg, video_048.jpg, video_049.jpg, video_050.jpg, video_051.jpg, video_052.jpg, video_053.jpg, video_054.jpg, video_055.jpg, video_056.jpg, video_057.jpg, video_058.jpg, video_059.jpg
+team: CG Lead — Alex Luque Garcia
+Concept Artist — Noha Manfredi
+Character Design — Noha Manfredi, Clara Teresa
+Animation — Pablo Navarro, Nacho Conesa, Sergi Planas
+Edit — Paula Suarez
+Compositors — Nacho Hoyos, Juan Manuel Reyes
+CG Production Design — Noha Manfredi, Clara Teresa, Daniel Benza
+Graphic Design — Sara V. Mallo
+Colorist — Dani Granado
+credits: Agency — Evil Love
+Directed by — Cesar Rodrez, OLIMPIC
+Produced by — OLIMPIC, Good Company
+Creative Post Studio — OLIMPIC
+Music — Fades
+Color — Metropolitana
+Sound Design — Idea Sonora
