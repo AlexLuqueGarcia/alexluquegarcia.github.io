@@ -2408,9 +2408,16 @@ function buildFullSequence() {
   if (projectData.length === 0) return [];
   const pinnedIdx = projectData.findIndex(p => p.pinned);
   const pinned = pinnedIdx >= 0 ? pinnedIdx : 0;
-  // projectData is already sorted newest-first (loadProjects). Put pinned
-  // at the head, then the rest in their existing order.
+  // Pinned project anchors slot 0. The rest get Fisher-Yates shuffled so
+  // every page load shows a different order — matches desktop behavior.
+  // Shuffled once per session (on first call); stable thereafter so the
+  // window-math in nextInStrip/prevInStrip doesn't get pulled out from
+  // under mid-session.
   const rest = projectData.map((_, i) => i).filter(i => i !== pinned);
+  for (let i = rest.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [rest[i], rest[j]] = [rest[j], rest[i]];
+  }
   return [pinned, ...rest];
 }
 
