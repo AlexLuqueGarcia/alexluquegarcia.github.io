@@ -2312,12 +2312,12 @@ let stripOrder = [];
 //
 // `mobileWindowStart` is the index into fullSequence where the visible window
 // begins. The active ("current") project sits MOBILE_CURRENT_SLOT positions
-// into the window — so with slot 1 and size 4, arrangement is
-// [past, CURRENT, next, next+1].
+// into the window — so with slot 0 and size 4, arrangement is
+// [CURRENT, next, next+1, next+2]. User preference: no prev thumb visible.
 let fullSequence = [];
 let mobileWindowStart = 0;
 const MOBILE_STRIP_SIZE    = 4;
-const MOBILE_CURRENT_SLOT  = 1;   // 0-indexed: 1 past + cur + 2 upcoming
+const MOBILE_CURRENT_SLOT  = 0;   // 0-indexed: cur at leftmost, 3 upcoming
 
 // Desktop gets a parallel sliding-strip setup so clicking the video advances
 // the strip with the same slide animation as mobile swipes. Unlike mobile
@@ -2890,6 +2890,24 @@ function computeMobileSliceCount(projIdx) {
   return Math.max(4, Math.round(TOTAL_MOBILE_SLICES * dur / totalDurInWindow));
 }
 
+// Freeze any in-flight thumb width transitions to their currently-rendered
+// pixel values. Called at the start of slideStripNext/slideStripPrev and
+// prepareStripDrag to prevent the NEW motion from racing against an OLD
+// redistributeThumbWidths transition — the slide's transform translation
+// (-shiftPx) assumes first-thumb width stays at shiftPx for the duration
+// of the slide; if redistribute is still animating widths underneath,
+// first-thumb shrinks/grows during slide and the slide ends misaligned
+// (visible gap at right edge). Freezing snapshots the mid-interpolation
+// state so the next motion begins on solid ground. Sum of widths is
+// preserved (linear interpolation of sum-preserving endpoints).
+function snapThumbWidths() {
+  Array.from(stripEl.children).forEach(t => {
+    const w = t.offsetWidth;
+    t.style.transition = '';
+    t.style.width = w + 'px';
+  });
+}
+
 // Apply new proportional widths to the current 4 thumbs with a smooth
 // transition. Called at the end of each slide animation so widths redistribute
 // gracefully from the slide's initial (symmetric) state to the correct
@@ -2959,6 +2977,12 @@ function prepareStripDrag() {
   if (stripEl.children.length === 0) return;
 
   stripDragging = true;
+
+  // Freeze any in-flight width transitions before reading offsetWidths —
+  // otherwise lookback/lookahead thumbs get sized against transitioning
+  // widths and the drag's per-frame width interpolation fights a previous
+  // redistribute animation still in progress.
+  snapThumbWidths();
 
   // Capture current widths for drag-progress math. The lookback/lookahead
   // get widths matching the outgoing thumbs (symmetric drag), so the strip
@@ -3160,6 +3184,11 @@ function slideStripNext() {
   const firstThumb = stripEl.firstElementChild;
   if (!firstThumb) { buildStrip(); return; }
 
+  // Freeze any pending width transitions BEFORE measuring shiftPx — otherwise
+  // shiftPx drifts under us during the slide, leaving a gap at the right edge.
+  // See snapThumbWidths() comment for full explanation.
+  snapThumbWidths();
+
   // The new project that needs to appear at the end is the last in stripOrder
   // (syncMobileWindow has already updated mobileWindowStart + stripOrder)
   const incomingIdx = stripOrder[stripOrder.length - 1];
@@ -3218,6 +3247,9 @@ function slideStripPrev() {
 
   const lastThumb = stripEl.lastElementChild;
   if (!lastThumb) { buildStrip(); return; }
+
+  // Freeze any pending width transitions BEFORE measuring shiftPx.
+  snapThumbWidths();
 
   // Incoming project appears at the START of the window
   const incomingIdx = stripOrder[0];
