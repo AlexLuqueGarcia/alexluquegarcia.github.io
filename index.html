@@ -4,6 +4,22 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover, shrink-to-fit=yes">
 
+<!-- ── PERF: PRECONNECT TO CDNs ──
+     Saves ~100-300ms on first video / image load by doing DNS + TLS
+     handshake in parallel with HTML parse, instead of on first request. -->
+<link rel="preconnect" href="https://alexluquegarcia-portfolio.b-cdn.net" crossorigin>
+<link rel="preconnect" href="https://vz-114da70f-2b3.b-cdn.net" crossorigin>
+<link rel="dns-prefetch" href="https://alexluquegarcia-portfolio.b-cdn.net">
+<link rel="dns-prefetch" href="https://vz-114da70f-2b3.b-cdn.net">
+
+<!-- ── PERF: FONT PRELOAD ──
+     font-display: swap prevents invisible text, but a flash of fallback
+     font (FOUT) is still visible on first paint. Preload fetches the two
+     font weights in parallel with the HTML so they're ready the moment
+     the text is painted — no FOUT, no layout shift. -->
+<link rel="preload" href="fonts/NeueMontreal-Light.otf" as="font" type="font/otf" crossorigin>
+<link rel="preload" href="fonts/NeueMontreal-Medium.otf" as="font" type="font/otf" crossorigin>
+
 <!-- ── PRIMARY ── -->
 <title>Alex Luque Garcia — Visual Artist & CG Generalist</title>
 <meta name="description" content="Alex Luque Garcia — visual artist and CG generalist based in Barcelona. VFX supervision and CG lead on music videos, fashion films and commercials. Selected work: Gentle Monster BOLD (Tilda Swinton), Black MIDI, Groove.">
@@ -11,6 +27,7 @@
 <meta name="keywords" content="Alex Luque Garcia, VFX supervisor, CG generalist, CG lead, 3D animation, visual artist, Barcelona, music video VFX, fashion film, Gentle Monster, Olimpic">
 <meta name="robots" content="index, follow, max-image-preview:large">
 <meta name="googlebot" content="index, follow, max-image-preview:large">
+<meta name="theme-color" content="#0a0a0a">
 <link rel="canonical" href="https://alexluquegarcia.com/">
 
 <!-- ── FAVICON ── SVG works in all modern browsers and scales perfectly -->
@@ -1901,6 +1918,51 @@ body.is-fullscreen .win-resize { display: none !important; }
   <p>For commercial, music video, or creative inquiries, contact info@alexluquegarcia.com or follow @alexluquegarcia on Instagram.</p>
 </div>
 
+<!-- ── NOSCRIPT FALLBACK ──
+     The site is JS-driven, so users/bots without JS would see nothing.
+     This shows a visible fallback with contact info so the page isn't
+     useless for them. Styled to match the site aesthetic. -->
+<noscript>
+  <style>
+    .noscript-fallback {
+      position: fixed; inset: 0; background: #0a0a0a; color: #e8e8e8;
+      display: flex; align-items: center; justify-content: center;
+      flex-direction: column; gap: 1.5rem; padding: 2rem;
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+      text-align: center; z-index: 999999;
+    }
+    .noscript-fallback .ns-name {
+      font-size: 1.5rem; font-weight: 500; letter-spacing: 0.02em;
+    }
+    .noscript-fallback .ns-role {
+      font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.3em;
+      opacity: 0.6;
+    }
+    .noscript-fallback .ns-desc {
+      font-size: 0.95rem; max-width: 520px; line-height: 1.6;
+      opacity: 0.85; margin-top: 0.5rem;
+    }
+    .noscript-fallback .ns-links {
+      display: flex; gap: 1.5rem; margin-top: 0.5rem; font-size: 0.9rem;
+    }
+    .noscript-fallback a { color: #e8e8e8; text-decoration: underline; }
+    .noscript-fallback a:hover { opacity: 0.7; }
+    .noscript-fallback .ns-note {
+      font-size: 0.75rem; opacity: 0.4; margin-top: 2rem;
+    }
+  </style>
+  <div class="noscript-fallback">
+    <div class="ns-name">Alex Luque Garcia</div>
+    <div class="ns-role">Visual Artist & CG Generalist</div>
+    <div class="ns-desc">VFX supervision and CG lead on music videos, fashion films and commercials. Based in Barcelona.</div>
+    <div class="ns-links">
+      <a href="mailto:info@alexluquegarcia.com">info@alexluquegarcia.com</a>
+      <a href="https://instagram.com/alexluquegarcia" target="_blank" rel="noopener">Instagram</a>
+    </div>
+    <div class="ns-note">This portfolio is interactive — please enable JavaScript to view the full work.</div>
+  </div>
+</noscript>
+
 <!-- Always-fixed video background -->
 <div id="video-bg-peek"></div>
 <div id="video-bg"><video id="video-bg-inner" class="bg-video bg-active" muted playsinline preload="auto" crossorigin="anonymous"></video></div>
@@ -1917,11 +1979,11 @@ body.is-fullscreen .win-resize { display: none !important; }
 <div id="nav-blur-header"></div>
 
 <!-- Nav -->
-<nav>
+<nav aria-label="Main navigation">
   <div class="nav-links">
     <a href="#" onclick="goHome();return false;">Feed</a><a href="#" onclick="openWork();return false;">Work</a><a href="#" onclick="openInfo(event);return false;">Info</a>
   </div>
-  <div class="nav-brand" onclick="goHome()" style="cursor:pointer;">
+  <div class="nav-brand" onclick="goHome()" style="cursor:pointer;" role="button" tabindex="0" aria-label="Home">
     <span class="name">Alex Luque Garcia</span>
     <span class="tagline">Visual Artist & Generalist</span>
   </div>
@@ -1974,7 +2036,7 @@ body.is-fullscreen .win-resize { display: none !important; }
 </div>
 
 <!-- Info sheet — iPhone-style modal -->
-<div id="info-sheet">
+<div id="info-sheet" role="dialog" aria-modal="true" aria-label="Info and contact" aria-hidden="true">
   <div id="info-backdrop"></div>
   <div id="info-panel">
     <div class="info-content">
@@ -1992,10 +2054,10 @@ body.is-fullscreen .win-resize { display: none !important; }
 </div>
 
 <!-- Strip -->
-<div id="strip-area"><div id="strip-inner"></div></div>
+<div id="strip-area" role="tablist" aria-label="Project thumbnails"><div id="strip-inner"></div></div>
 
 <!-- Detail page -->
-<div id="detail">
+<div id="detail" role="dialog" aria-modal="true" aria-label="Project detail" aria-hidden="true">
   <div id="canvas">
     <div id="canvas-inner">
       <!-- windows injected by JS -->
@@ -2033,6 +2095,53 @@ body.is-fullscreen .win-resize { display: none !important; }
 </div>
 
 <script>
+// ── GLOBAL ERROR BOUNDARY ──
+// If anything in this script throws during init or runtime, don't leave
+// the user staring at a blank page. This handler shows a minimal "reload"
+// UI and logs the error for debugging. Covers both sync errors and
+// unhandled promise rejections.
+(function() {
+  let errorShown = false;
+  function showErrorUI(msg) {
+    if (errorShown) return;
+    errorShown = true;
+    // Only show the error UI if the page hasn't already rendered something
+    // useful. If videos + strip are already up, a late error probably
+    // isn't worth interrupting the user.
+    const hasRendered = document.querySelector('#strip-inner')?.children.length > 0;
+    if (hasRendered) return;
+
+    const overlay = document.createElement('div');
+    overlay.style.cssText =
+      'position:fixed;inset:0;background:#0a0a0a;color:#e8e8e8;' +
+      'display:flex;align-items:center;justify-content:center;' +
+      'flex-direction:column;gap:1.5rem;padding:2rem;z-index:999999;' +
+      "font-family:'NM',-apple-system,BlinkMacSystemFont,sans-serif;" +
+      'text-align:center;';
+    overlay.innerHTML =
+      '<div style="font-size:0.75rem;letter-spacing:0.3em;text-transform:uppercase;opacity:0.5;">Something went wrong</div>' +
+      '<div style="font-size:1.1rem;max-width:420px;line-height:1.5;">The page couldn\'t load properly. This is usually a temporary network issue.</div>' +
+      '<button onclick="location.reload()" style="padding:0.75rem 2rem;background:#e8e8e8;color:#0a0a0a;border:none;font:inherit;font-size:0.9rem;letter-spacing:0.1em;text-transform:uppercase;cursor:pointer;">Reload</button>';
+    document.body.appendChild(overlay);
+  }
+
+  window.addEventListener('error', (e) => {
+    console.error('[global]', e.error || e.message);
+    // Only show UI for true JS errors — ignore resource load failures
+    // (a failed image or video shouldn't nuke the whole page)
+    if (e.target && (e.target.tagName === 'IMG' || e.target.tagName === 'VIDEO' || e.target.tagName === 'SCRIPT')) {
+      return;  // let individual error handlers deal with media failures
+    }
+    showErrorUI(e.message);
+  });
+  window.addEventListener('unhandledrejection', (e) => {
+    console.error('[unhandled promise]', e.reason);
+    // Most unhandled rejections are transient (failed fetch, etc).
+    // Only show UI if critical init hasn't happened yet.
+    showErrorUI(String(e.reason));
+  });
+})();
+
 // ── PROJECT CONFIG ──
 // Add a project: just add its folder name to projects/projects.json
 // No HTML changes ever needed.
@@ -2314,8 +2423,6 @@ async function loadProjects() {
   });
   projectData    = combined.map(x => x.p);
   projectDetails = combined.map(x => x.d);
-
-  console.log('Projects loaded:', projectData.length);
 }
 const SPEED = 6;
 let totalDur = 0;
@@ -2835,6 +2942,11 @@ function buildSingleThumb(projIdx, width, renderSliceCount) {
   t.className = 'thumb';
   t.dataset.i = projIdx;
   t.style.width = width + 'px';
+  // Accessibility — make thumbs focusable and announceable.
+  // role="tab" matches the strip-area's role="tablist" ancestor (set in HTML).
+  t.setAttribute('role', 'tab');
+  t.setAttribute('tabindex', '0');
+  t.setAttribute('aria-label', `Open project: ${p.name}`);
 
   const frames     = projectDetails[projIdx]?.thumbFrames || [];
   const slicesHTML = buildThumbSlices(frames, p.tc, renderSliceCount);
@@ -2859,6 +2971,20 @@ function buildSingleThumb(projIdx, width, renderSliceCount) {
     if (!isTouch && !scrubState.didScrub) {
       const rect = t.getBoundingClientRect();
       seekVideo((e.clientX - rect.left) / rect.width);
+    }
+  });
+  // Keyboard activation — Enter or Space on a focused thumb acts like a
+  // click. If it's the currently-playing thumb, Enter opens its detail
+  // view (keyboard equivalent of tap-active-to-open). If it's a
+  // different thumb, navigate to it.
+  t.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    if (detailOpen) return;
+    e.preventDefault();  // stop Space from scrolling the page
+    if (thumbIndex !== cur) {
+      goTo(thumbIndex);
+    } else if (typeof openDetail === 'function') {
+      openDetail();
     }
   });
   t.addEventListener('touchstart', (e) => {
@@ -4094,7 +4220,9 @@ function thumbByProjectIdx(i) {
 
 function setActiveThumb(i) {
   allThumbs().forEach(t => {
-    t.classList.toggle('active', parseInt(t.dataset.i, 10) === i);
+    const isActive = parseInt(t.dataset.i, 10) === i;
+    t.classList.toggle('active', isActive);
+    t.setAttribute('aria-selected', isActive ? 'true' : 'false');
   });
 }
 
@@ -4537,6 +4665,11 @@ function buildWindows(p, pd) {
 
     if (spec.type === 'video') {
       win.classList.add('win-video');
+      // Start hidden — fade in once the video's aspect-correct dimensions
+      // are set in loadedmetadata. No visible snap from 16:9 placeholder
+      // to the real video aspect.
+      win.style.opacity = '0';
+      win.style.transition = 'opacity 0.3s ease';
       win.innerHTML = `
         <video autoplay muted loop playsinline crossorigin="anonymous" style="width:100%;height:100%;object-fit:cover;display:block;"></video>
         <div class="win-vid-controls">
@@ -4566,20 +4699,30 @@ function buildWindows(p, pd) {
       // minimize button end up at the actual video edges.
       vid.addEventListener('loadedmetadata', () => {
         const vw = vid.videoWidth, vh = vid.videoHeight;
-        if (!vw || !vh) return;
-        const vidAspect = vw / vh;
-        const curW = win.offsetWidth;
-        const curH = win.offsetHeight;
-        const curAspect = curW / curH;
-        if (vidAspect > curAspect) {
-          win.style.height = (curW / vidAspect) + 'px';
-        } else if (vidAspect < curAspect) {
-          win.style.width = (curH * vidAspect) + 'px';
+        if (vw && vh) {
+          const vidAspect = vw / vh;
+          const curW = win.offsetWidth;
+          const curH = win.offsetHeight;
+          const curAspect = curW / curH;
+          if (vidAspect > curAspect) {
+            win.style.height = (curW / vidAspect) + 'px';
+          } else if (vidAspect < curAspect) {
+            win.style.width = (curH * vidAspect) + 'px';
+          }
+          // Lock aspect for future drag-resize so the video is never cropped
+          // by non-proportional drags.
+          win._ratio = vidAspect;
         }
-        // Lock aspect for future drag-resize so the video is never cropped
-        // by non-proportional drags.
-        win._ratio = vidAspect;
+        // Fade in at the correct size — user sees a clean reveal instead
+        // of a jump from 16:9 placeholder to the real aspect.
+        requestAnimationFrame(() => { win.style.opacity = '1'; });
       });
+      // Safety net: if metadata never loads (network issue), still reveal
+      // the window after 2s at the 16:9 placeholder. Better than leaving
+      // an invisible gap in the layout.
+      setTimeout(() => {
+        if (win.style.opacity === '0') win.style.opacity = '1';
+      }, 2000);
       // Load video with HLS support
       const winSrc = p.src || '';
       const winIsHLS = winSrc.includes('.m3u8');
@@ -4696,6 +4839,11 @@ function buildWindows(p, pd) {
     } else {
       win.classList.add('win-img');
       if (spec.src) {
+        // Start hidden — we fade in AFTER the aspect-correct dimensions
+        // are computed, so the user never sees the 16:9-placeholder → real-
+        // aspect snap.
+        win.style.opacity = '0';
+        win.style.transition = 'opacity 0.3s ease';
         win.style.backgroundImage = `url('${spec.src}')`;
         // cover with no letterboxing — we'll resize the window itself to
         // match the image aspect ratio (below), so cover == contain visually
@@ -4709,21 +4857,30 @@ function buildWindows(p, pd) {
         const probe = new Image();
         probe.onload = () => {
           const imgAspect = probe.naturalWidth / probe.naturalHeight;
-          if (!isFinite(imgAspect) || imgAspect <= 0) return;
-          const curW = win.offsetWidth;
-          const curH = win.offsetHeight;
-          const curAspect = curW / curH;
-          if (imgAspect > curAspect) {
-            // Image wider than window → shrink window height to match
-            win.style.height = (curW / imgAspect) + 'px';
-          } else if (imgAspect < curAspect) {
-            // Image taller than window → shrink window width to match
-            win.style.width = (curH * imgAspect) + 'px';
+          if (isFinite(imgAspect) && imgAspect > 0) {
+            const curW = win.offsetWidth;
+            const curH = win.offsetHeight;
+            const curAspect = curW / curH;
+            if (imgAspect > curAspect) {
+              // Image wider than window → shrink window height to match
+              win.style.height = (curW / imgAspect) + 'px';
+            } else if (imgAspect < curAspect) {
+              // Image taller than window → shrink window width to match
+              win.style.width = (curH * imgAspect) + 'px';
+            }
+            // Lock aspect for future drag-resize so the image is never cropped
+            // by non-proportional drags. The resize handler reads win._ratio
+            // fresh on every mousemove so this update takes effect immediately.
+            win._ratio = imgAspect;
           }
-          // Lock aspect for future drag-resize so the image is never cropped
-          // by non-proportional drags. The resize handler checks win._ratio
-          // and, when set, preserves it across all four corner drags.
-          win._ratio = imgAspect;
+          // Fade in at the correct size — user sees a clean reveal instead
+          // of a jump from 16:9 placeholder to the real aspect.
+          requestAnimationFrame(() => { win.style.opacity = '1'; });
+        };
+        probe.onerror = () => {
+          // Still show the window (at 16:9 placeholder) even if image fails —
+          // better than a blank gap in the layout.
+          win.style.opacity = '1';
         };
         probe.src = spec.src;
       } else {
@@ -5075,6 +5232,7 @@ function openInfo(ev) {
   void infoEl.offsetWidth;
   infoEl.classList.remove('resetting');
   infoEl.classList.add('open');
+  infoEl.setAttribute('aria-hidden', 'false');
   const ind = mobIndicator;
   if (ind) ind.classList.remove('visible');
 }
@@ -5086,6 +5244,7 @@ function closeInfo() {
   // out cleanly without shrinking back down.
   infoEl.classList.add('closing');
   infoEl.classList.remove('open');
+  infoEl.setAttribute('aria-hidden', 'true');
   // After the opacity fade completes, remove .closing so the panel's base
   // state (clip-path circle(0%)) is restored for the next open animation.
   setTimeout(() => infoEl.classList.remove('closing'), 400);
@@ -5835,6 +5994,11 @@ function createDockItem(winEl) {
   tip.textContent = tipText;
   item.appendChild(tip);
 
+  // Screen readers: make the button's purpose explicit. "Restore X" is
+  // clearer than just reading the tip text (which is already visible).
+  item.setAttribute('aria-label', `Restore ${tipText}`);
+  item.setAttribute('title', `Restore ${tipText}`);
+
   // Restore on click; stop pointerdown/click from bubbling so the global
   // detail swipe/wheel listeners don't misinterpret it as a close gesture
   item.addEventListener('click', (e) => {
@@ -5984,6 +6148,7 @@ function openDetail() {
   setTimeout(() => {
     videoBg.classList.add('blurred');
     detailEl.classList.add('open');
+    detailEl.setAttribute('aria-hidden', 'false');
     detailEl.scrollTop = 0;
     // Sample background brightness right as the detail opens so nav + footer
     // text is the correct color by the time the fade-in completes. Using the
@@ -6001,6 +6166,7 @@ function closeDetail() {
   detailOpen = false;
 
   detailEl.classList.remove('open');
+  detailEl.setAttribute('aria-hidden', 'true');
   videoBg.classList.remove('blurred');
   canvasInner.classList.remove('mobile-detail');
   // Clear per-element brightness flags — detail view is where they matter,
@@ -6537,7 +6703,41 @@ window.addEventListener('load', async () => {
   // Skips when user is dragging or detail/work is open. Cheap no-op when
   // state is already correct (just one computed property read + a few
   // integer comparisons).
-  setInterval(() => enforceStripValid('sentinel'), 1500);
+  //
+  // The interval handle is stored on window so it can be inspected in
+  // devtools and so the visibilitychange handler below can pause/resume it
+  // when the tab isn't visible (saves battery on mobile).
+  window._stripSentinel = setInterval(() => enforceStripValid('sentinel'), 1500);
+
+  // ── PAGE VISIBILITY HANDLING ──
+  // When the tab is hidden, pause the active video + the strip sentinel
+  // to save battery and CPU. When it becomes visible again, resume playback
+  // and restart the sentinel. This is especially impactful on mobile where
+  // background audio drain is a real UX problem.
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      // Tab hidden — pause video + stop sentinel
+      if (videoBgInner && !videoBgInner.paused) {
+        videoBgInner._wasPlayingBeforeHide = true;
+        try { videoBgInner.pause(); } catch {}
+      }
+      if (window._stripSentinel) {
+        clearInterval(window._stripSentinel);
+        window._stripSentinel = null;
+      }
+    } else {
+      // Tab back — resume video if it was playing + restart sentinel
+      if (videoBgInner && videoBgInner._wasPlayingBeforeHide && !detailOpen && !workOpen) {
+        videoBgInner._wasPlayingBeforeHide = false;
+        videoBgInner.play().catch(() => {});
+      }
+      if (!window._stripSentinel) {
+        window._stripSentinel = setInterval(() => enforceStripValid('sentinel'), 1500);
+      }
+      // Run once immediately on return — strip state may have drifted
+      enforceStripValid('visibility-resume');
+    }
+  });
 });
 
 async function loadThumbnailsInBackground() {} // no longer used
