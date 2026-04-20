@@ -3426,47 +3426,55 @@ function performAutoAdvance() {
   peekEl.style.transition = 'none';
   peekEl.style.transform  = `translateY(${h}px)`;
   peekEl.classList.add('visible');
-  // Force reflow so the starting peek position is committed before we
-  // apply the commit-animation transition below
   void peekEl.offsetWidth;
 
   // 2. Prepare the strip drag (adds lookback + lookahead thumbs and sets
   //    transform=-lookbackWidth so the visible strip looks unchanged).
-  //    Without this, finishStripDrag has no lookback/lookahead refs to
-  //    work with.
   prepareStripDrag();
 
-  // 3. Commit the strip drag (direction=1 = next). This animates the
-  //    strip to its final "after-next" position via a 280ms CSS transition,
-  //    matching what swipe does. finishStripDrag also handles its own
-  //    setTimeout cleanup to remove transitional thumbs + reset transform.
-  finishStripDrag(true, 1);
-
-  // 4. Animate videoBg off-top and peek up-from-bottom — the same 280ms
-  //    visual that swipe uses to cover the project swap.
-  videoBg.style.transition = 'transform 0.28s cubic-bezier(0.33,1,0.68,1)';
-  peekEl.style.transition  = 'transform 0.28s cubic-bezier(0.33,1,0.68,1)';
-  videoBg.style.transform  = `translateY(-${h}px)`;
-  peekEl.style.transform   = 'translateY(0)';
-
-  // 5. At 280ms (peek fully covers screen, hiding the actual project swap),
-  //    do the pool swap via goTo(…, skipStripSync=true) — strip has
-  //    already been advanced by finishStripDrag so we skip sync.
-  setTimeout(() => {
-    videoBg.style.transition = 'none';
-    videoBg.style.transform  = '';
-    peekEl.style.transition  = 'none';
-    goTo(nextIdx, true);
-    // Two frames later, hide peek — gives the newly-active video a
-    // couple of frames to render its first play frame before it's revealed.
+  // 3. CRITICAL: wait two animation frames before starting the commit
+  //    animations. During a real swipe, touchmove events fire across many
+  //    frames between prepare and finish, giving the browser many commit
+  //    opportunities. In the auto-advance path we call prepare → finish
+  //    synchronously, so the browser may batch both sets of style changes
+  //    and transition the transform from its PRE-prepare value (0) to
+  //    finalTranslate — producing a much larger leftward slide than
+  //    intended. The previously-active thumb gets pushed way off-screen
+  //    left and a gap appears on the right. Two rAFs force the
+  //    prepareStripDrag state (transform=-lookbackWidth) to fully commit
+  //    before the finishStripDrag transition begins, so the animation
+  //    correctly goes from -lookbackWidth to finalTranslate (a small,
+  //    one-thumb-width slide).
+  requestAnimationFrame(() => {
     requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        peekEl.classList.remove('visible');
-        peekEl.style.transform = '';
-      });
+      // 4. Commit the strip drag (direction=1 = next). This animates
+      //    the strip to its final position via a 280ms transition,
+      //    matching what swipe does.
+      finishStripDrag(true, 1);
+
+      // 5. Animate videoBg off-top and peek up-from-bottom — same 280ms
+      //    visual that swipe uses to cover the project swap.
+      videoBg.style.transition = 'transform 0.28s cubic-bezier(0.33,1,0.68,1)';
+      peekEl.style.transition  = 'transform 0.28s cubic-bezier(0.33,1,0.68,1)';
+      videoBg.style.transform  = `translateY(-${h}px)`;
+      peekEl.style.transform   = 'translateY(0)';
+
+      // 6. At 280ms, do the pool swap via goTo(…, skipStripSync=true).
+      setTimeout(() => {
+        videoBg.style.transition = 'none';
+        videoBg.style.transform  = '';
+        peekEl.style.transition  = 'none';
+        goTo(nextIdx, true);
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            peekEl.classList.remove('visible');
+            peekEl.style.transform = '';
+          });
+        });
+        flashActiveThumb();
+      }, 280);
     });
-    flashActiveThumb();
-  }, 280);
+  });
 }
 
 // ─────────────────────────────────────────────────────────
