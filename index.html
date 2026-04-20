@@ -2437,11 +2437,17 @@ async function loadProjects() {
   }
 
   // Load each project's info.txt. Each manifest entry can be either a plain
-  // folder string or an object like {folder, pinned} — normalize here so the
-  // rest of loadProjects sees a uniform {folder, pinned} shape.
+  // folder string or an object like {folder, pinned, hidden} — normalize here
+  // so the rest of loadProjects sees a uniform shape. The `manifestIdx` is
+  // the entry's position in projects.json — this is crucial because
+  // projectData is sorted by year below, which loses the original order;
+  // pinned projects need to appear in projects.json order on landing, so
+  // buildFullSequence/buildDesktopSequence sort pinned by manifestIdx.
   const results = await Promise.all(manifest.map(async (entry, idx) => {
     const folder = typeof entry === 'string' ? entry : entry.folder;
     const pinned = typeof entry === 'string' ? false   : !!entry.pinned;
+    const hidden = typeof entry === 'string' ? false   : !!entry.hidden;
+    const manifestIdx = idx;
     const mediaBase = `${ASSETS_BASE}/${folder}`;  // Bunny — videos, images, thumbs
     const infoBase  = `projects/${folder}`;         // GitHub — info.txt
     try {
@@ -2456,6 +2462,8 @@ async function loadProjects() {
         proj: {
           folder,
           pinned,
+          hidden,
+          manifestIdx,
           tc:       info.color    || colors[idx % colors.length],
           name:     info.name     || folder,
           client:   info.client   || '',
@@ -2494,8 +2502,8 @@ async function loadProjects() {
       const folderYear = (folder.match(/^(\d{4})/) || [])[1] || '';
       return {
         proj:   fb
-          ? { ...fb, pinned }
-          : { folder, pinned, tc: colors[idx % colors.length], name: folder, client:'', studio:'', type:'', year: folderYear, duration:60, src:`${mediaBase}/video.mp4` },
+          ? { ...fb, pinned, hidden, manifestIdx }
+          : { folder, pinned, hidden, manifestIdx, tc: colors[idx % colors.length], name: folder, client:'', studio:'', type:'', year: folderYear, duration:60, src:`${mediaBase}/video.mp4` },
         detail: { about:'', team:'', credits:'', images:[], thumbFrames:[], thumb:null }
       };
     }
@@ -2579,15 +2587,41 @@ function sliceCountFor(projIdx) {
 
 function buildDesktopSequence() {
   if (projectData.length === 0) return [];
-  const pinnedIdx = projectData.findIndex(p => p.pinned);
-  const pinned = pinnedIdx >= 0 ? pinnedIdx : 0;
-  const rest = projectData.map((_, i) => i).filter(i => i !== pinned);
-  // Fisher-Yates shuffle of the non-pinned pool
-  for (let i = rest.length - 1; i > 0; i--) {
+
+  // Filter: exclude hidden projects from landing entirely (they only
+  // appear in the Work tab — handled there by iterating projectData
+  // directly, not through this sequence).
+  // Pinned: sort by manifestIdx (projects.json order) so the admin-
+  // controlled pin order is preserved. projectData was year-sorted in
+  // loadProjects, which scrambled the original order; manifestIdx
+  // recovers it.
+  const visible = projectData
+    .map((p, i) => ({ p, i }))
+    .filter(x => !x.p.hidden);
+
+  const pinned = visible
+    .filter(x => x.p.pinned)
+    .sort((a, b) => (a.p.manifestIdx ?? 0) - (b.p.manifestIdx ?? 0))
+    .map(x => x.i);
+
+  const unpinned = visible
+    .filter(x => !x.p.pinned)
+    .map(x => x.i);
+
+  // Fisher-Yates shuffle of the non-pinned pool — different order each
+  // page load so returning visitors see variety after the pinned block.
+  for (let i = unpinned.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
-    [rest[i], rest[j]] = [rest[j], rest[i]];
+    [unpinned[i], unpinned[j]] = [unpinned[j], unpinned[i]];
   }
-  return [pinned, ...rest];
+
+  // If nothing is visible (all hidden — shouldn't happen but defensive),
+  // fall back to the full project list so the strip isn't empty.
+  if (pinned.length + unpinned.length === 0) {
+    return projectData.map((_, i) => i);
+  }
+
+  return [...pinned, ...unpinned];
 }
 
 function getDesktopWindow() {
@@ -2603,19 +2637,35 @@ function getDesktopWindow() {
 
 function buildFullSequence() {
   if (projectData.length === 0) return [];
-  const pinnedIdx = projectData.findIndex(p => p.pinned);
-  const pinned = pinnedIdx >= 0 ? pinnedIdx : 0;
-  // Pinned project anchors slot 0. The rest get Fisher-Yates shuffled so
-  // every page load shows a different order — matches desktop behavior.
-  // Shuffled once per session (on first call); stable thereafter so the
-  // window-math in nextInStrip/prevInStrip doesn't get pulled out from
-  // under mid-session.
-  const rest = projectData.map((_, i) => i).filter(i => i !== pinned);
-  for (let i = rest.length - 1; i > 0; i--) {
+
+  // Same filter+sort logic as buildDesktopSequence — see that function
+  // for rationale (hidden excluded, pinned sorted by manifestIdx,
+  // unpinned shuffled). Kept as a separate function for clarity even
+  // though the bodies are identical; if mobile-specific ordering ever
+  // diverges, this is where it'd live.
+  const visible = projectData
+    .map((p, i) => ({ p, i }))
+    .filter(x => !x.p.hidden);
+
+  const pinned = visible
+    .filter(x => x.p.pinned)
+    .sort((a, b) => (a.p.manifestIdx ?? 0) - (b.p.manifestIdx ?? 0))
+    .map(x => x.i);
+
+  const unpinned = visible
+    .filter(x => !x.p.pinned)
+    .map(x => x.i);
+
+  for (let i = unpinned.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
-    [rest[i], rest[j]] = [rest[j], rest[i]];
+    [unpinned[i], unpinned[j]] = [unpinned[j], unpinned[i]];
   }
-  return [pinned, ...rest];
+
+  if (pinned.length + unpinned.length === 0) {
+    return projectData.map((_, i) => i);
+  }
+
+  return [...pinned, ...unpinned];
 }
 
 // Helper: compute the 4-thumb window starting at mobileWindowStart, wrapping
