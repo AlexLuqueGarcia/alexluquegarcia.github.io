@@ -1,0 +1,7 @@
+name: Maka Show Visuals
+client: Maka
+type: CG Artist
+year: 2024
+duration: 18
+video: https://vz-114da70f-2b3.b-cdn.net/2a9ec5c2-bccf-4f2a-a6c1-9587a3daab42/play_720p.mp4
+frames: video_000.jpg, video_001.jpg, video_002.jpg, video_003.jpg, video_004.jpg, video_005.jpg, video_006.jpg, video_007.jpg, video_008.jpg, video_009.jpg, video_010.jpg, video_011.jpg, video_012.jpg, video_013.jpg, video_014.jpg, video_015.jpg, video_016.jpg, video_017.jpg
