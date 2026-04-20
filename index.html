@@ -561,6 +561,62 @@ body.cur-hover #cur svg {
   color: #000;
 }
 
+/* ── INFO ASIDE ── Playful "Oh btw i also own this @mirai_international"
+   line. Smaller than main contact block, reads as a quiet aside. The
+   prefix is dimmed via color (not opacity — opacity would cascade into
+   the pulse animation). The @handle gets a pulsating glow modeled after
+   the scroll-arrow "bob" — 2.4s cadence, opacity + text-shadow. */
+#info-panel .info-aside {
+  margin-top: 0.75rem;
+}
+#info-panel .info-aside-text {
+  display: block !important;  /* override flex-column from .info-body default */
+  font-size: 0.95rem;
+  font-weight: 300;
+  line-height: 1.4;
+  color: #000;
+}
+#info-panel .info-aside-prefix {
+  /* Dim the prose so the handle is the visual focus */
+  color: rgba(0,0,0,0.55);
+}
+#info-panel .info-aside-text a.info-pulse {
+  color: #000;
+  text-decoration: none;
+  position: relative;
+  display: inline;
+  padding: 0 0.1em;
+  border-radius: 3px;
+  /* Override width:fit-content from .info-section .info-body a — inline
+     elements ignore width, but being explicit avoids surprises. */
+  width: auto;
+  animation: infoPulseGlow 2.4s ease-in-out infinite;
+}
+#info-panel .info-aside-text a.info-pulse:hover {
+  animation-play-state: paused;
+  opacity: 1 !important;
+  text-shadow: 0 0 12px rgba(0,0,0,0.5) !important;
+}
+@keyframes infoPulseGlow {
+  0%, 100% {
+    opacity: 0.55;
+    text-shadow: 0 0 0 rgba(0,0,0,0);
+  }
+  50% {
+    opacity: 1;
+    text-shadow: 0 0 10px rgba(0,0,0,0.4);
+  }
+}
+/* Reduced motion — replace animation with a static underline so the
+   handle still looks interactive but doesn't pulse. */
+@media (prefers-reduced-motion: reduce) {
+  #info-panel .info-aside-text a.info-pulse {
+    animation: none;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+}
+
 @media (max-width: 768px) {
   #info-panel {
     width: calc(100vw - 2rem);
@@ -568,6 +624,7 @@ body.cur-hover #cur svg {
   }
   .info-section .info-body { font-size: 1rem; }
   .info-bio { font-size: 1.3rem; }
+  #info-panel .info-aside-text { font-size: 0.9rem; }
 }
 
 /* ── NAV — fixed, always on top ── */
@@ -2070,6 +2127,16 @@ body.is-fullscreen .win-resize { display: none !important; }
         <div class="info-body">
           <a href="mailto:info@alexluquegarcia.com">info@alexluquegarcia.com</a>
           <a href="https://instagram.com/alexluquegarcia" target="_blank" rel="noopener">@alexluquegarcia</a>
+        </div>
+      </div>
+      <!-- Playful aside — links out to the Mirai International account.
+           Prefix and handle are split into separate spans so the letter-
+           scatter entrance animation (setupInfoLetters) can wrap both,
+           keeping the aside visually cohesive with the rest of the panel.
+           The @handle gets a pulsating glow via .info-pulse. -->
+      <div class="info-section info-aside">
+        <div class="info-body info-aside-text">
+          <span class="info-aside-prefix">Oh! btw i also own this </span><a href="https://instagram.com/mirai_international" target="_blank" rel="noopener" class="info-pulse">@mirai_international</a>
         </div>
       </div>
     </div>
@@ -5240,6 +5307,11 @@ function setupInfoLetters() {
   let idx = 0;
   const bio = document.querySelector('.info-bio');
   if (bio) idx = wrapLetters(bio, idx);
+  // Wrap the aside prefix text ("Oh! btw...") so it scatter-animates
+  // together with the rest of the panel. The @mirai anchor itself is
+  // wrapped by the .info-body a selector below.
+  const asidePrefix = document.querySelector('.info-aside-prefix');
+  if (asidePrefix) idx = wrapLetters(asidePrefix, idx);
   document.querySelectorAll('#info-panel .info-body a').forEach(a => {
     idx = wrapLetters(a, idx);
   });
