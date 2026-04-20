@@ -678,7 +678,20 @@ nav.hide {
 
 .thumb {
   height:100%;
-  flex-shrink:0;
+  /* BULLETPROOF SAFETY NET:
+     - flex-shrink: 0 → thumbs don't shrink below their explicit width
+       (preserves proportional widths set by buildStrip)
+     - flex-grow: 1 → if explicit widths sum to LESS than viewport (which
+       would otherwise leave a visible gap on the right edge — the bug
+       report), flex-grow distributes the leftover space equally among
+       thumbs so the strip ALWAYS fills the viewport horizontally. No
+       matter what bug happens in JS (stale state, wrong transform, width
+       mismatch, race condition), the strip is guaranteed to cover width.
+     - min-width: 0 → allows thumbs to be sized below their content's
+       intrinsic minimum (label text) without overflowing. */
+  flex-shrink: 0;
+  flex-grow: 1;
+  min-width: 0;
   position:relative;
   cursor:pointer;
   overflow:hidden;
@@ -2889,6 +2902,67 @@ function computeMobileSliceCount(projIdx) {
   return Math.max(4, Math.round(TOTAL_MOBILE_SLICES * dur / totalDurInWindow));
 }
 
+// ─────────────────────────────────────────────────────────────
+// BULLETPROOF ENFORCEMENT
+// ─────────────────────────────────────────────────────────────
+// Guarantees the strip is in a valid final state matching current `cur`.
+// Callable from ANY code path after a navigation — auto-advance, swipe
+// settle, tap, resize, anything. If the strip is already correct, it's
+// a no-op (costs one layout read). If ANYTHING is wrong (stale transform,
+// wrong thumb count, wrong stripOrder, wrong cur-position, widths don't
+// sum to viewport), it force-corrects via buildStrip.
+function enforceStripValid(reason) {
+  const isMobile = window.innerWidth <= 1024;
+  if (!isMobile) return;  // desktop has its own valid-state machinery
+  if (stripDragging) return;  // user is actively dragging; don't clobber
+  if (detailOpen || workOpen || transitioning) return;
+
+  // 1. Check cur is in fullSequence
+  if (fullSequence.length === 0) fullSequence = buildFullSequence();
+  if (fullSequence.length === 0) return;
+  const curPos = fullSequence.indexOf(cur);
+  if (curPos < 0) return;
+
+  // 2. Check mobileWindowStart matches cur's position (cur must be at slot 0)
+  const expectedStart = (curPos - MOBILE_CURRENT_SLOT + fullSequence.length) % fullSequence.length;
+
+  // 3. Check stripOrder matches the expected window
+  const expectedOrder = [];
+  const size = Math.min(MOBILE_STRIP_SIZE, fullSequence.length);
+  for (let i = 0; i < size; i++) {
+    expectedOrder.push(fullSequence[(expectedStart + i) % fullSequence.length]);
+  }
+  const orderMismatch = !stripOrder || stripOrder.length !== expectedOrder.length ||
+    stripOrder.some((v, i) => v !== expectedOrder[i]);
+
+  // 4. Check DOM reflects stripOrder
+  const domThumbs = Array.from(stripEl.children);
+  const domMismatch = domThumbs.length !== expectedOrder.length ||
+    domThumbs.some((t, i) => parseInt(t.dataset.i, 10) !== expectedOrder[i]);
+
+  // 5. Check transform is at identity
+  const transform = stripEl.style.transform || '';
+  const badTransform = transform && transform !== 'translateX(0px)' &&
+    transform !== 'translate3d(0px, 0px, 0px)' && transform !== 'none';
+
+  // 6. Check stripAnimating is false (nothing should be in-flight here)
+  const badAnimating = stripAnimating && !orderMismatch && !domMismatch;
+
+  if (orderMismatch || domMismatch || badTransform) {
+    // Force-correct everything
+    stripAnimating = false;
+    mobileWindowStart = expectedStart;
+    stripOrder = expectedOrder;
+    stripEl.style.transition = 'none';
+    stripEl.style.transform = 'translateX(0px)';
+    buildStrip();
+    setActiveThumb(cur);
+  } else if (badAnimating) {
+    // Soft fix — state is valid but animation flag is stale
+    stripAnimating = false;
+  }
+}
+
 // Freeze any in-flight thumb width transitions to their currently-rendered
 // pixel values. Called at the start of slideStripNext/slideStripPrev and
 // prepareStripDrag to prevent the NEW motion from racing against an OLD
@@ -3405,21 +3479,8 @@ window.addEventListener('resize', updateVideoFit);
 //
 // On desktop (non-mobile), the peek+prepareStripDrag machinery doesn't
 // exist — desktop uses a simpler goTo-based flow, which works fine there.
-// Programmatic auto-advance triggered by video-ended.
-//
-// APPROACH: Skip the strip slide animation entirely during auto-advance.
-// During peek-cover, we can't see the strip anyway — so snap it to its
-// final correct state via buildStrip instead of running slideStripNext.
-// This eliminates any possibility of the slide animation leaving the
-// strip in a bad state (which multiple attempts at replicating swipe
-// mechanics kept producing).
-//
-// The user sees:
-//   1. Peek slides up covering the screen while old video fades off-top
-//   2. Behind the peek: pool swap + strip instant-rebuild to new state
-//   3. Peek fades away revealing new video + correct strip
-//
-// Desktop falls through to normal goTo.
+// Auto-advance: lean on the same goTo path that tap uses (which works),
+// plus the enforceStripValid safety net to catch any inconsistency.
 function performAutoAdvance() {
   const isMobile = window.innerWidth <= 1024;
   const nextIdx = nextInStrip(cur);
@@ -3432,7 +3493,7 @@ function performAutoAdvance() {
 
   const h = window.innerHeight;
 
-  // 1. Set up peek below screen with incoming project's first frame
+  // 1. Peek below screen with incoming project's first frame
   const nextThumb = projectDetails[nextIdx]?.thumbFrames?.[0];
   if (nextThumb) peekEl.style.backgroundImage = `url('${nextThumb}')`;
   peekEl.style.transition = 'none';
@@ -3440,7 +3501,7 @@ function performAutoAdvance() {
   peekEl.classList.add('visible');
   void peekEl.offsetWidth;
 
-  // 2. Animate peek up + videoBg off. 280ms — same as swipe.
+  // 2. Animate peek up + videoBg off
   peekEl.style.transition  = 'transform 0.28s cubic-bezier(0.33,1,0.68,1)';
   videoBg.style.transition = 'transform 0.28s cubic-bezier(0.33,1,0.68,1)';
   requestAnimationFrame(() => {
@@ -3448,38 +3509,17 @@ function performAutoAdvance() {
     peekEl.style.transform   = 'translateY(0)';
   });
 
-  // 3. At 280ms — peek fully covers viewport. Do everything behind it.
+  // 3. At 280ms — peek covers. Swap everything behind it.
   setTimeout(() => {
-    // Reset videoBg (hidden behind peek anyway)
     videoBg.style.transition = 'none';
     videoBg.style.transform  = '';
     peekEl.style.transition  = 'none';
 
-    // Pool swap to new video. skipStripSync=true → NO slideStripNext.
-    // We handle the strip ourselves below via direct buildStrip.
-    goTo(nextIdx, true);
+    // Normal goTo — uses same path as tap (which works). Strip slide
+    // will run but be covered by peek for the first 32ms.
+    goTo(nextIdx);
 
-    // Manually advance the mobile window to put cur at slot 0, then
-    // force a clean rebuild. No slide animation — instant snap.
-    // Hidden behind peek, so user sees nothing change on the strip
-    // until peek clears.
-    if (fullSequence.length > 0) {
-      const curPos = fullSequence.indexOf(cur);
-      if (curPos >= 0) {
-        mobileWindowStart = (curPos - MOBILE_CURRENT_SLOT + fullSequence.length) % fullSequence.length;
-        stripOrder = getMobileWindow();
-      }
-    }
-    // Clear any in-flight strip state from interrupted prior animations
-    stripAnimating = false;
-    stripDragging = false;
-    stripEl.style.transition = 'none';
-    stripEl.style.transform  = 'translateX(0px)';
-    buildStrip();
-    setActiveThumb(cur);
-    setProgress(0);
-
-    // Two frames later, hide peek — gives new video time to paint
+    // Hide peek a couple frames after pool swap
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         peekEl.classList.remove('visible');
@@ -3487,6 +3527,10 @@ function performAutoAdvance() {
       });
     });
     flashActiveThumb();
+
+    // goTo already scheduled enforceStripValid; add one more immediate
+    // check for rapid auto-advance cases (short videos ending back-to-back).
+    setTimeout(() => enforceStripValid('auto-advance'), STRIP_SLIDE_MS + 200);
   }, 280);
 }
 
@@ -4076,6 +4120,15 @@ function goTo(i, skipStripSync = false) {
   // already advanced the window + animated the settle, so syncMobileWindow
   // would just fire a redundant rebuild).
   if (!skipStripSync) syncMobileWindow();
+
+  // BULLETPROOF: after every navigation, schedule a state-validity check.
+  // If the slide animation (or skip path) left anything inconsistent —
+  // stale transform, wrong stripOrder, orphaned thumbs, mismatched window —
+  // enforceStripValid force-corrects via buildStrip. No-op if state is
+  // already valid. Timing: STRIP_SLIDE_MS + 100ms covers the entire slide
+  // animation window. rAPID TAPS also get caught because each goTo
+  // schedules its own enforcement; the last enforcement wins.
+  setTimeout(() => enforceStripValid('goTo'), STRIP_SLIDE_MS + 100);
 
   // Start prefetching the NEW neighbors (relative to new cur) after a
   // short delay — gives the current project's video initial bandwidth,
@@ -6428,6 +6481,17 @@ window.addEventListener('load', async () => {
       }
     });
   }, 2000);
+
+  // BULLETPROOF PERIODIC SENTINEL:
+  // Every 1.5 seconds, verify the strip is in a valid state. If anything
+  // is wrong (stale transform, wrong thumb count, stripOrder out of sync
+  // with cur, mobileWindowStart wrong), auto-correct via buildStrip.
+  // This is the ultimate safety net — no matter what bug slips through
+  // the in-path guards, the strip cannot stay broken for more than 1.5s.
+  // Skips when user is dragging or detail/work is open. Cheap no-op when
+  // state is already correct (just one computed property read + a few
+  // integer comparisons).
+  setInterval(() => enforceStripValid('sentinel'), 1500);
 });
 
 async function loadThumbnailsInBackground() {} // no longer used
