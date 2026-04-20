@@ -15,6 +15,9 @@
   "2023-le-tremblements",
   "2024-holiday-24",
   "2024-carnet-jove-25",
-  "2024-maka",
+  {
+    "folder": "2024-maka",
+    "hidden": true
+  },
   "2025-mine"
 ]
