@@ -1276,6 +1276,200 @@ $('delete-btn').addEventListener('click', async () => {
 });
 
 /* ─────────────────────────────────────────────────────────
+   FEED ORDER — reorder pinned projects for the landing page
+   ─────────────────────────────────────────────────────────
+   Lets admin control the exact order pinned projects appear on the
+   landing Feed. Pinned entries are shown in an ordered list with
+   up/down arrow buttons. The current list order IS the order visitors
+   see. Unpinned-visible and Hidden projects are shown read-only below
+   for context.
+
+   Data model:
+     - state.feedOrder.pinned   → array of {folder, name, studio, ...}
+                                   in the order they'll appear on landing
+     - state.feedOrder.unpinned → same shape, not reorderable (the site
+                                   Fisher-Yates shuffles these on every
+                                   page load by design)
+     - state.feedOrder.hidden   → same shape, not on landing at all
+     - state.feedOrder.original → snapshot of the full project list as
+                                   returned by list-projects, used for
+                                   Revert and for change-detection
+   ───────────────────────────────────────────────────────── */
+
+state.feedOrder = { pinned: [], unpinned: [], hidden: [], original: [] };
+
+async function loadFeedOrder() {
+  show($('fo-loading'));
+  hide($('fo-content'));
+  hide($('fo-status'));
+  $('fo-saved').classList.remove('visible');
+  try {
+    const res = await api('list-projects');
+    if (!res.ok) throw new Error((await res.json()).error || 'Failed to load');
+    const data = await res.json();
+    const projects = data.projects || [];
+    // Save a snapshot so Revert can restore without another network call.
+    // Bucket into three lists — the list-projects endpoint returns projects
+    // in manifestOrder already, so ordering within each bucket is correct.
+    state.feedOrder.original = projects.slice();
+    state.feedOrder.pinned   = projects.filter(p =>  p.pinned && !p.hidden);
+    state.feedOrder.unpinned = projects.filter(p => !p.pinned && !p.hidden);
+    state.feedOrder.hidden   = projects.filter(p =>  p.hidden);
+    renderFeedOrder();
+    hide($('fo-loading'));
+    show($('fo-content'));
+  } catch (e) {
+    hide($('fo-loading'));
+    $('fo-status').textContent = 'Error: ' + e.message;
+    $('fo-status').className = 'status err';
+    show($('fo-status'));
+  }
+}
+
+function renderFeedOrder() {
+  renderFeedOrderList($('fo-pinned-list'),   state.feedOrder.pinned,   'pinned');
+  renderFeedOrderList($('fo-unpinned-list'), state.feedOrder.unpinned, 'unpinned');
+  renderFeedOrderList($('fo-hidden-list'),   state.feedOrder.hidden,   'hidden');
+}
+
+function renderFeedOrderList(container, items, bucket) {
+  container.innerHTML = '';
+  if (!items.length) {
+    const empty = document.createElement('div');
+    empty.className = 'fo-empty';
+    empty.textContent =
+      bucket === 'pinned'   ? 'No pinned projects. Edit a project and check "Pin to landing Feed".' :
+      bucket === 'unpinned' ? 'No unpinned-visible projects.' :
+                              'No hidden projects.';
+    container.appendChild(empty);
+    return;
+  }
+  items.forEach((p, idx) => {
+    const row = document.createElement('div');
+    row.className = 'fo-row';
+    row.dataset.folder = p.folder;
+    row.dataset.bucket = bucket;
+    const sub = [p.studio, p.client].filter(Boolean).join(' — ');
+    row.innerHTML = `
+      <span class="fo-num">${idx + 1}</span>
+      <div class="fo-meta">
+        <div class="fo-name">${escapeHtml(p.name || p.folder)}</div>
+        <div class="fo-sub">${escapeHtml(sub)}${p.year ? ' · ' + escapeHtml(p.year) : ''}</div>
+      </div>
+    `;
+    // Only the pinned bucket gets reorder controls. The unpinned list's
+    // order on the landing page is randomized on every page load (by
+    // design), so reordering it in admin would be meaningless. Hidden
+    // projects don't appear on the landing at all.
+    if (bucket === 'pinned') {
+      const controls = document.createElement('div');
+      controls.className = 'fo-controls';
+      const upBtn = document.createElement('button');
+      upBtn.className = 'fo-btn';
+      upBtn.type = 'button';
+      upBtn.innerHTML = '&uarr;';
+      upBtn.title = 'Move up';
+      upBtn.setAttribute('aria-label', `Move ${p.name || p.folder} up`);
+      upBtn.disabled = idx === 0;
+      upBtn.addEventListener('click', () => moveFeedOrder(idx, idx - 1));
+
+      const downBtn = document.createElement('button');
+      downBtn.className = 'fo-btn';
+      downBtn.type = 'button';
+      downBtn.innerHTML = '&darr;';
+      downBtn.title = 'Move down';
+      downBtn.setAttribute('aria-label', `Move ${p.name || p.folder} down`);
+      downBtn.disabled = idx === items.length - 1;
+      downBtn.addEventListener('click', () => moveFeedOrder(idx, idx + 1));
+
+      controls.appendChild(upBtn);
+      controls.appendChild(downBtn);
+      row.appendChild(controls);
+    }
+    container.appendChild(row);
+  });
+}
+
+// Swap two items in the pinned list and re-render. Used by the up/down
+// buttons. Bounds-checking is defensive — the UI disables at-limit buttons
+// so this shouldn't normally be called out-of-bounds, but swap logic is
+// cheap and guards against future code paths (drag-drop etc).
+function moveFeedOrder(from, to) {
+  const list = state.feedOrder.pinned;
+  if (to < 0 || to >= list.length) return;
+  const [item] = list.splice(from, 1);
+  list.splice(to, 0, item);
+  renderFeedOrder();
+  // Hide the "Saved" confirmation if it was still visible from a previous save
+  $('fo-saved').classList.remove('visible');
+}
+
+// Save: send current ordering to the server. The order we send is:
+//   [...pinned (new order), ...unpinned (existing order), ...hidden (existing order)]
+// update-feed-order.js preserves each project's flags — it only
+// rearranges positions — so this is safe even though we include the
+// non-reorderable buckets.
+async function saveFeedOrder() {
+  const saveBtn = $('fo-save-btn');
+  const revertBtn = $('fo-revert-btn');
+  saveBtn.disabled = true;
+  revertBtn.disabled = true;
+  hide($('fo-status'));
+  $('fo-saved').classList.remove('visible');
+
+  // Build the full order list: pinned first (user-reordered), then
+  // unpinned, then hidden. Preserves positions for all three buckets.
+  const order = [
+    ...state.feedOrder.pinned,
+    ...state.feedOrder.unpinned,
+    ...state.feedOrder.hidden,
+  ].map(p => p.folder);
+
+  try {
+    const res = await api('update-feed-order', {
+      method: 'POST',
+      body: { order },
+    });
+    if (!res.ok) throw new Error((await res.json()).error || 'Save failed');
+    const result = await res.json();
+    // Update the snapshot so Revert starts from the newly-saved state
+    state.feedOrder.original = [
+      ...state.feedOrder.pinned,
+      ...state.feedOrder.unpinned,
+      ...state.feedOrder.hidden,
+    ];
+    $('fo-saved').textContent = result.unchanged
+      ? 'No changes.'
+      : 'Saved. Vercel will redeploy in ~30 seconds.';
+    $('fo-saved').classList.add('visible');
+    // Auto-fade after 4s so the UI doesn't look stale on subsequent edits
+    setTimeout(() => $('fo-saved').classList.remove('visible'), 4000);
+  } catch (e) {
+    $('fo-status').textContent = 'Error: ' + e.message;
+    $('fo-status').className = 'status err';
+    show($('fo-status'));
+  } finally {
+    saveBtn.disabled = false;
+    revertBtn.disabled = false;
+  }
+}
+
+// Revert: restore the bucketed lists from the last-loaded snapshot.
+// No network call needed — snapshot is cached in state.feedOrder.original.
+function revertFeedOrder() {
+  const original = state.feedOrder.original || [];
+  state.feedOrder.pinned   = original.filter(p =>  p.pinned && !p.hidden);
+  state.feedOrder.unpinned = original.filter(p => !p.pinned && !p.hidden);
+  state.feedOrder.hidden   = original.filter(p =>  p.hidden);
+  renderFeedOrder();
+  $('fo-saved').classList.remove('visible');
+  hide($('fo-status'));
+}
+
+$('fo-save-btn').addEventListener('click', saveFeedOrder);
+$('fo-revert-btn').addEventListener('click', revertFeedOrder);
+
+/* ─────────────────────────────────────────────────────────
    TUS upload to Bunny Stream
    ───────────────────────────────────────────────────────── */
 function tusUpload(file, authInfo, onProgress) {
