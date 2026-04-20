@@ -4813,7 +4813,12 @@ function makeDraggable(el) {
 
 // ── RESIZE — four corners, locked aspect ratio for video/img ──
 function makeResizable(el) {
-  const ratio = el._ratio; // null = free, number = locked
+  // NOTE: we DO NOT capture el._ratio at setup time. Image and video windows
+  // set their final _ratio asynchronously (inside probe.onload / loadedmetadata
+  // callbacks) — AFTER makeResizable has already run. If we closed over the
+  // ratio here, every resize would use the initial placeholder aspect (16/9
+  // for images) instead of the actual natural aspect. Read it fresh on every
+  // mousemove so the latest value (set once the image loads) is always used.
 
   ['tl','tr','bl','br'].forEach(corner => {
     const handle = el.querySelector('.win-resize-drag.' + corner);
@@ -4838,6 +4843,9 @@ function makeResizable(el) {
       const dx = e.clientX - sx;
       const dy = e.clientY - sy;
       let nw = ow, nh = oh, nx = ox, ny = oy;
+
+      // Fresh read — image probe may have updated _ratio since setup
+      const ratio = el._ratio;
 
       if (ratio) {
         // pick dominant axis
