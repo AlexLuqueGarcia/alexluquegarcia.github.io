@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, shrink-to-fit=yes">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover, shrink-to-fit=yes">
 
 <!-- ── PRIMARY ── -->
 <title>Alex Luque Garcia — Visual Artist & CG Generalist</title>
@@ -133,6 +133,13 @@ html, body {
   font-feature-settings: "kern", "liga", "calt";
   font-kerning: normal;
   -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  /* Block double-tap zoom (manipulation disables the 300ms dblclick wait).
+     Individual elements override to 'none' (block everything) or 'pan-y'
+     (allow vertical scroll) as needed. */
+  touch-action: manipulation;
+  -ms-touch-action: manipulation;
   overscroll-behavior: none;
   position: fixed;
   top: 0; left: 0; right: 0; bottom: 0;
@@ -2582,25 +2589,17 @@ function buildStrip() {
   if (!stripOrder || stripOrder.length === 0) {
     stripOrder = pickStripOrder();
   }
-  // DEFENSIVE RESET: clear stale slide state that would poison a fresh build.
-  //   - Desktop: always reset. Rapid clicks / programmatic goTo during an
-  //     in-flight slide can leave stripAnimating=true + transform=-shiftPx,
-  //     which would offset the freshly-built thumbs leaving a gap.
-  //   - Mobile: reset ONLY when a slide is actively in-flight
-  //     (stripAnimating=true). The specific scenario: user taps a thumb
-  //     during another slide's 420ms window → syncMobileWindow calls
-  //     slideStripNext → it sees stripAnimating and falls through to
-  //     buildStrip. Without this reset, transform stays at translateX(-shiftPx)
-  //     from the interrupted slide → all new thumbs shifted left → visible
-  //     gap at the right edge. Guarded by stripAnimating so we DON'T reset
-  //     during finishStripDrag's 280ms settle (stripDragging=false but
-  //     animation still running — unrelated to stripAnimating).
-  const resetNeeded = (window.innerWidth > 1024) || stripAnimating;
-  if (resetNeeded) {
-    stripAnimating = false;
-    stripEl.style.transition = 'none';
-    stripEl.style.transform  = 'translateX(0px)';
-  }
+  // DEFENSIVE RESET: any time we rebuild the strip from scratch, start from
+  // a known-clean state — no inherited transform, no lingering animation
+  // flag. Stale state from ANY source (interrupted slide, finishStripDrag
+  // settle, resize race, etc) would otherwise offset the freshly-built
+  // thumbs → visible gap at the right edge. Unconditional on both viewports
+  // since buildStrip is only called when a full re-render is intended;
+  // partial-state paths use slide*/finishStripDrag which manage their own
+  // transforms.
+  stripAnimating = false;
+  stripEl.style.transition = 'none';
+  stripEl.style.transform  = 'translateX(0px)';
   const firstBuild = !stripEl.dataset.built;
   stripEl.dataset.built = '1';
 
@@ -3232,6 +3231,14 @@ function slideStripNext() {
     if (firstThumb.parentNode) firstThumb.remove();
     stripEl.style.transition = 'none';
     stripEl.style.transform = 'translateX(0px)';
+    // SAFETY NET: if DOM count doesn't match stripOrder (e.g. firstThumb was
+    // orphaned from earlier, or an extra thumb leaked in), force a hard
+    // rebuild. Otherwise redistributeThumbWidths might leave some thumbs
+    // untouched → sum of widths != innerWidth → gap at right.
+    if (stripEl.children.length !== stripOrder.length) {
+      buildStrip();
+      return;
+    }
     // Smoothly redistribute widths from "symmetric slide" to proper
     // new-set proportions
     redistributeThumbWidths();
@@ -3286,6 +3293,11 @@ function slideStripPrev() {
     if (lastThumb.parentNode) lastThumb.remove();
     stripEl.style.transition = 'none';
     stripEl.style.transform = 'translateX(0px)';
+    // SAFETY NET — see slideStripNext cleanup for rationale
+    if (stripEl.children.length !== stripOrder.length) {
+      buildStrip();
+      return;
+    }
     redistributeThumbWidths();
     setActiveThumb(cur);
     setProgress(localProgress);
@@ -3443,7 +3455,21 @@ function initVideoPool() {
     });
     el.addEventListener('ended', () => {
       if (el !== videoBgInner) return;
-      if (!detailOpen && !workOpen) goTo(nextInStrip(cur));
+      if (detailOpen || workOpen) return;
+      // If the strip is still mid-animation (previous slide or redistribute
+      // hasn't finished), defer the next goTo until it settles. Firing a new
+      // slide on top of a running one creates visible artifacts — the second
+      // slide's transform translation is measured against transitioning
+      // widths and ends up misaligned → gap at right, strip looks shifted.
+      const fireAdvance = () => goTo(nextInStrip(cur));
+      if (stripAnimating) {
+        // Wait for the current slide to finish (420ms) + a small buffer.
+        // redistributeThumbWidths after is fine to run in parallel with the
+        // new slide since snapThumbWidths at slide start freezes it.
+        setTimeout(fireAdvance, STRIP_SLIDE_MS + 100);
+      } else {
+        fireAdvance();
+      }
     });
   });
 }
