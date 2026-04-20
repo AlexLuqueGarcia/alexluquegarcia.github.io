@@ -65,11 +65,31 @@
     background: var(--panel); border: 1px solid var(--line);
     outline: none; text-align: center; letter-spacing: 0.05em;
     transition: border-color 0.2s ease;
+    margin-bottom: 0.5rem;
   }
   #login-view input:focus { border-color: var(--fg); }
+  #login-view input#login-code {
+    letter-spacing: 0.4em;
+    font-variant-numeric: tabular-nums;
+    font-size: 1.15rem;
+  }
   #login-view button { margin-top: 0.75rem; width: 100%; }
+  #login-view button.login-secondary {
+    background: transparent; color: var(--muted, #888);
+    border: 1px solid var(--line);
+    margin-top: 0.5rem;
+  }
+  #login-view button.login-secondary:hover { color: var(--fg); border-color: var(--fg); }
   #login-view .login-error {
     color: var(--err); font-size: 0.85rem; margin-top: 1rem; min-height: 1.2em;
+  }
+  #login-view .login-hint {
+    color: var(--muted, #888); font-size: 0.75rem; margin-top: 1.25rem;
+    letter-spacing: 0.03em;
+  }
+  #login-view .login-sent {
+    color: #4ade80; font-size: 0.85rem; margin-bottom: 1rem;
+    letter-spacing: 0.03em;
   }
 
   /* Project list */
@@ -303,8 +323,23 @@
 <!-- Login ─────────────────────────────────────────── -->
 <div id="login-view">
   <h1>Admin</h1>
-  <input type="password" id="login-pw" placeholder="Password" autocomplete="current-password" autofocus>
-  <button id="login-btn">Enter</button>
+
+  <!-- Stage 1: password entry, sends code to Telegram -->
+  <div id="login-stage-pw">
+    <input type="password" id="login-pw" placeholder="Password" autocomplete="current-password" autofocus>
+    <button id="send-code-btn">Send code to Telegram</button>
+    <div class="login-hint">A 6-digit code will be sent to your Telegram chat</div>
+  </div>
+
+  <!-- Stage 2: code entry, verifies with server -->
+  <div id="login-stage-code" class="hidden">
+    <div class="login-sent">✓ Code sent to Telegram — check your messages</div>
+    <input type="text" id="login-code" placeholder="000000" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code">
+    <button id="verify-code-btn">Enter</button>
+    <button id="back-to-pw-btn" class="login-secondary">Back</button>
+    <div class="login-hint">Code is valid for 2 minutes</div>
+  </div>
+
   <div class="login-error" id="login-err"></div>
 </div>
 
@@ -496,7 +531,7 @@
    State + helpers
    ───────────────────────────────────────────────────────── */
 const state = {
-  password: null,      // held in memory only — sessionStorage mirrors this
+  token: null,         // session token from 2FA login — held in memory, mirrored to sessionStorage
   projects: [],        // full list from /list-projects
   editing: null,       // folder string if editing, null if creating
   videoFile: null,     // File object picked by the user
@@ -507,12 +542,24 @@ const state = {
 
 const api = (path, opts = {}) => {
   const headers = { ...(opts.headers || {}) };
-  if (state.password) headers.Authorization = `Bearer ${state.password}`;
+  if (state.token) headers.Authorization = `Bearer ${state.token}`;
   if (opts.body && typeof opts.body === 'object' && !(opts.body instanceof Blob)) {
     headers['Content-Type'] = 'application/json';
     opts.body = JSON.stringify(opts.body);
   }
-  return fetch(`/api/admin/${path}`, { ...opts, headers });
+  return fetch(`/api/admin/${path}`, { ...opts, headers }).then(res => {
+    // Auto-logout on session expiry: if any endpoint returns 401, the
+    // token's no good anymore. Kick back to login.
+    if (res.status === 401 && state.token) {
+      state.token = null;
+      try { sessionStorage.removeItem('adminToken'); } catch {}
+      hide($('app'));
+      show($('login-view'));
+      $('login-err').textContent = 'Session expired — sign in again.';
+      $('login-pw').focus();
+    }
+    return res;
+  });
 };
 
 const $ = (id) => document.getElementById(id);
@@ -520,65 +567,155 @@ const show = (el) => el.classList.remove('hidden');
 const hide = (el) => el.classList.add('hidden');
 
 /* ─────────────────────────────────────────────────────────
-   Login
+   Login (2-stage: password → Telegram code → session token)
    ───────────────────────────────────────────────────────── */
-async function doLogin(pw) {
-  const res = await fetch('/api/admin/login', {
+
+// Holds the signed challenge token between /request-code and /login.
+// Never persisted — dies with the page.
+let pendingChallenge = null;
+
+function showStagePw() {
+  show($('login-stage-pw'));
+  hide($('login-stage-code'));
+  $('login-err').textContent = '';
+  $('login-code').value = '';
+  pendingChallenge = null;
+  setTimeout(() => $('login-pw').focus(), 10);
+}
+
+function showStageCode() {
+  hide($('login-stage-pw'));
+  show($('login-stage-code'));
+  $('login-err').textContent = '';
+  $('login-code').value = '';
+  setTimeout(() => $('login-code').focus(), 10);
+}
+
+async function requestCode(pw) {
+  const res = await fetch('/api/admin/request-code', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ password: pw }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || 'Login failed');
+    throw new Error(err.error || 'Could not send code');
   }
-  return true;
+  const { challenge } = await res.json();
+  if (!challenge) throw new Error('Server did not return a challenge');
+  return challenge;
 }
 
-$('login-btn').addEventListener('click', async () => {
+async function verifyCode(challenge, code) {
+  const res = await fetch('/api/admin/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ challenge, code }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Invalid code');
+  }
+  const { token } = await res.json();
+  if (!token) throw new Error('Server did not return a session token');
+  return token;
+}
+
+// Stage 1: password → request code
+$('send-code-btn').addEventListener('click', async () => {
   const pw = $('login-pw').value;
-  if (!pw) return;
-  $('login-btn').disabled = true;
+  if (!pw) {
+    $('login-err').textContent = 'Enter your password.';
+    return;
+  }
+  $('send-code-btn').disabled = true;
+  $('send-code-btn').textContent = 'Sending…';
   $('login-err').textContent = '';
   try {
-    await doLogin(pw);
-    state.password = pw;
-    try { sessionStorage.setItem('adminPw', pw); } catch {}
-    enterApp();
+    pendingChallenge = await requestCode(pw);
+    // Clear the password field — no lingering secret in the DOM
+    $('login-pw').value = '';
+    showStageCode();
   } catch (e) {
     $('login-err').textContent = e.message;
   } finally {
-    $('login-btn').disabled = false;
+    $('send-code-btn').disabled = false;
+    $('send-code-btn').textContent = 'Send code to Telegram';
   }
 });
 $('login-pw').addEventListener('keypress', (e) => {
-  if (e.key === 'Enter') $('login-btn').click();
+  if (e.key === 'Enter') $('send-code-btn').click();
 });
+
+// Stage 2: code → verify → session token
+$('verify-code-btn').addEventListener('click', async () => {
+  const code = $('login-code').value.trim();
+  if (!/^\d{6}$/.test(code)) {
+    $('login-err').textContent = 'Enter the 6-digit code from Telegram.';
+    return;
+  }
+  if (!pendingChallenge) {
+    $('login-err').textContent = 'Session expired — start over.';
+    showStagePw();
+    return;
+  }
+  $('verify-code-btn').disabled = true;
+  $('verify-code-btn').textContent = 'Checking…';
+  $('login-err').textContent = '';
+  try {
+    const token = await verifyCode(pendingChallenge, code);
+    state.token = token;
+    try { sessionStorage.setItem('adminToken', token); } catch {}
+    pendingChallenge = null;
+    $('login-code').value = '';
+    enterApp();
+  } catch (e) {
+    $('login-err').textContent = e.message;
+    $('login-code').value = '';
+    $('login-code').focus();
+  } finally {
+    $('verify-code-btn').disabled = false;
+    $('verify-code-btn').textContent = 'Enter';
+  }
+});
+$('login-code').addEventListener('keypress', (e) => {
+  if (e.key === 'Enter') $('verify-code-btn').click();
+});
+$('login-code').addEventListener('input', (e) => {
+  // Strip non-digits as user types
+  e.target.value = e.target.value.replace(/\D/g, '').slice(0, 6);
+});
+
+$('back-to-pw-btn').addEventListener('click', showStagePw);
 
 $('logout-btn').addEventListener('click', () => {
-  state.password = null;
-  try { sessionStorage.removeItem('adminPw'); } catch {}
+  state.token = null;
+  try { sessionStorage.removeItem('adminToken'); } catch {}
   hide($('app'));
   show($('login-view'));
-  $('login-pw').value = '';
-  $('login-pw').focus();
+  showStagePw();
 });
 
-// Auto-login if password is in sessionStorage
+// Auto-login if a valid session token is still in sessionStorage.
+// Tries a cheap authenticated endpoint; if rejected, clears it.
 (async () => {
   let saved = null;
-  try { saved = sessionStorage.getItem('adminPw'); } catch {}
+  try { saved = sessionStorage.getItem('adminToken'); } catch {}
   if (saved) {
+    state.token = saved;
     try {
-      await doLogin(saved);
-      state.password = saved;
-      enterApp();
-      return;
-    } catch {
-      try { sessionStorage.removeItem('adminPw'); } catch {}
-    }
+      const res = await fetch('/api/admin/list-projects', {
+        headers: { Authorization: `Bearer ${saved}` },
+      });
+      if (res.ok) {
+        enterApp();
+        return;
+      }
+    } catch {}
+    state.token = null;
+    try { sessionStorage.removeItem('adminToken'); } catch {}
   }
-  $('login-pw').focus();
+  showStagePw();
 })();
 
 function enterApp() {
@@ -1140,7 +1277,7 @@ async function uploadThumb(folder, filename, blob) {
   const res = await fetch(url, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${state.password}`,
+      Authorization: `Bearer ${state.token}`,
       'Content-Type': 'image/jpeg',
     },
     body: blob,
@@ -1384,7 +1521,7 @@ async function uploadPhotoBlob(folder, filename, blob) {
   const res = await fetch(url, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${state.password}`,
+      Authorization: `Bearer ${state.token}`,
       'Content-Type': 'image/jpeg',
     },
     body: blob,
