@@ -1,0 +1,38 @@
+name: FOS 'Future Imprint' Campaign
+client: Adidas
+studio: Mirai
+type: VFX Creative Lead
+year: 2025
+duration: 30
+video: https://vz-114da70f-2b3.b-cdn.net/32edbdb4-9ca3-4f59-8613-539ef81ca636/play_720p.mp4
+frames: video_000.jpg, video_001.jpg, video_002.jpg, video_003.jpg, video_004.jpg, video_005.jpg, video_006.jpg, video_007.jpg, video_008.jpg, video_009.jpg, video_010.jpg, video_011.jpg, video_012.jpg, video_013.jpg, video_014.jpg, video_015.jpg, video_016.jpg, video_017.jpg, video_018.jpg, video_019.jpg, video_020.jpg, video_021.jpg, video_022.jpg, video_023.jpg, video_024.jpg, video_025.jpg, video_026.jpg, video_027.jpg, video_028.jpg, video_029.jpg, video_030.jpg
+about: VFX-led campaign work for Adidas FOS “Future Imprint”, created with Bianco Bianco and Weni Agency. Directed by Anisha Kapoor, with VFX creative lead by MIRAI and Alex Luque Garcia, CG by Groove, comp by Alain Laza Barbieri and Eloi Calopa, and sound by Itsuki Yoshizawa.
+team: VFX Creative Lead — Alex Luque Garcia
+VFX Studio — Groove
+CG Lead — Javi Polo
+Comp Lead — Alain Laza Barbieri
+Comp Artist — Eloi Calopa
+VFX Coordination — Max
+Sound Composer — Itsuki Yoshizawa
+credits: Creative Agency — Bianco Bianco, Weni Agency
+Director — Anisha Kapoor
+Executive Producer — Marta Espinosa
+Producer — Mayu Uchida
+Line Producer — Effy Zhang
+1st AD — Lilou Augier
+DP — Hans Bobanovits
+Production Assistants — Wataru Narita, Ran Kosone, Sofiane
+Photographer — Alien Wang
+Stills Assistant — Kuei En Li
+Stills Gaffer — Yiting Yang, Yi Xu, Sheng Guo, Yuran Ding
+1st AC — Ryo Endo
+2nd AC — Louie Young
+Gaffer — Aomi Osada
+Best Electric — Romeo Yoshinaga
+LX Assistants — Chihiro Houman, Makoto Takasaki, Ryousuke Abe, Sosuke Nomura
+Makeup Artist — Yoko Minami
+Makeup Assistant — Eri Otani
+Hair Stylist — Hayate Maeda
+Wardrobe Stylist — Polo Cheng
+Styling Assistants — Owen Tsai, Mohan Zhao
+Cast — Miu, Mikiya, Daulet
