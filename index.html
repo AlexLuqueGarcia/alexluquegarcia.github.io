@@ -3231,6 +3231,11 @@ function slideStripNext() {
     if (firstThumb.parentNode) firstThumb.remove();
     stripEl.style.transition = 'none';
     stripEl.style.transform = 'translateX(0px)';
+    // Force reflow so the transform reset actually takes effect BEFORE we
+    // set up the redistribute transitions. Without this, iOS Safari
+    // occasionally "loses" the transform=0 set when a subsequent width
+    // transition is immediately applied on children.
+    void stripEl.offsetWidth;
     // SAFETY NET: if DOM count doesn't match stripOrder (e.g. firstThumb was
     // orphaned from earlier, or an extra thumb leaked in), force a hard
     // rebuild. Otherwise redistributeThumbWidths might leave some thumbs
@@ -3293,6 +3298,7 @@ function slideStripPrev() {
     if (lastThumb.parentNode) lastThumb.remove();
     stripEl.style.transition = 'none';
     stripEl.style.transform = 'translateX(0px)';
+    void stripEl.offsetWidth;  // force reflow — see slideStripNext
     // SAFETY NET — see slideStripNext cleanup for rationale
     if (stripEl.children.length !== stripOrder.length) {
       buildStrip();
@@ -3461,7 +3467,26 @@ function initVideoPool() {
       // slide on top of a running one creates visible artifacts — the second
       // slide's transform translation is measured against transitioning
       // widths and ends up misaligned → gap at right, strip looks shifted.
-      const fireAdvance = () => goTo(nextInStrip(cur));
+      const fireAdvance = () => {
+        goTo(nextInStrip(cur));
+        // SELF-HEAL: after the slide should have fully settled, verify the
+        // strip is in a valid final state. If transform is non-zero or the
+        // thumb count doesn't match stripOrder, force a hard rebuild.
+        // Catches whatever subtle race the auto-advance path triggers — the
+        // slide mechanics work for swipe + tap, but auto-advance repeatedly
+        // shows a stuck-left strip after the slide. This guarantees the
+        // final state is clean regardless of what the animation did.
+        setTimeout(() => {
+          if (detailOpen || workOpen) return;
+          if (window.innerWidth > 1024) return;  // mobile only
+          const transform = stripEl.style.transform || '';
+          const stuckTranslated = transform && transform !== 'translateX(0px)' && !transform.includes('translateX(0px)');
+          const wrongCount = stripEl.children.length !== stripOrder.length;
+          if (stuckTranslated || wrongCount) {
+            buildStrip();
+          }
+        }, STRIP_SLIDE_MS + 200);
+      };
       if (stripAnimating) {
         // Wait for the current slide to finish (420ms) + a small buffer.
         // redistributeThumbWidths after is fine to run in parallel with the
