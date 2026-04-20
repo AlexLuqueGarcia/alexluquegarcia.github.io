@@ -4,5 +4,5 @@ studio: Production Club
 type: CG Artist
 year: 2023
 duration: 90
-video: https://vz-114da70f-2b3.b-cdn.net/5f6a90a4-bfe1-4f47-8699-2d1f13c6e5da/play_720p.mp4
+video: https://vz-114da70f-2b3.b-cdn.net/21734653-1d7a-4f7f-a9d6-4fe91e297c28/play_720p.mp4
 frames: video_000.jpg, video_001.jpg, video_002.jpg, video_003.jpg, video_004.jpg, video_005.jpg, video_006.jpg, video_007.jpg, video_008.jpg, video_009.jpg, video_010.jpg, video_011.jpg, video_012.jpg, video_013.jpg, video_014.jpg
