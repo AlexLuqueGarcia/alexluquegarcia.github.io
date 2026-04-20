@@ -1105,7 +1105,10 @@ nav.hide {
 #canvas-inner.mobile-detail {
   height:auto;
   min-height:100%;
-  padding: 5rem 1.2rem 6rem;
+  /* Bottom padding used to be 6rem to clear the fixed footer overlay.
+     Now that the footer is a flex child at end-of-scroll (via
+     buildMobileDetail), 2rem is enough breathing room below it. */
+  padding: 5rem 1.2rem 2rem;
   display:flex;
   flex-direction:column;
   gap: 1.5rem;
@@ -1851,6 +1854,26 @@ body.is-fullscreen .win-resize { display: none !important; }
   .df-copy { font-size: 0.75rem; }
   .df-labels, .df-values { font-size: 0.75rem; gap: 2px; }
   .df-contact { gap: 1rem; }
+
+  /* ── MOBILE DETAIL FOOTER (end-of-scroll) ──
+     When detail is open on mobile, JS moves #detail-footer INTO the
+     scrolling container (#canvas-inner.mobile-detail) as the last child,
+     so the footer appears only when the user reaches the bottom of the
+     scroll — no longer overlapping the content. These rules override the
+     default fixed-positioned styling for that nested case. */
+  #canvas-inner.mobile-detail #detail-footer {
+    position: static;
+    opacity: 1;
+    pointer-events: auto;
+    padding: 2.5rem 0 0.5rem 0;
+    margin-top: 0.5rem;
+    /* Use the flex layout already defined on #detail-footer — but since
+       it's now static in a column-flex parent, we want to keep the
+       space-between behavior but align to bottom of its own content. */
+  }
+  #canvas-inner.mobile-detail #detail-footer .df-values a {
+    pointer-events: auto;
+  }
 }
 
 /* Respect user's reduced-motion preference: shorten long transitions and
@@ -4635,6 +4658,13 @@ function packWindows(specs) {
 }
 
 function buildWindows(p, pd) {
+  // Preserve the mobile footer if it was moved inside canvasInner by a
+  // prior buildMobileDetail (e.g. user opened detail on mobile, then
+  // resized to desktop). Without this, innerHTML='' would destroy it.
+  const footer = document.getElementById('detail-footer');
+  if (footer && footer.parentNode === canvasInner) {
+    document.body.appendChild(footer);
+  }
   canvasInner.innerHTML = '';
   // Defensive cleanup — if stale dock items somehow survived a view transition,
   // they'd reference .win elements that no longer exist. clearDock wipes the
@@ -5058,6 +5088,14 @@ function fillDetail(i) {
 }
 
 function buildMobileDetail(p, pd) {
+  // If the footer was moved inside canvas-inner during a previous build,
+  // save it back to body first — otherwise innerHTML='' below would
+  // destroy the element entirely.
+  const footer = document.getElementById('detail-footer');
+  if (footer && footer.parentNode === canvasInner) {
+    document.body.appendChild(footer);
+  }
+
   canvasInner.innerHTML = '';
   canvasInner.classList.add('mobile-detail');
 
@@ -5118,6 +5156,14 @@ function buildMobileDetail(p, pd) {
     imgBlock.innerHTML = `<img src="${imgSrc}" style="width:100%;display:block;" loading="lazy">`;
     canvasInner.appendChild(imgBlock);
   });
+
+  // 4. Footer — move the fixed #detail-footer element INTO the scroll
+  //    container as the last child. Combined with the mobile CSS rule
+  //    (#canvas-inner.mobile-detail #detail-footer { position: static }),
+  //    this makes the footer appear only when the user scrolls to the
+  //    bottom of the content — no longer overlapping content throughout
+  //    the scroll. On close, it's moved back to body-sibling position.
+  if (footer) canvasInner.appendChild(footer);
 }
 
 // close on wheel up
@@ -6164,6 +6210,15 @@ function closeDetail() {
   if (!detailOpen || transitioning) return;
   transitioning = true;
   detailOpen = false;
+
+  // Restore footer to body-sibling position. buildMobileDetail moves it
+  // INTO canvasInner so it appears at end-of-scroll on mobile; on close
+  // we move it back so it's available for the next open (mobile or
+  // desktop) and won't get destroyed if buildWindows clears canvasInner.
+  const footer = document.getElementById('detail-footer');
+  if (footer && footer.parentNode === canvasInner) {
+    document.body.appendChild(footer);
+  }
 
   detailEl.classList.remove('open');
   detailEl.setAttribute('aria-hidden', 'true');
