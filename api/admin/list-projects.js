@@ -62,10 +62,20 @@ module.exports = async (req, res) => {
       return res.status(500).json({ error: 'projects.json must be an array' });
     }
 
-    // 2. Normalize entries and fetch each project's info.txt in parallel
-    const normalized = manifest.map(entry => {
-      if (typeof entry === 'string') return { folder: entry, pinned: false };
-      return { folder: entry.folder, pinned: !!entry.pinned };
+    // 2. Normalize entries and fetch each project's info.txt in parallel.
+    //    Preserve the original array position (manifestOrder) so the admin
+    //    UI can display pinned projects in their projects.json order —
+    //    which is what determines their landing-page order on the main site.
+    const normalized = manifest.map((entry, idx) => {
+      if (typeof entry === 'string') {
+        return { folder: entry, pinned: false, hidden: false, manifestOrder: idx };
+      }
+      return {
+        folder: entry.folder,
+        pinned: !!entry.pinned,
+        hidden: !!entry.hidden,
+        manifestOrder: idx,
+      };
     });
 
     const projects = await Promise.all(normalized.map(async (entry) => {
@@ -73,8 +83,10 @@ module.exports = async (req, res) => {
         const infoFile = await ghFetch(`projects/${entry.folder}/info.txt`);
         const info = infoFile ? parseInfo(ghDecode(infoFile)) : {};
         return {
-          folder:   entry.folder,
-          pinned:   entry.pinned,
+          folder:        entry.folder,
+          pinned:        entry.pinned,
+          hidden:        entry.hidden,
+          manifestOrder: entry.manifestOrder,
           name:     info.name || entry.folder,
           client:   info.client || '',
           studio:   info.studio || '',
@@ -91,10 +103,12 @@ module.exports = async (req, res) => {
         };
       } catch (e) {
         return {
-          folder: entry.folder,
-          pinned: entry.pinned,
-          name: entry.folder,
-          error: e.message,
+          folder:        entry.folder,
+          pinned:        entry.pinned,
+          hidden:        entry.hidden,
+          manifestOrder: entry.manifestOrder,
+          name:          entry.folder,
+          error:         e.message,
         };
       }
     }));

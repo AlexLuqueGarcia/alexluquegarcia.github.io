@@ -77,7 +77,7 @@ module.exports = async (req, res) => {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   if (!requireAuth(req, res)) return;
 
-  const { folder, pinned, info } = req.body || {};
+  const { folder, pinned, hidden, info } = req.body || {};
   if (!folder || !info) return res.status(400).json({ error: 'folder and info are required' });
   if (!/^[a-z0-9][a-z0-9-_]{0,80}$/.test(folder)) {
     return res.status(400).json({ error: 'Invalid folder' });
@@ -105,7 +105,9 @@ module.exports = async (req, res) => {
     const infoTxt = buildInfoTxt(info);
     await ghPut(infoPath, infoTxt, `Update ${folder}/info.txt`, existingInfo.sha);
 
-    // 2. Update projects.json if pinned state changed
+    // 2. Update projects.json if pinned or hidden state changed. Multiple
+    //    projects can be pinned simultaneously (order is preserved by the
+    //    feed-order endpoint; this endpoint just flips flags in place).
     const manifestPath = 'projects/projects.json';
     const manifestFile = await ghGet(manifestPath);
     if (!manifestFile) return res.status(404).json({ error: 'projects.json not found' });
@@ -114,7 +116,6 @@ module.exports = async (req, res) => {
     try { manifest = JSON.parse(Buffer.from(manifestFile.content, 'base64').toString('utf-8')); }
     catch { return res.status(500).json({ error: 'projects.json is not valid JSON' }); }
 
-    // Find current entry and its pinned state
     const idx = manifest.findIndex(e => {
       const name = typeof e === 'string' ? e : e.folder;
       return name === folder;
@@ -123,34 +124,33 @@ module.exports = async (req, res) => {
 
     const currentEntry = manifest[idx];
     const currentPinned = typeof currentEntry === 'object' && !!currentEntry.pinned;
+    const currentHidden = typeof currentEntry === 'object' && !!currentEntry.hidden;
     const targetPinned = !!pinned;
+    const targetHidden = !!hidden;
 
-    if (currentPinned !== targetPinned) {
-      // Unpin any other entries if we're pinning this one
-      if (targetPinned) {
-        manifest = manifest.map(e => {
-          if (typeof e === 'object' && e.pinned) return e.folder;
-          return e;
-        });
+    if (currentPinned !== targetPinned || currentHidden !== targetHidden) {
+      // Build the new entry — plain string if no flags, object otherwise.
+      // This keeps projects.json tidy: projects with no special flags stay
+      // as simple strings in the manifest.
+      let newEntry;
+      if (targetPinned || targetHidden) {
+        newEntry = { folder };
+        if (targetPinned) newEntry.pinned = true;
+        if (targetHidden) newEntry.hidden = true;
+      } else {
+        newEntry = folder;
       }
-      // Replace our entry with the new shape
-      const newIdx = manifest.findIndex(e => {
-        const name = typeof e === 'string' ? e : e.folder;
-        return name === folder;
-      });
-      manifest[newIdx] = targetPinned ? { folder, pinned: true } : folder;
+      manifest[idx] = newEntry;
 
-      // Move pinned entry to the front if we just pinned it
-      if (targetPinned) {
-        const pinnedEntry = manifest.splice(newIdx, 1)[0];
-        manifest.unshift(pinnedEntry);
-      }
+      const action = [];
+      if (currentPinned !== targetPinned) action.push(targetPinned ? 'pin' : 'unpin');
+      if (currentHidden !== targetHidden) action.push(targetHidden ? 'hide' : 'unhide');
 
       const manifestJson = JSON.stringify(manifest, null, 2) + '\n';
       await ghPut(
         manifestPath,
         manifestJson,
-        targetPinned ? `Pin ${folder}` : `Unpin ${folder}`,
+        `${action.join(' + ')} ${folder}`,
         manifestFile.sha,
       );
     }

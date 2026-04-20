@@ -88,7 +88,7 @@ module.exports = async (req, res) => {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   if (!requireAuth(req, res)) return;
 
-  const { folder, pinned, info } = req.body || {};
+  const { folder, pinned, hidden, info } = req.body || {};
   if (!folder || !info) return res.status(400).json({ error: 'folder and info are required' });
   if (!/^[a-z0-9][a-z0-9-_]{0,80}$/.test(folder)) {
     return res.status(400).json({ error: 'Invalid folder' });
@@ -108,9 +108,10 @@ module.exports = async (req, res) => {
     );
 
     // 2. Update projects.json — add this folder to the array.
-    // If pinned=true, replace any existing pinned entry so only one project
-    // is pinned at a time (the portfolio picks the first pinned it finds,
-    // but enforcing "only one" here keeps the JSON clean).
+    // Multi-pin supported: we DON'T unpin other entries. Admin controls
+    // pin order via the Feed Order view. New pinned projects go at the
+    // TOP of the manifest (first pinned position); hidden projects go
+    // at the END. Both behaviors can be re-tweaked later.
     const manifestPath = 'projects/projects.json';
     const manifestFile = await ghGet(manifestPath);
     let manifest = [];
@@ -121,27 +122,31 @@ module.exports = async (req, res) => {
     if (!Array.isArray(manifest)) manifest = [];
 
     // Remove this folder from the manifest if it was already present
-    // (keeps the ordering clean when re-running finalize on the same folder)
+    // (keeps the ordering clean when re-running finalize on the same folder).
     manifest = manifest.filter(entry => {
       const name = typeof entry === 'string' ? entry : entry.folder;
       return name !== folder;
     });
 
-    // If this one is pinned, unpin any other entries first
-    if (pinned) {
-      manifest = manifest.map(entry => {
-        if (typeof entry === 'object' && entry.pinned) return entry.folder;
-        return entry;
-      });
+    // Build the new entry with whatever flags are set. Entries with no
+    // flags stay as plain strings for a tidy projects.json.
+    let newEntry;
+    if (pinned || hidden) {
+      newEntry = { folder };
+      if (pinned) newEntry.pinned = true;
+      if (hidden) newEntry.hidden = true;
+    } else {
+      newEntry = folder;
     }
 
-    // Prepend pinned entries (so they always appear first in the JSON),
-    // append non-pinned entries. The site's pickStripOrder already reads
-    // pinned from metadata, so positioning in JSON is purely cosmetic, but
-    // pinning-first matches the convention.
-    const newEntry = pinned ? { folder, pinned: true } : folder;
-    if (pinned) manifest.unshift(newEntry);
-    else manifest.push(newEntry);
+    // Placement: pinned → top of manifest (first visual position on landing);
+    // hidden → end (conventional, though position doesn't matter for hidden);
+    // regular → end (newest projects go at the end, main site year-sorts).
+    if (pinned) {
+      manifest.unshift(newEntry);
+    } else {
+      manifest.push(newEntry);
+    }
 
     const manifestJson = JSON.stringify(manifest, null, 2) + '\n';
     await ghPut(
