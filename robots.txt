@@ -1,6 +1,13 @@
+# alexluquegarcia.com
+# Tell search engine crawlers what to index and what to skip.
+
 User-agent: *
 Allow: /
- 
-# Sitemap location — tells search engines where to find all pages
+
+# Never index admin or API endpoints — they're private.
+Disallow: /admin/
+Disallow: /api/
+Disallow: /_local-only/
+
+# Point crawlers at the sitemap.
 Sitemap: https://alexluquegarcia.com/sitemap.xml
- 

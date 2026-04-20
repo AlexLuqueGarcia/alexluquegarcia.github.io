@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Not found — Alex Luque Garcia</title>
+<meta name="description" content="This page doesn't exist. Head back to Alex Luque Garcia's portfolio.">
+<meta name="robots" content="noindex, follow">
+<link rel="canonical" href="https://alexluquegarcia.com/">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="theme-color" content="#0a0a0a">
+
+<!-- Match the main site's font preload so "go home" transition feels instant -->
+<link rel="preload" href="fonts/NeueMontreal-Light.otf" as="font" type="font/otf" crossorigin>
+<link rel="preload" href="fonts/NeueMontreal-Medium.otf" as="font" type="font/otf" crossorigin>
+
+<style>
+  @font-face {
+    font-family: 'NM';
+    src: url('fonts/NeueMontreal-Light.otf') format('opentype');
+    font-weight: 300;
+    font-display: swap;
+  }
+  @font-face {
+    font-family: 'NM';
+    src: url('fonts/NeueMontreal-Medium.otf') format('opentype');
+    font-weight: 500;
+    font-display: swap;
+  }
+
+  :root {
+    --bg: #0a0a0a;
+    --fg: #e8e8e8;
+    --dim: rgba(232,232,232,0.5);
+    --faint: rgba(232,232,232,0.25);
+    --ease: cubic-bezier(0.33, 1, 0.68, 1);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    background: var(--bg); color: var(--fg);
+    font-family: 'NM', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-weight: 300;
+    min-height: 100vh;
+    min-height: 100svh;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Subtle animated noise — gives the background life without being distracting */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background:
+      radial-gradient(ellipse at 30% 20%, rgba(80,80,80,0.15), transparent 60%),
+      radial-gradient(ellipse at 70% 80%, rgba(60,60,60,0.12), transparent 60%);
+    pointer-events: none;
+    animation: drift 18s ease-in-out infinite alternate;
+  }
+  @keyframes drift {
+    0%   { transform: translate(0, 0) scale(1);    }
+    100% { transform: translate(-3%, 2%) scale(1.05); }
+  }
+
+  /* Fixed nav — mirrors the main site's top bar minimally */
+  nav {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    padding: 1.4rem 1.6rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 10;
+    font-size: 0.88rem;
+    letter-spacing: 0.02em;
+  }
+  nav a {
+    color: var(--fg);
+    text-decoration: none;
+    opacity: 0.7;
+    transition: opacity 0.2s ease;
+  }
+  nav a:hover { opacity: 1; }
+  nav .brand {
+    font-weight: 500;
+    letter-spacing: 0.03em;
+  }
+
+  main {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+    text-align: center;
+    animation: fadeIn 0.8s var(--ease);
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .code {
+    font-size: clamp(4rem, 18vw, 10rem);
+    font-weight: 300;
+    letter-spacing: -0.03em;
+    line-height: 1;
+    margin-bottom: 0.5rem;
+    opacity: 0.9;
+    font-variant-numeric: tabular-nums;
+  }
+  .label {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.4em;
+    color: var(--dim);
+    margin-bottom: 2.5rem;
+  }
+  .msg {
+    font-size: 1.05rem;
+    max-width: 420px;
+    line-height: 1.6;
+    color: var(--fg);
+    margin-bottom: 2.5rem;
+  }
+  .links {
+    display: flex;
+    gap: 2rem;
+    font-size: 0.9rem;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .links a {
+    color: var(--fg);
+    text-decoration: none;
+    position: relative;
+    padding: 0.5rem 0;
+    opacity: 0.85;
+    transition: opacity 0.2s ease;
+  }
+  .links a:hover { opacity: 1; }
+  .links a::after {
+    content: '';
+    position: absolute;
+    bottom: 0.25rem;
+    left: 0; right: 0;
+    height: 1px;
+    background: currentColor;
+    transform: scaleX(0.3);
+    transform-origin: center;
+    transition: transform 0.3s var(--ease);
+    opacity: 0.5;
+  }
+  .links a:hover::after { transform: scaleX(1); opacity: 1; }
+
+  footer {
+    position: fixed;
+    bottom: 1.4rem;
+    left: 1.6rem;
+    right: 1.6rem;
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.75rem;
+    color: var(--faint);
+    letter-spacing: 0.03em;
+  }
+
+  @media (max-width: 640px) {
+    nav { padding: 1rem 1rem; font-size: 0.8rem; }
+    .msg { font-size: 0.95rem; }
+    .links { gap: 1.5rem; font-size: 0.85rem; }
+    footer { bottom: 1rem; left: 1rem; right: 1rem; font-size: 0.7rem; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    body::before { animation: none; }
+    main { animation: none; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <a href="/" class="brand">Alex Luque Garcia</a>
+  <a href="/">← Back to work</a>
+</nav>
+
+<main>
+  <div class="code">404</div>
+  <div class="label">Page not found</div>
+  <div class="msg">
+    The link you followed may be broken, or the page may have been moved.
+  </div>
+  <div class="links">
+    <a href="/">Feed</a>
+    <a href="/#work" onclick="location.href='/';return false;">Work</a>
+    <a href="mailto:info@alexluquegarcia.com">Contact</a>
+  </div>
+</main>
+
+<footer>
+  <span>© Alex Luque Garcia 2026</span>
+  <span>alexluquegarcia.com</span>
+</footer>
+
+</body>
+</html>
