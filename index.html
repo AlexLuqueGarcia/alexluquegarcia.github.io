@@ -3405,28 +3405,34 @@ window.addEventListener('resize', updateVideoFit);
 //
 // On desktop (non-mobile), the peek+prepareStripDrag machinery doesn't
 // exist — desktop uses a simpler goTo-based flow, which works fine there.
-// Programmatic auto-advance triggered by video-ended. Simpler approach:
-// don't try to replicate swipe mechanics (that path kept failing with a
-// stuck-translated strip on mobile). Instead: do the video swap with the
-// same peek-covers-screen visual swipe uses, but let the strip snap to
-// its correct final state via a forced buildStrip at the end. This trades
-// strip-animation smoothness during auto-advance for guaranteed-clean
-// final state.
+// Programmatic auto-advance triggered by video-ended.
+//
+// APPROACH: Skip the strip slide animation entirely during auto-advance.
+// During peek-cover, we can't see the strip anyway — so snap it to its
+// final correct state via buildStrip instead of running slideStripNext.
+// This eliminates any possibility of the slide animation leaving the
+// strip in a bad state (which multiple attempts at replicating swipe
+// mechanics kept producing).
+//
+// The user sees:
+//   1. Peek slides up covering the screen while old video fades off-top
+//   2. Behind the peek: pool swap + strip instant-rebuild to new state
+//   3. Peek fades away revealing new video + correct strip
+//
+// Desktop falls through to normal goTo.
 function performAutoAdvance() {
   const isMobile = window.innerWidth <= 1024;
   const nextIdx = nextInStrip(cur);
   if (nextIdx === cur) return;
 
   if (!isMobile) {
-    // Desktop path — unchanged, works correctly
     goTo(nextIdx);
     return;
   }
 
-  // ── Mobile: video-swap animation (peek covers screen during swap) ──
   const h = window.innerHeight;
 
-  // 1. Set up peek below screen with the incoming project's first frame
+  // 1. Set up peek below screen with incoming project's first frame
   const nextThumb = projectDetails[nextIdx]?.thumbFrames?.[0];
   if (nextThumb) peekEl.style.backgroundImage = `url('${nextThumb}')`;
   peekEl.style.transition = 'none';
@@ -3434,8 +3440,7 @@ function performAutoAdvance() {
   peekEl.classList.add('visible');
   void peekEl.offsetWidth;
 
-  // 2. Animate: videoBg slides off-top, peek slides up from bottom.
-  //    Same 280ms transition used by swipe.
+  // 2. Animate peek up + videoBg off. 280ms — same as swipe.
   peekEl.style.transition  = 'transform 0.28s cubic-bezier(0.33,1,0.68,1)';
   videoBg.style.transition = 'transform 0.28s cubic-bezier(0.33,1,0.68,1)';
   requestAnimationFrame(() => {
@@ -3443,43 +3448,38 @@ function performAutoAdvance() {
     peekEl.style.transform   = 'translateY(0)';
   });
 
-  // 3. At 280ms (peek fully covering), do pool swap + force strip rebuild
+  // 3. At 280ms — peek fully covers viewport. Do everything behind it.
   setTimeout(() => {
-    // Pool swap (peek covers this — invisible)
+    // Reset videoBg (hidden behind peek anyway)
     videoBg.style.transition = 'none';
     videoBg.style.transform  = '';
     peekEl.style.transition  = 'none';
 
-    // Advance cur + video (goTo with no skipStripSync → normal slideStripNext).
-    // The strip animation WILL start here but be covered by peek.
-    goTo(nextIdx);
+    // Pool swap to new video. skipStripSync=true → NO slideStripNext.
+    // We handle the strip ourselves below via direct buildStrip.
+    goTo(nextIdx, true);
 
-    // Force a full rebuild at end of strip slide — GUARANTEES the strip
-    // ends up in a correct state regardless of what went wrong during
-    // the slide animation. This is the terminator that removes any
-    // translated/stuck/mismatched state the slide might have left.
-    setTimeout(() => {
-      // Skip if we navigated somewhere else in the meantime
-      if (detailOpen || workOpen) return;
-      if (cur !== nextIdx) return;
-      // Force reset + rebuild (buildStrip already has unconditional reset
-      // but a second call confirms it)
-      stripAnimating = false;
-      stripEl.style.transition = 'none';
-      stripEl.style.transform  = 'translateX(0px)';
-      // Re-sync the window in case syncMobileWindow left something stale
-      if (fullSequence.length > 0) {
-        const curPos = fullSequence.indexOf(cur);
-        if (curPos >= 0) {
-          mobileWindowStart = (curPos - MOBILE_CURRENT_SLOT + fullSequence.length) % fullSequence.length;
-          stripOrder = getMobileWindow();
-        }
+    // Manually advance the mobile window to put cur at slot 0, then
+    // force a clean rebuild. No slide animation — instant snap.
+    // Hidden behind peek, so user sees nothing change on the strip
+    // until peek clears.
+    if (fullSequence.length > 0) {
+      const curPos = fullSequence.indexOf(cur);
+      if (curPos >= 0) {
+        mobileWindowStart = (curPos - MOBILE_CURRENT_SLOT + fullSequence.length) % fullSequence.length;
+        stripOrder = getMobileWindow();
       }
-      buildStrip();
-      setActiveThumb(cur);
-    }, STRIP_SLIDE_MS + 100);
+    }
+    // Clear any in-flight strip state from interrupted prior animations
+    stripAnimating = false;
+    stripDragging = false;
+    stripEl.style.transition = 'none';
+    stripEl.style.transform  = 'translateX(0px)';
+    buildStrip();
+    setActiveThumb(cur);
+    setProgress(0);
 
-    // Hide peek a couple frames after pool swap (gives new video time to render)
+    // Two frames later, hide peek — gives new video time to paint
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         peekEl.classList.remove('visible');
