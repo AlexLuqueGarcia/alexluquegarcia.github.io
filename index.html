@@ -2582,15 +2582,21 @@ function buildStrip() {
   if (!stripOrder || stripOrder.length === 0) {
     stripOrder = pickStripOrder();
   }
-  // DEFENSIVE RESET (desktop-only): if a slide animation was in-flight
-  // when we got called (rapid desktop clicks, anything else that triggers
-  // a hard rebuild mid-animation), stale `stripAnimating` + transform
-  // would poison the freshly-built DOM. Clear both.
-  // Mobile is skipped — its drag/slide flow handles its own cleanup via
-  // finishStripDrag, and running this reset mid-finishStripDrag-settle
-  // would snap the strip back to rest position during the 280ms settle
-  // animation, breaking the swipe.
-  if (window.innerWidth > 1024) {
+  // DEFENSIVE RESET: clear stale slide state that would poison a fresh build.
+  //   - Desktop: always reset. Rapid clicks / programmatic goTo during an
+  //     in-flight slide can leave stripAnimating=true + transform=-shiftPx,
+  //     which would offset the freshly-built thumbs leaving a gap.
+  //   - Mobile: reset ONLY when a slide is actively in-flight
+  //     (stripAnimating=true). The specific scenario: user taps a thumb
+  //     during another slide's 420ms window → syncMobileWindow calls
+  //     slideStripNext → it sees stripAnimating and falls through to
+  //     buildStrip. Without this reset, transform stays at translateX(-shiftPx)
+  //     from the interrupted slide → all new thumbs shifted left → visible
+  //     gap at the right edge. Guarded by stripAnimating so we DON'T reset
+  //     during finishStripDrag's 280ms settle (stripDragging=false but
+  //     animation still running — unrelated to stripAnimating).
+  const resetNeeded = (window.innerWidth > 1024) || stripAnimating;
+  if (resetNeeded) {
     stripAnimating = false;
     stripEl.style.transition = 'none';
     stripEl.style.transform  = 'translateX(0px)';
